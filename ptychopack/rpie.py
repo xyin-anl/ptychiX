@@ -18,9 +18,9 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
         self._iteration = 0
         # TODO look up good defaults
-        self._object_damping = 1.
+        self._object_tuning_parameter = 1.
         self._object_alpha = 0.8
-        self._probe_damping = 1.
+        self._probe_tuning_parameter = 1.
         self._probe_alpha = 0.8
 
     def iterate(self, repeat: int = 1) -> Sequence[float]:
@@ -33,9 +33,8 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
         propagators = self._product.propagators
         iteration_data_error = list()
 
-        exit_wave = torch.zeros_like(probe)
         wavefield = torch.zeros_like(probe)
-        corrected_exit_wave = torch.zeros_like(probe)
+        exit_wave_diff = torch.zeros_like(probe)
 
         for it in range(repeat):
             is_correcting_positions = self._plan.is_position_correction_enabled(self._iteration)
@@ -82,9 +81,8 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 object_patch += weight11 * object_support[1:, 1:]
 
                 for imode in range(probe.shape[0]):
-                    exit_wave[imode, :, :] = probe[imode, :, :] * object_patch
-                    wavefield[imode, :, :] = propagators[layer].propagate_forward(
-                        exit_wave[imode, :, :])
+                    exit_wave = probe[imode, :, :] * object_patch
+                    wavefield[imode, :, :] = propagators[layer].propagate_forward(exit_wave)
 
                 wavefield_intensity = torch.sum(squared_modulus(wavefield), dim=0)
                 intensity_diff = wavefield_intensity - diffraction_pattern
@@ -94,24 +92,24 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                                          torch.sqrt(diffraction_pattern / wavefield_intensity), 1.)
 
                 for imode in range(probe.shape[0]):
-                    wavefield[imode, :, :] *= correction
-                    corrected_exit_wave[imode, :, :] = propagators[layer].propagate_backward(
-                        wavefield[imode, :, :])
-
-                exit_wave_diff = exit_wave - corrected_exit_wave
+                    exit_wave = probe[imode, :, :] * object_patch
+                    corrected_exit_wave = propagators[layer].propagate_backward(
+                        correction * wavefield[imode, :, :])
+                    exit_wave_diff[imode, :, :] = exit_wave - corrected_exit_wave
 
                 if is_correcting_object:
-                    alpha = self._object_alpha
-                    probe_abssq = torch.sum(squared_modulus(probe), dim=0)
-                    probe_abssq_max = torch.max(probe_abssq)
                     object_update_upper = torch.zeros_like(object_patch)
 
                     for imode in range(probe.shape[0]):
-                        object_update_upper += torch.conj(
-                            probe[imode, :, :]) * exit_wave_diff[imode, :, :]
+                        psi_diff = exit_wave_diff[imode, :, :]
+                        object_update_upper += torch.conj(probe[imode, :, :]) * psi_diff
 
+                    alpha = self._object_alpha
+                    gamma = self._object_tuning_parameter
+                    probe_abssq = torch.sum(squared_modulus(probe), dim=0)
+                    probe_abssq_max = torch.max(probe_abssq)
                     object_update_lower = (1 - alpha) * probe_abssq + alpha * probe_abssq_max
-                    object_update = -self._object_damping * object_update_upper / object_update_lower
+                    object_update = -gamma * object_update_upper / object_update_lower
 
                     # update object support
                     object_support[:-1, :-1] += weight00 * object_update
@@ -124,22 +122,16 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
                 if is_correcting_probe:
                     alpha = self._probe_alpha
-                    object_abssq = squared_modulus(object_)
+                    gamma = self._probe_tuning_parameter
+                    object_abssq = torch.sum(squared_modulus(object_), dim=0)
                     object_abssq_max = torch.max(object_abssq)
-
-                    # vvv FIXME vvv
-                    step_size_upper = torch.tensor(self._probe_step_size)
-                    step_size_lower = 2 * torch.max(squared_modulus(object_patch))
-                    step_size = step_size_upper / step_size_lower
-
-                    exit_wave_diff = exit_wave - corrected_exit_wave
-                    probe -= step_size * torch.conj(object_patch) * exit_wave_diff
+                    probe_update_lower = (1 - alpha) * object_abssq + alpha * object_abssq_max
 
                     for imode in range(probe.shape[0]):
-                        probe_update_upper = torch.conj(object_) * exit_wave_diff
-                        probe_update_lower = 0.  # FIXME XXX
-                        probe_update = probe_update_upper / probe_update_lower
-                        # FIXME save/update
+                        psi_diff = exit_wave_diff[imode, :, :]
+                        probe_update_upper = torch.conj(probe[imode, :, :]) * exit_wave_diff
+                        probe_update = -gamma * probe_update_upper / probe_update_lower
+                        probe[imode, :, :] += probe_update
 
                 if is_correcting_positions:
                     # FIXME object layers? probe modes?
