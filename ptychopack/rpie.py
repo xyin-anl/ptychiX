@@ -1,11 +1,10 @@
-from types import TracebackType
-from typing import overload, Sequence
+from typing import Sequence
 
 import torch
 
 from .common import squared_modulus, CorrectionPlan, IterativeAlgorithm
 from .data import DataProduct, DetectorData
-from .position import correct_positions_cross_correlation
+from .position import correct_positions_serial_cross_correlation
 
 
 class PtychographicIterativeEngine(IterativeAlgorithm):
@@ -17,11 +16,13 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
         self._plan = plan
 
         self._iteration = 0
-        # TODO look up good defaults
         self._object_tuning_parameter = 1.
-        self._object_alpha = 0.8
+        self._object_alpha = 0.05
         self._probe_tuning_parameter = 1.
-        self._probe_alpha = 0.8
+        self._probe_alpha = 0.8  # FIXME default
+
+        self._pc_probe_threshold = 0.1
+        self._pc_feedback_parameter = 0.  # FIXME
 
     def iterate(self, repeat: int = 1) -> Sequence[float]:
         # TODO transfer to device
@@ -62,7 +63,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 ymax_wh = xmin_wh + probe.shape[-2] + 1
 
                 # extract patch support region from full object
-                object_support = object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh]  # TODO copy or view?
+                object_support = object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh]  # FIXME copy or view?
 
                 # reused quantities
                 xmin_fr_c = 1. - xmin_fr
@@ -79,14 +80,22 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 object_patch += weight01 * object_support[:-1, 1:]
                 object_patch += weight10 * object_support[1:, :-1]
                 object_patch += weight11 * object_support[1:, 1:]
+                corrected_object_patch = object_patch
 
                 for imode in range(probe.shape[0]):
+                    # exit wave is the outcome of the probe-object interation
                     exit_wave = probe[imode, :, :] * object_patch
+                    # propagate exit wave to the detector plane
                     wavefield[imode, :, :] = propagators[layer].propagate_forward(exit_wave)
 
+                # propagated wavefield intensity is incoherent sum of mixed-state modes
                 wavefield_intensity = torch.sum(squared_modulus(wavefield), dim=0)
+
+                # calculate data error (TODO: normalize)
                 intensity_diff = wavefield_intensity - diffraction_pattern
                 data_error += torch.sum(intensity_diff[good_pixels]).numpy()[0]
+
+                # intensity correction coefficient
                 correctable_pixels = (good_pixels and wavefield_intensity > 0.)
                 correction = torch.where(correctable_pixels,
                                          torch.sqrt(diffraction_pattern / wavefield_intensity), 1.)
@@ -110,6 +119,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     probe_abssq_max = torch.max(probe_abssq)
                     object_update_lower = (1 - alpha) * probe_abssq + alpha * probe_abssq_max
                     object_update = -gamma * object_update_upper / object_update_lower
+                    corrected_object_patch += object_update
 
                     # update object support
                     object_support[:-1, :-1] += weight00 * object_update
@@ -127,6 +137,8 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     object_abssq_max = torch.max(object_abssq)
                     probe_update_lower = (1 - alpha) * object_abssq + alpha * object_abssq_max
 
+                    # FIXME orthogonalize
+
                     for imode in range(probe.shape[0]):
                         psi_diff = exit_wave_diff[imode, :, :]
                         probe_update_upper = torch.conj(probe[imode, :, :]) * exit_wave_diff
@@ -134,24 +146,22 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                         probe[imode, :, :] += probe_update
 
                 if is_correcting_positions:
-                    # FIXME object layers? probe modes?
-                    # calculate next guess for coordinates
-                    # find probe threshold mask at 10%
-                    mask = torch.abs(probeSubShift) > 0.1 * probeDivide
+                    # indicate object pixels where the illumination significantlly
+                    # contributes to the diffraction pattern
+                    probe_amplitude = torch.sqrt(torch.sum(squared_modulus(probe), dim=0))
+                    probe_amplitude_max = torch.max(probe_amplitude)
+                    probe_mask = (probe_amplitude > self._pc_probe_threshold * probe_amplitude_max)
 
-                    # mask off object guesses
-                    subObject = subObject * mask
-                    subObjectNew = subObjectNew * mask
+                    # mask low illumination regions
+                    object_patch = object_patch * probe_mask
+                    corrected_object_patch = corrected_object_patch * probe_mask
 
-                    # do subpixel cross-correlation between new and old guesses
-                    shift = correct_positions_cross_correlation(subObjectNew, subObject,
-                                                                self.scale)
+                    # use serial cross correlation to determine correcting shift
+                    shift = correct_positions_serial_cross_correlation(
+                        corrected_object_patch, object_patch, self.scale)  # FIXME scale
 
-                    # get shift in pixels
-                    shift = self.gamma * shift
-
-                    # update current positions
-                    positions_px[idx, :] -= shift
+                    # update position (FIXME verify sign)
+                    positions_px[idx, :] += self._pc_feedback_parameter * shift
 
             iteration_data_error.append(data_error)
 
@@ -172,11 +182,13 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
     def adjust_pc(self):
         # check scale
-        if (torch.max(torch.abs(self.shiftXNew)) <= 2 * self.gamma / self.scale
-                and torch.max(torch.abs(self.shiftYNew)) <= 2 * self.gamma / self.scale):
+        if (torch.max(torch.abs(self.shiftXNew)) <= 2 * self._pc_feedback_parameter / self.scale
+                and torch.max(torch.abs(
+                    self.shiftYNew)) <= 2 * self._pc_feedback_parameter / self.scale):
             self.scale *= 10
-        elif (torch.mean(torch.abs(self.shiftXNew)) >= 5 * self.gamma / self.scale
-              or torch.mean(torch.abs(self.shiftYNew)) >= 5 * self.gamma / self.scale):
+        elif (torch.mean(torch.abs(self.shiftXNew)) >= 5 * self._pc_feedback_parameter / self.scale
+              or torch.mean(torch.abs(
+                  self.shiftYNew)) >= 5 * self._pc_feedback_parameter / self.scale):
             self.scale /= 10
 
         # check gamma
@@ -187,9 +199,9 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
         # adjust gamma depending on the sign of the correlation
         if aveCorr < 0:
-            self.gamma *= 0.9
+            self._pc_feedback_parameter *= 0.9
         elif aveCorr > 0.3:
-            self.gamma *= 1.1
+            self._pc_feedback_parameter *= 1.1
 
         return aveCorr
 
@@ -209,7 +221,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
         self.shiftXNew = self.xcoords - oldx
         self.shiftYNew = self.ycoords - oldy
 
-        if self.gamma > 0:
+        if self._pc_feedback_parameter > 0:
             ave_corr = self.adjust_pc()
         else:
             ave_corr = 0

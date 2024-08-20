@@ -2,7 +2,7 @@ import torch
 from torch.fft import fft2, fftfreq, fftshift, ifft2, ifftshift
 
 
-def correct_positions_cross_correlation(im1, im2, scale):
+def correct_positions_serial_cross_correlation(im1, im2, scale):
     N, M = im1.shape
 
     # fourier transform images
