@@ -9,11 +9,9 @@ from .position import correct_positions_serial_cross_correlation
 
 class PtychographicIterativeEngine(IterativeAlgorithm):
 
-    def __init__(self, detector_data: DetectorData, product: DataProduct,
-                 plan: CorrectionPlan) -> None:
+    def __init__(self, detector_data: DetectorData, product: DataProduct) -> None:
         self._detector_data = detector_data
         self._product = product
-        self._plan = plan
 
         self._iteration = 0
         self._object_tuning_parameter = 1.
@@ -24,7 +22,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
         self._pc_probe_threshold = 0.1
         self._pc_feedback_parameter = 0.  # FIXME
 
-    def iterate(self, repeat: int = 1) -> Sequence[float]:
+    def iterate(self, plan: CorrectionPlan) -> Sequence[float]:
         # TODO transfer to device
         layer = 0
         good_pixels = torch.logical_not(self._detector_data.bad_pixels)
@@ -37,10 +35,10 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
         wavefield = torch.zeros_like(probe)
         exit_wave_diff = torch.zeros_like(probe)
 
-        for it in range(repeat):
-            is_correcting_positions = self._plan.is_position_correction_enabled(self._iteration)
-            is_correcting_probe = self._plan.is_probe_correction_enabled(self._iteration)
-            is_correcting_object = self._plan.is_object_correction_enabled(self._iteration)
+        for it in range(plan.number_of_iterations):
+            is_correcting_positions = plan.is_position_correction_enabled(self._iteration)
+            is_correcting_probe = plan.is_probe_correction_enabled(self._iteration)
+            is_correcting_object = plan.is_object_correction_enabled(self._iteration)
             data_error = 0.
 
             for idx in torch.randperm(positions_px.shape[0]):

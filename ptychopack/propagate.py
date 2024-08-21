@@ -86,6 +86,15 @@ class WavefieldPropagator(ABC):
         pass
 
 
+class FourierPropagator(WavefieldPropagator):
+
+    def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
+        return fftshift(fft2(ifftshift(wavefield)))
+
+    def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
+        return fftshift(ifft2(ifftshift(wavefield)))
+
+
 class AngularSpectrumPropagator(WavefieldPropagator):
 
     def __init__(self, parameters: WavefieldPropagatorParameters) -> None:

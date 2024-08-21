@@ -21,7 +21,7 @@ class RAAR(IterativeAlgorithm):
         self._pc_probe_threshold = 0.1
         self._pc_feedback_parameter = 0.  # FIXME
 
-    def iterate(self, repeat: int = 1) -> Sequence[float]:
+    def iterate(self, plan: CorrectionPlan) -> Sequence[float]:
         return list()  # FIXME
 
     def get_product(self) -> DataProduct:

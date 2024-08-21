@@ -11,17 +11,6 @@ def squared_modulus(wavefield: ComplexTensor) -> RealTensor:
     return torch.real(torch.multiply(wavefield, torch.conj(wavefield)))
 
 
-class IterativeAlgorithm(ABC):
-
-    @abstractmethod
-    def iterate(self, repeat: int = 1) -> Sequence[float]:
-        pass
-
-    @abstractmethod
-    def get_product(self) -> DataProduct:
-        pass
-
-
 @dataclass(frozen=True)
 class CorrectionPlan:
     correct_object_start: int
@@ -92,3 +81,14 @@ class CorrectionPlan:
             self.correct_positions_stop,
             self.correct_positions_step,
         )
+
+
+class IterativeAlgorithm(ABC):
+
+    @abstractmethod
+    def iterate(self, plan: CorrectionPlan) -> Sequence[float]:
+        pass
+
+    @abstractmethod
+    def get_product(self) -> DataProduct:
+        pass
