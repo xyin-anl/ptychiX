@@ -2,7 +2,7 @@ from typing import Sequence
 
 import torch
 
-from .common import squared_modulus, CorrectionPlan, IterativeAlgorithm
+from .algorithm import squared_modulus, CorrectionPlan, IterativeAlgorithm
 from .data import DataProduct, DetectorData
 from .position import correct_positions_serial_cross_correlation
 
@@ -58,7 +58,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
                 # bottom right corner of object patch support
                 xmax_wh = xmin_wh + probe.shape[-1] + 1
-                ymax_wh = xmin_wh + probe.shape[-2] + 1
+                ymax_wh = ymin_wh + probe.shape[-2] + 1
 
                 # extract patch support region from full object
                 object_support = object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh]  # FIXME copy or view?
@@ -91,10 +91,10 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
                 # calculate data error (TODO: normalize)
                 intensity_diff = wavefield_intensity - diffraction_pattern
-                data_error += torch.sum(intensity_diff[good_pixels]).numpy()[0]
+                data_error += torch.sum(intensity_diff[good_pixels]).numpy()
 
                 # intensity correction coefficient
-                correctable_pixels = (good_pixels and wavefield_intensity > 0.)
+                correctable_pixels = torch.logical_and(good_pixels, wavefield_intensity > 0.)
                 correction = torch.where(correctable_pixels,
                                          torch.sqrt(diffraction_pattern / wavefield_intensity), 1.)
 
@@ -131,7 +131,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 if is_correcting_probe:
                     alpha = self._probe_alpha
                     gamma = self._probe_tuning_parameter
-                    object_abssq = torch.sum(squared_modulus(object_), dim=0)
+                    object_abssq = squared_modulus(object_patch)
                     object_abssq_max = torch.max(object_abssq)
                     probe_update_lower = (1 - alpha) * object_abssq + alpha * object_abssq_max
 
@@ -139,7 +139,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
                     for imode in range(probe.shape[0]):
                         psi_diff = exit_wave_diff[imode, :, :]
-                        probe_update_upper = torch.conj(probe[imode, :, :]) * exit_wave_diff
+                        probe_update_upper = torch.conj(probe[imode, :, :]) * psi_diff
                         probe_update = -gamma * probe_update_upper / probe_update_lower
                         probe[imode, :, :] += probe_update
 
@@ -156,7 +156,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
                     # use serial cross correlation to determine correcting shift
                     shift = correct_positions_serial_cross_correlation(
-                        corrected_object_patch, object_patch, self.scale)  # FIXME scale
+                        corrected_object_patch, object_patch, 1.)  # FIXME scale
 
                     # update position (FIXME verify sign)
                     positions_px[idx, :] += self._pc_feedback_parameter * shift

@@ -1,7 +1,6 @@
 TODO: multislice
 correct probe or object first?
 See https://realpython.com/documenting-python-code/
-add py.typed
 multigrid/multi-resolution reconstruction strategy
 HIO and DM related to ADMM
 apply mask in fourier domain
