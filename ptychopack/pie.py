@@ -15,9 +15,9 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
         self._iteration = 0
         self._object_tuning_parameter = 1.
-        self._object_alpha = 0.05
+        self._alpha = 0.05
         self._probe_tuning_parameter = 1.
-        self._probe_alpha = 0.8  # FIXME default
+        self._beta = 1.
 
         self._pc_probe_threshold = 0.1
         self._pc_feedback_parameter = 0.  # FIXME
@@ -61,7 +61,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 ymax_wh = ymin_wh + probe.shape[-2] + 1
 
                 # extract patch support region from full object
-                object_support = object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh]  # FIXME copy or view?
+                object_support = object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh].detach().clone()
 
                 # reused quantities
                 xmin_fr_c = 1. - xmin_fr
@@ -111,7 +111,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                         psi_diff = exit_wave_diff[imode, :, :]
                         object_update_upper += torch.conj(probe[imode, :, :]) * psi_diff
 
-                    alpha = self._object_alpha
+                    alpha = self.alpha
                     gamma = self._object_tuning_parameter
                     probe_abssq = torch.sum(squared_modulus(probe), dim=0)
                     probe_abssq_max = torch.max(probe_abssq)
@@ -129,11 +129,11 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh] = object_support
 
                 if is_correcting_probe:
-                    alpha = self._probe_alpha
+                    beta = self.beta
                     gamma = self._probe_tuning_parameter
                     object_abssq = squared_modulus(object_patch)
                     object_abssq_max = torch.max(object_abssq)
-                    probe_update_lower = (1 - alpha) * object_abssq + alpha * object_abssq_max
+                    probe_update_lower = (1 - beta) * object_abssq + beta * object_abssq_max
 
                     # FIXME orthogonalize
 
@@ -170,6 +170,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 propagators,
             )
             self._iteration += 1
+            print(f'{self._iteration} -> {data_error}')
 
         return iteration_data_error
 

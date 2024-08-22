@@ -23,3 +23,6 @@ def orthoProbe(self, probes):
     power_ind = argsort(-power)
     probes[:, :, :] = probes[power_ind, :, :]
     return probes
+
+
+# FIXME L, V = torch.linalg.eig(A)
