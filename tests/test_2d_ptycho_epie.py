@@ -15,8 +15,8 @@ from ptytorch.reconstructors import *
 from ptytorch.metrics import MSELossOfSqrt
 
 
-def test_2d_ptycho_autodiff(generate_gold=False, debug=False):
-    gold_dir = os.path.join('gold_data', 'test_2d_ptycho_autodiff')
+def test_2d_ptycho_epie(generate_gold=False, debug=False):
+    gold_dir = os.path.join('gold_data', 'test_2d_ptycho_epie')
     
     torch.manual_seed(123)
     random.seed(123)
@@ -30,6 +30,7 @@ def test_2d_ptycho_autodiff(generate_gold=False, debug=False):
 
     f_meta = h5py.File('data/2d_ptycho/metadata_250_truePos.hdf5', 'r')
     probe = f_meta['probe'][...]
+    probe = probe[0:1, ...]
     probe = rescale_probe(probe, patterns)
     
     positions = np.stack([f_meta['probe_position_y_m'][...], f_meta['probe_position_x_m'][...]], axis=1)
@@ -58,13 +59,11 @@ def test_2d_ptycho_autodiff(generate_gold=False, debug=False):
         optimizer_params={'lr': 1e-3}
     )
 
-    reconstructor = AutodiffReconstructor(
+    reconstructor = EPIEReconstructor(
         variable_group=Ptychography2DVariableGroup(object=object, probe=probe, probe_positions=probe_positions),
         dataset=dataset,
-        forward_model_class=Ptychography2DForwardModel,
         batch_size=96,
-        loss_function=MSELossOfSqrt(),
-        n_epochs=32
+        n_epochs=32,
     )
     reconstructor.build()
     reconstructor.run()
@@ -83,5 +82,5 @@ if __name__ == '__main__':
     parser.add_argument('--generate-gold', action='store_true')
     args = parser.parse_args()
 
-    test_2d_ptycho_autodiff(generate_gold=args.generate_gold, debug=True)
+    test_2d_ptycho_epie(generate_gold=args.generate_gold, debug=True)
     
