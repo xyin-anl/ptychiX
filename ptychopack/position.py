@@ -1,5 +1,5 @@
 import torch
-from torch.fft import fft2, fftfreq, fftshift, ifft2, ifftshift
+from torch.fft import fft2, fftshift
 
 
 def correct_positions_serial_cross_correlation(im1, im2, scale):

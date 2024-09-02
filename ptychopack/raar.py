@@ -1,10 +1,7 @@
 from typing import Sequence
 
-import torch
-
-from .algorithm import squared_modulus, CorrectionPlan, IterativeAlgorithm
+from .algorithm import CorrectionPlan, IterativeAlgorithm
 from .data import DataProduct, DetectorData
-from .position import correct_positions_serial_cross_correlation
 
 
 class RAAR(IterativeAlgorithm):

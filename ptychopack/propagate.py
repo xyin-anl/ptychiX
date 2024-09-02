@@ -90,10 +90,10 @@ class WavefieldPropagator(ABC):
 class FourierPropagator(WavefieldPropagator):
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fftshift(fft2(ifftshift(wavefield)))
+        return fftshift(fft2(ifftshift(wavefield), norm='ortho'))
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fftshift(ifft2(ifftshift(wavefield)))
+        return fftshift(ifft2(ifftshift(wavefield), norm='ortho'))
 
 
 class AngularSpectrumPropagator(WavefieldPropagator):
@@ -109,8 +109,11 @@ class AngularSpectrumPropagator(WavefieldPropagator):
 
         self._transfer_function = torch.where(ratio < 1, tf, 0)
 
-    def propagate(self, wavefield: ComplexTensor) -> ComplexTensor:
+    def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         return fftshift(ifft2(self._transfer_function * fft2(ifftshift(wavefield))))
+
+    def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
+        pass  # FIXME
 
 
 class FresnelTransferFunctionPropagator(WavefieldPropagator):
@@ -125,8 +128,11 @@ class FresnelTransferFunctionPropagator(WavefieldPropagator):
 
         self._transfer_function = torch.exp(i2piz * (1 - ratio / 2))
 
-    def propagate(self, wavefield: ComplexTensor) -> ComplexTensor:
+    def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         return fftshift(ifft2(self._transfer_function * fft2(ifftshift(wavefield))))
+
+    def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
+        pass  # FIXME
 
 
 class FresnelTransformPropagator(WavefieldPropagator):
@@ -140,20 +146,19 @@ class FresnelTransformPropagator(WavefieldPropagator):
         M = parameters.height_px
         YY, XX = parameters.get_spatial_coordinates()
 
-        C0 = Fr / (1j * ar)
-        C1 = cmath.exp(2j * cmath.pi * parameters.propagation_distance_wlu)
-        C2 = torch.exp((torch.square(XX / N) + torch.square(ar * YY / M)) * ipi / Fr)
-        is_forward = (parameters.propagation_distance_wlu >= 0.)
+        self._C0 = Fr / (1j * ar)
+        self._C1 = cmath.exp(2j * cmath.pi * parameters.propagation_distance_wlu)
+        self._C2 = torch.exp((torch.square(XX / N) + torch.square(ar * YY / M)) * ipi / Fr)
 
-        self._is_forward = is_forward
-        self._A = C2 * C1 * C0 if is_forward else C2 * C1 / C0
         self._B = torch.exp(ipi * Fr * (torch.square(XX) + torch.square(YY / ar)))
 
-    def propagate(self, wavefield: ComplexTensor) -> ComplexTensor:
-        if self._is_forward:
-            return self._A * fftshift(fft2(ifftshift(wavefield * self._B)))
-        else:
-            return self._B * fftshift(ifft2(ifftshift(wavefield * self._A)))
+    def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
+        A = self._C2 * self._C1 * self._C0
+        return A * fftshift(fft2(ifftshift(wavefield * self._B)))
+
+    def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
+        A = self._C2 * self._C1 / self._C0
+        return self._B * fftshift(ifft2(ifftshift(wavefield * A)))
 
 
 class FraunhoferPropagator(WavefieldPropagator):
@@ -167,16 +172,14 @@ class FraunhoferPropagator(WavefieldPropagator):
         M = parameters.height_px
         YY, XX = parameters.get_spatial_coordinates()
 
-        C0 = Fr / (1j * ar)
-        C1 = cmath.exp(2j * cmath.pi * parameters.propagation_distance_wlu)
-        C2 = torch.exp((torch.square(XX / N) + torch.square(ar * YY / M)) * ipi / Fr)
-        is_forward = (parameters.propagation_distance_wlu >= 0.)
+        self._C0 = Fr / (1j * ar)
+        self._C1 = cmath.exp(2j * cmath.pi * parameters.propagation_distance_wlu)
+        self._C2 = torch.exp((torch.square(XX / N) + torch.square(ar * YY / M)) * ipi / Fr)
 
-        self._is_forward = is_forward
-        self._A = C2 * C1 * C0 if is_forward else C2 * C1 / C0
+    def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
+        A = self._C2 * self._C1 * self._C0
+        return A * fftshift(fft2(ifftshift(wavefield)))
 
-    def propagate(self, wavefield: ComplexTensor) -> ComplexTensor:
-        if self._is_forward:
-            return self._A * fftshift(fft2(ifftshift(wavefield)))
-        else:
-            return fftshift(ifft2(ifftshift(wavefield * self._A)))
+    def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
+        A = self._C2 * self._C1 / self._C0
+        return fftshift(ifft2(ifftshift(wavefield * A)))
