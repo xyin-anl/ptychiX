@@ -1,5 +1,5 @@
 import torch
-from torch.fft import fft2, fftshift
+from torch.fft import fft, fft2, ifft, fftshift
 
 
 def correct_positions_serial_cross_correlation(im1, im2, scale):
@@ -33,9 +33,9 @@ def correct_positions_serial_cross_correlation(im1, im2, scale):
 
 def correct_positions_gradient(self, probe, object_, ind_dp, delta_psi):
     Ny, Nx = object_.shape
-    kx = fftshift(linspace(0, Nx - 1, Nx) * 1.0 / Nx - 0.5)
-    ky = fftshift(linspace(0, Ny - 1, Ny) * 1.0 / Ny - 0.5)
-    [kX, kY] = meshgrid(kx, ky)
+    kx = fftshift(torch.linspace(0, Nx - 1, Nx) * 1.0 / Nx - 0.5)
+    ky = fftshift(torch.linspace(0, Ny - 1, Ny) * 1.0 / Ny - 0.5)
+    [kX, kY] = torch.meshgrid(kx, ky)
 
     object_fx = fft(object_, axis=1)
     object_fy = fft(object_, axis=0)
@@ -50,21 +50,17 @@ def correct_positions_gradient(self, probe, object_, ind_dp, delta_psi):
     shift_y = torch.sum(real(conj(dy_OP) * delta_psi)) / torch.sum(squared_modulus(dy_OP))
 
     #update position
-    self.paraDict['ppY'][ind_dp] = self.paraDict['ppY'][ind_dp] + shift_y * self.dx_y
-    self.paraDict['ppX'][ind_dp] = self.paraDict['ppX'][ind_dp] + shift_x * self.dx_x
+    ppY[ind_dp] = ppY[ind_dp] + shift_y * dx_y
+    ppX[ind_dp] = ppX[ind_dp] + shift_x * dx_x
 
     #position = pi + pf = integer + fraction
-    py_i = torch.round(self.paraDict['ppY'][ind_dp] / self.dx_y)
-    self.py_f[ind_dp] = self.paraDict['ppY'][ind_dp] - py_i * self.dx_y
-    px_i = torch.round(self.paraDict['ppX'][ind_dp] / self.dx_x)
-    self.px_f[ind_dp] = self.paraDict['ppX'][ind_dp] - px_i * self.dx_x
+    py_i = torch.round(ppY[ind_dp] / dx_y)
+    py_f[ind_dp] = ppY[ind_dp] - py_i * dx_y
+    px_i = torch.round(ppX[ind_dp] / dx_x)
+    px_f[ind_dp] = ppX[ind_dp] - px_i * dx_x
 
     #calculate ROI indices in the whole fov
-    self.ind_x_lb_s[ind_dp] = (px_i - floor(self.paraDict['N_roi'] / 2.0) +
-                               self.center_index_image).astype(torch.int)
-    self.ind_x_ub_s[ind_dp] = (px_i + ceil(self.paraDict['N_roi'] / 2.0) +
-                               self.center_index_image).astype(torch.int)
-    self.ind_y_lb_s[ind_dp] = (py_i - floor(self.paraDict['N_roi'] / 2.0) +
-                               self.center_index_image).astype(torch.int)
-    self.ind_y_ub_s[ind_dp] = (py_i + ceil(self.paraDict['N_roi'] / 2.0) +
-                               self.center_index_image).astype(torch.int)
+    ind_x_lb_s[ind_dp] = (px_i - torch.floor(N_roi / 2.0) + center_index_image).astype(torch.int)
+    ind_x_ub_s[ind_dp] = (px_i + torch.ceil(N_roi / 2.0) + center_index_image).astype(torch.int)
+    ind_y_lb_s[ind_dp] = (py_i - torch.floor(N_roi / 2.0) + center_index_image).astype(torch.int)
+    ind_y_ub_s[ind_dp] = (py_i + torch.ceil(N_roi / 2.0) + center_index_image).astype(torch.int)

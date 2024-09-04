@@ -6,7 +6,7 @@ import cmath
 import torch
 from torch.fft import fft2, fftfreq, fftshift, ifft2, ifftshift
 
-from .typing import ComplexTensor, RealTensor
+from .typing import ComplexTensor, DeviceType, RealTensor
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class WavefieldPropagatorParameters:
     def get_spatial_coordinates(self) -> tuple[RealTensor, RealTensor]:
         ii = torch.arange(self.width_px)
         jj = torch.arange(self.height_px)
-        JJ, II = torch.meshgrid(jj, ii)  # FIXME ij or xy?
+        JJ, II = torch.meshgrid(jj, ii, indexing="ij")
         XX = II - self.width_px // 2
         YY = JJ - self.height_px // 2
         return YY, XX
@@ -72,7 +72,7 @@ class WavefieldPropagatorParameters:
     def get_frequency_coordinates(self) -> tuple[RealTensor, RealTensor]:
         fx = fftshift(fftfreq(self.width_px))
         fy = fftshift(fftfreq(self.height_px))
-        FY, FX = torch.meshgrid(fy, fx)  # FIXME ij or xy?
+        FY, FX = torch.meshgrid(fy, fx, indexing="ij")
         return FY, FX
 
 
@@ -86,14 +86,24 @@ class WavefieldPropagator(ABC):
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         pass
 
+    @abstractmethod
+    def to(self, device: DeviceType) -> WavefieldPropagator:
+        pass
+
+    def cpu(self) -> WavefieldPropagator:
+        return self.to("cpu")
+
 
 class FourierPropagator(WavefieldPropagator):
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fftshift(fft2(ifftshift(wavefield), norm='ortho'))
+        return fftshift(fft2(ifftshift(wavefield), norm="ortho"))
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fftshift(ifft2(ifftshift(wavefield), norm='ortho'))
+        return fftshift(ifft2(ifftshift(wavefield), norm="ortho"))
+
+    def to(self, device: DeviceType) -> WavefieldPropagator:
+        return self
 
 
 class AngularSpectrumPropagator(WavefieldPropagator):

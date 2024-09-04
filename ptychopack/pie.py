@@ -9,9 +9,14 @@ from .position import correct_positions_serial_cross_correlation
 
 class PtychographicIterativeEngine(IterativeAlgorithm):
 
-    def __init__(self, detector_data: DetectorData, product: DataProduct) -> None:
-        self._detector_data = detector_data
-        self._product = product
+    def __init__(self, device: torch.device, detector_data: DetectorData,
+                 product: DataProduct) -> None:
+        self._good_pixels = torch.logical_not(detector_data.bad_pixels).to(device)
+        self._diffraction_patterns = detector_data.diffraction_patterns.to(device)
+        self._positions_px = product.positions_px.to(device)
+        self._probe = product.probe[0].to(device)  # TODO support OPR modes
+        self._object = product.object_[0].to(device)  # TODO support multislice
+        self._propagators = [propagator.to(device) for propagator in product.propagators]
 
         self._iteration = 0
         self._object_relaxation = 1.
@@ -22,25 +27,56 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
         self._pc_probe_threshold = 0.1
         self._pc_feedback = 0.  # FIXME
 
+    def set_object_relaxation(self, value: float) -> None:
+        self._object_relaxation = value
+
+    def get_object_relaxation(self) -> float:
+        return self._object_relaxation
+
+    def set_alpha(self, value: float) -> None:
+        self._alpha = value
+
+    def get_alpha(self) -> float:
+        return self._alpha
+
+    def set_probe_relaxation(self, value: float) -> None:
+        self._probe_relaxation = value
+
+    def get_probe_relaxation(self) -> float:
+        return self._probe_relaxation
+
+    def set_beta(self, value: float) -> None:
+        self._beta = value
+
+    def get_beta(self) -> float:
+        return self._beta
+
+    def set_pc_probe_threshold(self, value: float) -> None:
+        self._pc_probe_threshold = value
+
+    def get_pc_probe_threshold(self) -> float:
+        return self._pc_probe_threshold
+
+    def set_pc_feedback(self, value: float) -> None:
+        self._pc_feedback = value
+
+    def get_pc_feedback(self) -> float:
+        return self._pc_feedback
+
     def iterate(self, plan: CorrectionPlan) -> Sequence[float]:
-        # TODO transfer to device
-        layer = 0
-        good_pixels = torch.logical_not(self._detector_data.bad_pixels)
-        positions_px = self._product.positions_px
-        probe = self._product.probe[0]  # TODO support OPR modes
-        object_ = self._product.object_[layer]  # TODO support multislice
-        propagators = self._product.propagators
         iteration_data_error = list()
+        layer = 0  # TODO support multislice
 
         for iteration in range(plan.number_of_iterations):
+            shuffled_indexes = torch.randperm(self._positions_px.shape[0])
             data_error = 0.
 
-            for idx in torch.randperm(positions_px.shape[0]):
-                diffraction_pattern = self._detector_data.diffraction_patterns[idx]
+            for idx in shuffled_indexes:
+                diffraction_pattern = self._diffraction_patterns[idx]
 
                 # top left corner of object support
-                xmin = positions_px[idx, -1] - probe.shape[-1] / 2
-                ymin = positions_px[idx, -2] - probe.shape[-2] / 2
+                xmin = self._positions_px[idx, -1] - self._probe.shape[-1] / 2
+                ymin = self._positions_px[idx, -2] - self._probe.shape[-2] / 2
 
                 # whole components (pixel indexes)
                 xmin_wh = int(xmin)
@@ -51,11 +87,11 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 ymin_fr = ymin - ymin_wh
 
                 # bottom right corner of object patch support
-                xmax_wh = xmin_wh + probe.shape[-1] + 1
-                ymax_wh = ymin_wh + probe.shape[-2] + 1
+                xmax_wh = xmin_wh + self._probe.shape[-1] + 1
+                ymax_wh = ymin_wh + self._probe.shape[-2] + 1
 
                 # extract patch support region from full object
-                object_support = object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh].detach().clone()
+                object_support = self._object[ymin_wh:ymax_wh, xmin_wh:xmax_wh].detach().clone()
 
                 # reused quantities
                 xmin_fr_c = 1. - xmin_fr
@@ -73,45 +109,40 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 object_patch += weight10 * object_support[1:, :-1]
                 object_patch += weight11 * object_support[1:, 1:]
                 corrected_object_patch = object_patch.detach().clone()
-                wavefield = torch.zeros_like(probe)
+                wavefield = torch.zeros_like(self._probe)
 
-                for imode in range(probe.shape[0]):
+                for imode in range(self._probe.shape[0]):
                     # exit wave is the outcome of the probe-object interation
-                    exit_wave = probe[imode] * object_patch
+                    exit_wave = self._probe[imode] * object_patch
                     # propagate exit wave to the detector plane
-                    wavefield[imode] = propagators[layer].propagate_forward(exit_wave)
+                    wavefield[imode] = self._propagators[layer].propagate_forward(exit_wave)
 
                 # propagated wavefield intensity is incoherent sum of mixed-state modes
                 wavefield_intensity = torch.sum(squared_modulus(wavefield), dim=0)
 
                 # calculate data error (TODO: normalize)
-                intensity_diff = wavefield_intensity - diffraction_pattern
-                data_error += torch.mean(intensity_diff[good_pixels]).numpy()
+                intensity_diff = torch.abs(wavefield_intensity - diffraction_pattern)
+                data_error += torch.sum(intensity_diff[self._good_pixels]).item()
 
                 # intensity correction coefficient
-                correctable_pixels = torch.logical_and(good_pixels, wavefield_intensity > 0.)
+                correctable_pixels = torch.logical_and(self._good_pixels, wavefield_intensity > 0.)
                 correction = torch.where(correctable_pixels,
                                          torch.sqrt(diffraction_pattern / wavefield_intensity), 1.)
-                exit_wave_diff = torch.zeros_like(probe)
+                exit_wave_diff = torch.zeros_like(self._probe)
 
-                for imode in range(probe.shape[0]):
+                for imode in range(self._probe.shape[0]):
                     # exit wave is the outcome of the probe-object interation
-                    exit_wave = probe[imode] * object_patch
-
+                    exit_wave = self._probe[imode] * object_patch
                     # propagate corrected wavefield to object plane
-                    corrected_exit_wave = propagators[layer].propagate_backward(correction *
-                                                                                wavefield[imode])
-
+                    corrected_exit_wave = self._propagators[layer].propagate_backward(
+                        correction * wavefield[imode])
                     # probe and object updates depend on exit wave difference
                     exit_wave_diff[imode] = corrected_exit_wave - exit_wave
 
                 if plan.object_correction.is_enabled(iteration):
-                    object_update_upper = torch.zeros_like(object_patch)
-
-                    for imode in range(probe.shape[0]):
-                        object_update_upper += torch.conj(probe[imode]) * exit_wave_diff[imode]
-
-                    probe_abssq = torch.sum(squared_modulus(probe), dim=0)
+                    object_update_upper = torch.sum(torch.conj(self._probe) * exit_wave_diff,
+                                                    dim=0)
+                    probe_abssq = torch.sum(squared_modulus(self._probe), dim=0)
                     object_update_lower = torch.lerp(probe_abssq, torch.max(probe_abssq),
                                                      self._alpha)
                     object_update = object_update_upper / object_update_lower
@@ -125,26 +156,26 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     object_support[1:, 1:] += weight11 * object_update
 
                     # overwrite support region in full object
-                    object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh] = object_support
+                    self._object[ymin_wh:ymax_wh, xmin_wh:xmax_wh] = object_support
 
                 if plan.probe_correction.is_enabled(iteration):
                     object_abssq = squared_modulus(corrected_object_patch)
                     probe_update_lower = torch.lerp(object_abssq, torch.max(object_abssq),
                                                     self._beta)
 
-                    # FIXME orthogonalize
+                    # FIXME orthogonalize, center
 
-                    for imode in range(probe.shape[0]):
+                    for imode in range(self._probe.shape[0]):
                         probe_update_upper = torch.conj(
                             corrected_object_patch) * exit_wave_diff[imode]
                         probe_update = probe_update_upper / probe_update_lower
                         probe_update *= self._probe_relaxation
-                        probe[imode] += probe_update
+                        self._probe[imode] += probe_update
 
                 if plan.position_correction.is_enabled(iteration):
                     # indicate object pixels where the illumination significantlly
                     # contributes to the diffraction pattern
-                    probe_amplitude = torch.sqrt(torch.sum(squared_modulus(probe), dim=0))
+                    probe_amplitude = torch.sqrt(torch.sum(squared_modulus(self._probe), dim=0))
                     probe_amplitude_max = torch.max(probe_amplitude)
                     probe_mask = (probe_amplitude > self._pc_probe_threshold * probe_amplitude_max)
 
@@ -157,23 +188,21 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                         masked_corrected_object_patch, masked_object_patch, 1.)  # FIXME scale
 
                     # update position (FIXME verify sign)
-                    positions_px[idx, :] += self._pc_feedback * shift
+                    self._positions_px[idx, :] += self._pc_feedback * shift
 
             iteration_data_error.append(data_error)
-
-            self._product = DataProduct(
-                positions_px,
-                torch.unsqueeze(probe, 0),
-                torch.unsqueeze(object_, 0),
-                propagators,
-            )
             self._iteration += 1
-            print(f'{self._iteration} -> {data_error}')  # FIXME
+            print(f"{self._iteration} -> {data_error}")  # FIXME
 
         return iteration_data_error
 
     def get_product(self) -> DataProduct:
-        return self._product
+        return DataProduct(
+            self._positions_px.cpu(),
+            torch.unsqueeze(self._probe.cpu(), 0),
+            torch.unsqueeze(self._object.cpu(), 0),
+            [propagator.cpu() for propagator in self._propagators],
+        )
 
 # FIXME BEGIN
 
@@ -187,8 +216,8 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
             self.scale /= 10
 
         # check gamma
-        shiftXCorr = signal.correlate(self.shiftXNew, self.shiftXOld, mode='valid')
-        shiftYCorr = signal.correlate(self.shiftYNew, self.shiftYOld, mode='valid')
+        shiftXCorr = signal.correlate(self.shiftXNew, self.shiftXOld, mode="valid")
+        shiftYCorr = signal.correlate(self.shiftYNew, self.shiftYOld, mode="valid")
 
         aveCorr = (shiftXCorr + shiftYCorr) / 2
 
@@ -221,7 +250,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
         else:
             ave_corr = 0
 
-        metadata = {'error': errorOut, 'ave_corr': ave_corr}
+        metadata = {"error": errorOut, "ave_corr": ave_corr}
 
         return metadata
 

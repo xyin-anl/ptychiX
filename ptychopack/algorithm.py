@@ -13,7 +13,7 @@ def squared_modulus(values: ComplexTensor) -> RealTensor:
 
 
 @dataclass(frozen=True)
-class CorrectionPlanComponent:
+class CorrectionPlanElement:
     start: int
     stop: int
     stride: int
@@ -27,9 +27,9 @@ class CorrectionPlanComponent:
 
 @dataclass(frozen=True)
 class CorrectionPlan:
-    object_correction: CorrectionPlanComponent
-    probe_correction: CorrectionPlanComponent
-    position_correction: CorrectionPlanComponent
+    object_correction: CorrectionPlanElement
+    probe_correction: CorrectionPlanElement
+    position_correction: CorrectionPlanElement
 
     @classmethod
     def create_simple(
@@ -40,17 +40,17 @@ class CorrectionPlan:
         correct_probe: bool = False,
         correct_positions: bool = False,
     ) -> CorrectionPlan:
-        object_correction = CorrectionPlanComponent(
+        object_correction = CorrectionPlanElement(
             start=0,
             stop=num_iterations if correct_object else 0,
             stride=1,
         )
-        probe_correction = CorrectionPlanComponent(
+        probe_correction = CorrectionPlanElement(
             start=0,
             stop=num_iterations if correct_probe else 0,
             stride=1,
         )
-        position_correction = CorrectionPlanComponent(
+        position_correction = CorrectionPlanElement(
             start=0,
             stop=num_iterations if correct_positions else 0,
             stride=1,

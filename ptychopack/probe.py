@@ -1,12 +1,14 @@
-def center_probe():  # TODO
-    pass
+import torch
+
+from .algorithm import squared_modulus
+from .typing import ComplexTensor
 
 
 def proj(u, v):
     return u * torch.vdot(u, v) / torch.vdot(u, u)
 
 
-def gramschmidt(V):
+def gram_schmidt(V):
     U = torch.copy(V)
     for i in range(1, V.shape[0]):
         for j in range(i):
@@ -14,15 +16,11 @@ def gramschmidt(V):
     return U
 
 
-def orthoProbe(self, probes):
-    probes_temp = gramschmidt(probes.reshape(paraDict['N_probe'], paraDict['N_roi']**2))
-    probes[:, :, :] = probes_temp.reshape(paraDict['N_probe'], paraDict['N_roi'],
-                                          paraDict['N_roi'])
+def orthogonalize_probe(self, probes: ComplexTensor) -> ComplexTensor:
+    probes_temp = gram_schmidt(probes.reshape(N_probe, N_roi**2))
+    probes[:, :, :] = probes_temp.reshape(N_probe, N_roi, N_roi)
     #sort probes based on power
-    power = sum(abs(probes)**2, axis=(1, 2))
-    power_ind = argsort(-power)
+    power = torch.sum(squared_modulus(probes), dim=(-2, -1))
+    power_ind = torch.argsort(-power)
     probes[:, :, :] = probes[power_ind, :, :]
     return probes
-
-
-# FIXME L, V = torch.linalg.eig(A)

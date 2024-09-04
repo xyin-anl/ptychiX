@@ -1,7 +1,7 @@
 from importlib.metadata import version, PackageNotFoundError
 
 try:
-    __version__ = version('ptychopack')
+    __version__ = version("ptychopack")
 except PackageNotFoundError:
     pass
 
@@ -10,9 +10,9 @@ from .data import DataProduct, DetectorData
 from .pie import PtychographicIterativeEngine
 
 __all__ = [
-    'CorrectionPlan',
-    'DataProduct',
-    'DetectorData',
-    'IterativeAlgorithm',
-    'PtychographicIterativeEngine',
+    "CorrectionPlan",
+    "DataProduct",
+    "DetectorData",
+    "IterativeAlgorithm",
+    "PtychographicIterativeEngine",
 ]
