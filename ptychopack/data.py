@@ -10,7 +10,7 @@ from .propagate import FourierPropagator, WavefieldPropagator
 @dataclass(frozen=True)
 class DetectorData:
     diffraction_patterns: RealTensor  # [N, H, W]
-    """ifftshifted diffraction patterns"""  # FIXME
+    """diffraction patterns"""
     bad_pixels: BooleanTensor  # [H, W]
     """bad pixel mask to exclude detector dead regions or saturated pixels"""
 
@@ -19,7 +19,7 @@ class DetectorData:
                       diffraction_patterns: RealTensor,
                       bad_pixels: BooleanTensor | None = None) -> DetectorData:
         return cls(
-            # FIXME torch.fft.ifftshift(diffraction_patterns, dim=(1, 2)),
+            # TODO torch.fft.ifftshift(diffraction_patterns, dim=(1, 2)),
             diffraction_patterns,
             torch.full(diffraction_patterns.shape[1:], False)
             if bad_pixels is None else bad_pixels,
