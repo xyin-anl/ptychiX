@@ -9,7 +9,8 @@ from .data import ComplexTensor, DataProduct, RealTensor
 
 
 def squared_modulus(values: ComplexTensor) -> RealTensor:
-    return torch.real(torch.multiply(values, torch.conj(values)))
+    # FIXME return torch.real(values * values.conj())
+    return torch.square(torch.abs(values))
 
 
 @dataclass(frozen=True)

@@ -1,15 +1,19 @@
 from typing import Sequence
+import logging
 
 import torch
 
 from .algorithm import squared_modulus, CorrectionPlan, IterativeAlgorithm
 from .data import DataProduct, DetectorData
 from .position import correct_positions_serial_cross_correlation
+from .typing import DeviceType
+
+logger = logging.getLogger(__name__)
 
 
 class PtychographicIterativeEngine(IterativeAlgorithm):
 
-    def __init__(self, device: torch.device, detector_data: DetectorData,
+    def __init__(self, device: DeviceType, detector_data: DetectorData,
                  product: DataProduct) -> None:
         self._good_pixels = torch.logical_not(detector_data.bad_pixels).to(device)
         self._diffraction_patterns = detector_data.diffraction_patterns.to(device)
@@ -86,8 +90,8 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 ymin = self._positions_px[idx, -2] - self._probe.shape[-2] / 2
 
                 # whole components (pixel indexes)
-                xmin_wh = int(xmin)
-                ymin_wh = int(ymin)
+                xmin_wh = xmin.int()
+                ymin_wh = ymin.int()
 
                 # fractional (subpixel) components
                 xmin_fr = xmin - xmin_wh
@@ -110,7 +114,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 weight10 = ymin_fr * xmin_fr_c
                 weight11 = ymin_fr * xmin_fr
 
-                # interpolate object support to obtain patch
+                # interpolate object support to extract patch
                 object_patch = weight00 * object_support[:-1, :-1]
                 object_patch += weight01 * object_support[:-1, 1:]
                 object_patch += weight10 * object_support[1:, :-1]
@@ -124,9 +128,11 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 # propagated wavefield intensity is incoherent sum of mixed-state modes
                 wavefield_intensity = torch.sum(squared_modulus(wavefield), dim=0)
 
-                # calculate data error (TODO: normalize)
-                intensity_diff = torch.abs(wavefield_intensity - diffraction_pattern)
-                data_error += torch.sum(intensity_diff[self._good_pixels]).item()
+                # calculate data error
+                data_error_upper = torch.abs(wavefield_intensity - diffraction_pattern)
+                data_error_lower = torch.abs(diffraction_pattern)
+                data_error_ratio = data_error_upper / data_error_lower
+                data_error += torch.sum(data_error_ratio[self._good_pixels]).item()
 
                 # intensity correction
                 correctable_pixels = torch.logical_and(self._good_pixels, wavefield_intensity > 0.)
@@ -141,9 +147,10 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 exit_wave_diff = corrected_exit_wave - exit_wave
 
                 if self._probe_power > 0.:
-                    # FIXME for each mode; NM factor for propagator scaling
-                    probe_power = torch.sum(squared_modulus(self._probe))
-                    self._probe *= torch.sqrt(self._probe_power / probe_power)
+                    # propagate probe to the detector plane
+                    propagated_probe = self._propagators[layer].propagate_forward(self._probe)
+                    propagated_probe_power = torch.sum(squared_modulus(propagated_probe))
+                    self._probe *= torch.sqrt(self._probe_power / propagated_probe_power)
 
                 if plan.object_correction.is_enabled(iteration):
                     probe_abssq = torch.sum(squared_modulus(self._probe), dim=0)
@@ -189,12 +196,12 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     shift = correct_positions_serial_cross_correlation(
                         masked_corrected_object_patch, masked_object_patch, 1.)  # FIXME scale
 
-                    # update position (FIXME verify sign)
+                    # update position
                     self._positions_px[idx, :] += self._pc_feedback * shift
 
             iteration_data_error.append(data_error)
             self._iteration += 1
-            print(f"{self._iteration} -> {data_error}")  # FIXME
+            logger.info(f"iteration={self._iteration} error={data_error}")
 
         return iteration_data_error
 

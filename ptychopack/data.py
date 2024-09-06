@@ -19,7 +19,6 @@ class DetectorData:
                       diffraction_patterns: RealTensor,
                       bad_pixels: BooleanTensor | None = None) -> DetectorData:
         return cls(
-            # TODO torch.fft.ifftshift(diffraction_patterns, dim=(1, 2)),
             diffraction_patterns,
             torch.full(diffraction_patterns.shape[1:], False)
             if bad_pixels is None else bad_pixels,

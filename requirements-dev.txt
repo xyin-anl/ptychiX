@@ -1,5 +1,5 @@
 mypy
 python>=3.10
-pytorch >=1.12,<2.1
+pytorch>=1.12,<2.1
 ruff
 yapf
