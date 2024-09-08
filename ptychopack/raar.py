@@ -1,7 +1,6 @@
 from typing import Sequence
 
-from .algorithm import CorrectionPlan, IterativeAlgorithm
-from .data import DataProduct, DetectorData
+from .core import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
 
 
 class RAAR(IterativeAlgorithm):

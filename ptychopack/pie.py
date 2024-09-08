@@ -3,23 +3,21 @@ import logging
 
 import torch
 
-from .algorithm import squared_modulus, CorrectionPlan, IterativeAlgorithm
-from .data import DataProduct, DetectorData
+from .core import squared_modulus, CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
 from .position import correct_positions_serial_cross_correlation
-from .typing import DeviceType
+from .utilities import Device
 
 logger = logging.getLogger(__name__)
 
 
 class PtychographicIterativeEngine(IterativeAlgorithm):
 
-    def __init__(self, device: DeviceType, detector_data: DetectorData,
-                 product: DataProduct) -> None:
-        self._good_pixels = torch.logical_not(detector_data.bad_pixels).to(device)
-        self._diffraction_patterns = detector_data.diffraction_patterns.to(device)
-        self._positions_px = product.positions_px.to(device)
-        self._probe = product.probe[0].to(device)  # TODO support OPR modes
-        self._object = product.object_[0].to(device)  # TODO support multislice
+    def __init__(self, device: Device, detector_data: DetectorData, product: DataProduct) -> None:
+        self._good_pixels = torch.logical_not(detector_data.bad_pixels).to(device.torch_device)
+        self._diffraction_patterns = detector_data.diffraction_patterns.to(device.torch_device)
+        self._positions_px = product.positions_px.to(device.torch_device)
+        self._probe = product.probe[0].to(device.torch_device)  # TODO support OPR modes
+        self._object = product.object_[0].to(device.torch_device)  # TODO support multislice
         self._propagators = [propagator.to(device) for propagator in product.propagators]
 
         self._iteration = 0

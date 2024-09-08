@@ -6,7 +6,7 @@ import cmath
 import torch
 from torch.fft import fft2, fftfreq, fftshift, ifft2, ifftshift
 
-from .typing import ComplexTensor, DeviceType, RealTensor
+from .utilities import ComplexTensor, Device, RealTensor
 
 
 @dataclass(frozen=True)
@@ -87,11 +87,11 @@ class WavefieldPropagator(ABC):
         pass
 
     @abstractmethod
-    def to(self, device: DeviceType) -> WavefieldPropagator:
+    def to(self, device: Device) -> WavefieldPropagator:
         pass
 
     def cpu(self) -> WavefieldPropagator:
-        return self.to("cpu")
+        return self.to(Device.CPU())
 
 
 class FourierPropagator(WavefieldPropagator):
@@ -102,7 +102,7 @@ class FourierPropagator(WavefieldPropagator):
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         return fftshift(ifft2(ifftshift(wavefield, dim=(-2, -1)), norm="ortho"), dim=(-2, -1))
 
-    def to(self, device: DeviceType) -> WavefieldPropagator:
+    def to(self, device: Device) -> WavefieldPropagator:
         return self
 
 

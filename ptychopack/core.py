@@ -1,11 +1,13 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Sequence
 
 import torch
 
-from .data import ComplexTensor, DataProduct, RealTensor
+from .propagate import FourierPropagator, WavefieldPropagator
+from .utilities import BooleanTensor, ComplexTensor, RealTensor
 
 
 def squared_modulus(values: ComplexTensor) -> RealTensor:
@@ -73,6 +75,48 @@ class CorrectionPlan:
             self.probe_power_correction.stop,
             self.position_correction.stop,
         )
+
+
+@dataclass(frozen=True)
+class DetectorData:
+    diffraction_patterns: RealTensor  # [N, H, W]
+    """diffraction patterns"""
+    bad_pixels: BooleanTensor  # [H, W]
+    """bad pixel mask to exclude detector dead regions or saturated pixels"""
+
+    @classmethod
+    def create_simple(cls,
+                      diffraction_patterns: RealTensor,
+                      bad_pixels: BooleanTensor | None = None) -> DetectorData:
+        return cls(
+            diffraction_patterns,
+            torch.full(diffraction_patterns.shape[1:], False)
+            if bad_pixels is None else bad_pixels,
+        )
+
+
+@dataclass(frozen=True)
+class DataProduct:
+    positions_px: RealTensor  # [N, 2]
+    """positions are in pixel units"""
+    probe: ComplexTensor  # [C, I, H, W]
+    """probe shape is the number of coherent (OPR) modes, number of incoherent
+    (mixed-states) modes, height in pixels, and width in pixels"""
+    object_: ComplexTensor  # [L, H, W]
+    """object shape is the number of (multi-slice) layers, height in pixels,
+    and width in pixels"""
+    propagators: Sequence[WavefieldPropagator]  # [L]
+    """sequence of wavefield propagators, one for each object layer"""
+
+    @classmethod
+    def create_simple(
+        cls,
+        positions_px: RealTensor,
+        probe: ComplexTensor,
+        object_: ComplexTensor,
+    ) -> DataProduct:
+        propagators = [FourierPropagator()]
+        return cls(positions_px, probe, object_, propagators)
 
 
 class IterativeAlgorithm(ABC):

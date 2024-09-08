@@ -1,7 +1,7 @@
 import torch
 
-from .algorithm import squared_modulus
-from .typing import ComplexTensor
+from .core import squared_modulus
+from .utilities import ComplexTensor
 
 
 def proj(u, v):

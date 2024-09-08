@@ -5,14 +5,15 @@ try:
 except PackageNotFoundError:
     pass
 
-from .algorithm import CorrectionPlan, IterativeAlgorithm
-from .data import DataProduct, DetectorData
+from .core import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
 from .pie import PtychographicIterativeEngine
+from .utilities import Device
 
 __all__ = [
     "CorrectionPlan",
     "DataProduct",
     "DetectorData",
+    "Device",
     "IterativeAlgorithm",
     "PtychographicIterativeEngine",
 ]
