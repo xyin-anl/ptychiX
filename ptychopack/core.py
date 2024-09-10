@@ -31,7 +31,6 @@ class CorrectionPlanElement:
 class CorrectionPlan:
     object_correction: CorrectionPlanElement
     probe_correction: CorrectionPlanElement
-    probe_power_correction: CorrectionPlanElement
     position_correction: CorrectionPlanElement
 
     @classmethod
@@ -41,7 +40,6 @@ class CorrectionPlan:
         *,
         correct_object: bool = False,
         correct_probe: bool = False,
-        correct_probe_power: bool = False,
         correct_positions: bool = False,
     ) -> CorrectionPlan:
         object_correction = CorrectionPlanElement(
@@ -54,25 +52,18 @@ class CorrectionPlan:
             stop=num_iterations if correct_probe else 0,
             stride=1,
         )
-        probe_power_correction = CorrectionPlanElement(
-            start=0,
-            stop=num_iterations if correct_probe_power else 0,
-            stride=10,
-        )
         position_correction = CorrectionPlanElement(
             start=0,
             stop=num_iterations if correct_positions else 0,
             stride=1,
         )
-        return cls(object_correction, probe_correction, probe_power_correction,
-                   position_correction)
+        return cls(object_correction, probe_correction, position_correction)
 
     @property
     def number_of_iterations(self) -> int:
         return max(
             self.object_correction.stop,
             self.probe_correction.stop,
-            self.probe_power_correction.stop,
             self.position_correction.stop,
         )
 
@@ -89,7 +80,7 @@ class DetectorData:
                       diffraction_patterns: RealTensor,
                       bad_pixels: BooleanTensor | None = None) -> DetectorData:
         return cls(
-            diffraction_patterns,
+            torch.fft.ifftshift(diffraction_patterns, dim=(-2, -1)),
             torch.full(diffraction_patterns.shape[1:], False)
             if bad_pixels is None else bad_pixels,
         )

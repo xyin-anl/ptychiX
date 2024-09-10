@@ -97,10 +97,10 @@ class WavefieldPropagator(ABC):
 class FourierPropagator(WavefieldPropagator):
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fftshift(fft2(ifftshift(wavefield, dim=(-2, -1)), norm="ortho"), dim=(-2, -1))
+        return fft2(wavefield)
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fftshift(ifft2(ifftshift(wavefield, dim=(-2, -1)), norm="ortho"), dim=(-2, -1))
+        return ifft2(wavefield)
 
     def to(self, device: Device) -> WavefieldPropagator:
         return self

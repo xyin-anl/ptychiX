@@ -72,27 +72,25 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
     def get_pc_feedback(self) -> float:
         return self._pc_feedback
 
-    def correct_probe_power(self) -> None:
-        layer = 0  # TODO support multislice
-        # propagate probe to the detector plane
-        propagated_probe = self._propagators[layer].propagate_forward(self._probe)
-        # calculate probe power
-        propagated_probe_power = torch.sum(squared_modulus(propagated_probe))
-        # calculate power correction
-        power_correction = torch.sqrt(self._probe_power / propagated_probe_power)
-        # appply power correction
-        self._probe = self._probe * power_correction
-
     def iterate(self, plan: CorrectionPlan) -> Sequence[float]:
+        number_of_positions = self._positions_px.shape[0]
         iteration_data_error = list()
         layer = 0  # TODO support multislice
 
-        if plan.probe_power_correction.is_enabled(0):
-            self.correct_probe_power()
-
         for iteration in range(plan.number_of_iterations):
-            shuffled_indexes = torch.randperm(self._positions_px.shape[0])
             data_error = 0.
+
+            if self._probe_power > 0.:
+                # calculate probe power correction
+                propagated_probe = self._propagators[layer].propagate_forward(self._probe)
+                propagated_probe_power = torch.sum(squared_modulus(propagated_probe))
+                power_correction = torch.sqrt(self._probe_power / propagated_probe_power)
+
+                # apply power correction
+                self._probe = self._probe * power_correction
+                self._object = self._object / power_correction
+
+            shuffled_indexes = torch.randperm(number_of_positions)
 
             for idx in shuffled_indexes:
                 diffraction_pattern = self._diffraction_patterns[idx]
@@ -155,11 +153,6 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
                 # probe and object updates depend on exit wave difference
                 exit_wave_diff = corrected_exit_wave - exit_wave
-
-                # FIXME pre-fftshift
-
-                if plan.probe_power_correction.is_enabled(iteration):
-                    self.correct_probe_power()
 
                 if plan.object_correction.is_enabled(iteration):
                     probe_abssq = torch.sum(squared_modulus(self._probe), dim=-3)
