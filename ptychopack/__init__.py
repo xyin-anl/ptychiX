@@ -6,7 +6,9 @@ except PackageNotFoundError:
     pass
 
 from .core import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
+from .dm import DifferenceMap
 from .pie import PtychographicIterativeEngine
+from .raar import RelaxedAveragedAlternatingReflections
 from .utilities import Device
 
 __all__ = [
@@ -14,6 +16,8 @@ __all__ = [
     "DataProduct",
     "DetectorData",
     "Device",
+    "DifferenceMap",
     "IterativeAlgorithm",
     "PtychographicIterativeEngine",
+    "RelaxedAveragedAlternatingReflections",
 ]

@@ -3,7 +3,8 @@ import logging
 
 import torch
 
-from .core import squared_modulus, CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
+from .core import (squared_modulus, CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm,
+                   ObjectPatchInterpolator)
 from .position import correct_positions_serial_cross_correlation
 from .utilities import Device
 
@@ -77,58 +78,25 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
         iteration_data_error = list()
         layer = 0  # TODO support multislice
 
+        if self._probe_power > 0.:
+            # calculate probe power correction
+            propagated_probe = self._propagators[layer].propagate_forward(self._probe)
+            propagated_probe_power = torch.sum(squared_modulus(propagated_probe))
+            power_correction = torch.sqrt(self._probe_power / propagated_probe_power)
+
+            # apply power correction
+            self._probe = self._probe * power_correction
+            self._object = self._object / power_correction
+
         for iteration in range(plan.number_of_iterations):
             data_error = 0.
-
-            if self._probe_power > 0.:
-                # calculate probe power correction
-                propagated_probe = self._propagators[layer].propagate_forward(self._probe)
-                propagated_probe_power = torch.sum(squared_modulus(propagated_probe))
-                power_correction = torch.sqrt(self._probe_power / propagated_probe_power)
-
-                # apply power correction
-                self._probe = self._probe * power_correction
-                self._object = self._object / power_correction
 
             shuffled_indexes = torch.randperm(number_of_positions)
 
             for idx in shuffled_indexes:
-                diffraction_pattern = self._diffraction_patterns[idx]
-
-                # top left corner of object support
-                xmin = self._positions_px[idx, -1] - self._probe.shape[-1] / 2
-                ymin = self._positions_px[idx, -2] - self._probe.shape[-2] / 2
-
-                # whole components (pixel indexes)
-                xmin_wh = xmin.int()
-                ymin_wh = ymin.int()
-
-                # fractional (subpixel) components
-                xmin_fr = xmin - xmin_wh
-                ymin_fr = ymin - ymin_wh
-
-                # bottom right corner of object patch support
-                xmax_wh = xmin_wh + self._probe.shape[-1] + 1
-                ymax_wh = ymin_wh + self._probe.shape[-2] + 1
-
-                # extract patch support region from full object
-                object_support = self._object[ymin_wh:ymax_wh, xmin_wh:xmax_wh]
-
-                # reused quantities
-                xmin_fr_c = 1. - xmin_fr
-                ymin_fr_c = 1. - ymin_fr
-
-                # barycentric interpolant weights
-                weight00 = ymin_fr_c * xmin_fr_c
-                weight01 = ymin_fr_c * xmin_fr
-                weight10 = ymin_fr * xmin_fr_c
-                weight11 = ymin_fr * xmin_fr
-
-                # interpolate object support to extract patch
-                object_patch = weight00 * object_support[:-1, :-1]
-                object_patch = object_patch + weight01 * object_support[:-1, 1:]
-                object_patch = object_patch + weight10 * object_support[1:, :-1]
-                object_patch = object_patch + weight11 * object_support[1:, 1:]
+                interpolator = ObjectPatchInterpolator(self._object, self._positions_px[idx],
+                                                       self._probe.size())
+                object_patch = interpolator.get_patch()
                 corrected_object_patch = object_patch.detach().clone()
 
                 # exit wave is the outcome of the probe-object interation
@@ -139,6 +107,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 wavefield_intensity = torch.sum(squared_modulus(wavefield), dim=-3)
 
                 # calculate data error
+                diffraction_pattern = self._diffraction_patterns[idx]
                 intensity_diff = torch.abs(wavefield_intensity - diffraction_pattern)
                 data_error += torch.mean(intensity_diff[self._good_pixels]).item()
 
@@ -163,10 +132,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     corrected_object_patch = corrected_object_patch + object_update
 
                     # update object support
-                    object_support[:-1, :-1] += weight00 * object_update
-                    object_support[:-1, 1:] += weight01 * object_update
-                    object_support[1:, :-1] += weight10 * object_update
-                    object_support[1:, 1:] += weight11 * object_update
+                    interpolator.update_patch(object_update)
 
                 if plan.probe_correction.is_enabled(iteration):
                     object_abssq = squared_modulus(corrected_object_patch)

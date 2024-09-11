@@ -3,10 +3,15 @@ import logging
 
 import torch
 
-from .core import squared_modulus, CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
-from .utilities import Device
+from .core import (squared_modulus, CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm,
+                   ObjectPatchInterpolator)
+from .utilities import ComplexTensor, Device
 
 logger = logging.getLogger(__name__)
+
+
+def divide_where_nonzero(upper: ComplexTensor, lower: ComplexTensor) -> ComplexTensor:
+    return torch.where(lower.abs() > 1e-10, upper / lower, 0.)
 
 
 class DifferenceMap(IterativeAlgorithm):
@@ -57,43 +62,9 @@ class DifferenceMap(IterativeAlgorithm):
                 self._object = self._object / power_correction
 
             for idx in range(number_of_positions):
-                diffraction_pattern = self._diffraction_patterns[idx]
-
-                # top left corner of object support
-                xmin = self._positions_px[idx, -1] - self._probe.shape[-1] / 2
-                ymin = self._positions_px[idx, -2] - self._probe.shape[-2] / 2
-
-                # whole components (pixel indexes)
-                xmin_wh = xmin.int()
-                ymin_wh = ymin.int()
-
-                # fractional (subpixel) components
-                xmin_fr = xmin - xmin_wh
-                ymin_fr = ymin - ymin_wh
-
-                # bottom right corner of object patch support
-                xmax_wh = xmin_wh + self._probe.shape[-1] + 1
-                ymax_wh = ymin_wh + self._probe.shape[-2] + 1
-
-                # extract patch support region from full object
-                object_support = self._object[ymin_wh:ymax_wh, xmin_wh:xmax_wh]
-
-                # reused quantities
-                xmin_fr_c = 1. - xmin_fr
-                ymin_fr_c = 1. - ymin_fr
-
-                # barycentric interpolant weights
-                weight00 = ymin_fr_c * xmin_fr_c
-                weight01 = ymin_fr_c * xmin_fr
-                weight10 = ymin_fr * xmin_fr_c
-                weight11 = ymin_fr * xmin_fr
-
-                # interpolate object support to extract patch
-                object_patch = weight00 * object_support[:-1, :-1]
-                object_patch = object_patch + weight01 * object_support[:-1, 1:]
-                object_patch = object_patch + weight10 * object_support[1:, :-1]
-                object_patch = object_patch + weight11 * object_support[1:, 1:]
-                corrected_object_patch = object_patch.detach().clone()
+                interpolator = ObjectPatchInterpolator(self._object, self._positions_px[idx],
+                                                       self._probe.size())
+                object_patch = interpolator.get_patch()
 
                 # exit wave is the outcome of the probe-object interation
                 exit_wave = self._probe * object_patch
@@ -103,6 +74,7 @@ class DifferenceMap(IterativeAlgorithm):
                 wavefield_intensity = torch.sum(squared_modulus(wavefield), dim=-3)
 
                 # calculate data error
+                diffraction_pattern = self._diffraction_patterns[idx]
                 intensity_diff = torch.abs(wavefield_intensity - diffraction_pattern)
                 data_error += torch.mean(intensity_diff[self._good_pixels]).item()
 
@@ -119,29 +91,38 @@ class DifferenceMap(IterativeAlgorithm):
                 psi[idx] += corrected_exit_wave - exit_wave
 
             if plan.probe_correction.is_enabled(iteration):
-                probe_update_upper = torch.zeros_like(self._probe)
-                probe_update_lower = torch.zeros_like(self._probe)
-                object_abssq = squared_modulus(self._object)
-                object_conj = self._object.conj()
+                probe_upper = torch.zeros_like(self._probe)
+                probe_lower = torch.zeros(self._probe.shape[1:])
 
                 for idx in range(number_of_positions):
-                    probe_update_upper += object_patch_conj * psi[idx]  # FIXME
-                    probe_update_lower += object_patch_abssq  # FIXME
+                    interpolator = ObjectPatchInterpolator(self._object, self._positions_px[idx],
+                                                           self._probe.size())
+                    object_patch = interpolator.get_patch()
+
+                    probe_upper += object_patch.conj() * psi[idx]
+                    probe_lower += squared_modulus(object_patch)
 
                 # FIXME orthogonalize probe
-                self._probe = divide_where_nonzero(probe_update_upper, probe_update_lower)
+                self._probe = divide_where_nonzero(probe_upper, probe_lower)
 
             if plan.object_correction.is_enabled(iteration):
-                object_update_upper = torch.zeros_like(self._object)
-                object_update_lower = torch.zeros_like(self._object)
-                probe_abssq = torch.sum(squared_modulus(self._probe), dim=-3)
-                probe_conj = self._probe.conj()
+                object_upper = torch.zeros_like(self._object)
+                object_lower = torch.zeros(self._object.size())
 
                 for idx in range(number_of_positions):
-                    object_update_upper += probe_conj * psi[idx]  # FIXME update support region
-                    object_update_lower += probe_abssq  # FIXME update support region
+                    interpolator_upper = ObjectPatchInterpolator(object_upper,
+                                                                 self._positions_px[idx],
+                                                                 self._probe.size())
+                    interpolator_upper.update_patch(
+                        torch.sum(self._probe.conj() * psi[idx], dim=-3))
 
-                self._object = divide_where_nonzero(object_update_upper, object_update_lower)
+                    interpolator_lower = ObjectPatchInterpolator(object_lower,
+                                                                 self._positions_px[idx],
+                                                                 self._probe.size())
+                    interpolator_lower.update_patch(torch.sum(squared_modulus(self._probe),
+                                                              dim=-3))
+
+                self._object = divide_where_nonzero(object_upper, object_lower)
 
             # FIXME position correction
 
