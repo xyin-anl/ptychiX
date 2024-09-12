@@ -5,11 +5,11 @@ try:
 except PackageNotFoundError:
     pass
 
-from .core import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
+from .api import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
+from .device import Device
 from .dm import DifferenceMap
 from .pie import PtychographicIterativeEngine
 from .raar import RelaxedAveragedAlternatingReflections
-from .utilities import Device
 
 __all__ = [
     "CorrectionPlan",

@@ -3,10 +3,10 @@ import logging
 
 import torch
 
-from .core import (squared_modulus, CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm,
-                   ObjectPatchInterpolator)
-from .position import correct_positions_serial_cross_correlation
-from .utilities import Device
+from .api import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
+from .device import Device
+from .support import (correct_positions_serial_cross_correlation, squared_modulus, EPS,
+                      ObjectPatchInterpolator)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,8 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
         self._propagators = [propagator.to(device) for propagator in product.propagators]
 
         self._iteration = 0
+        self._data_error_norm = torch.sum(self._diffraction_patterns.sum(dim=0)[self._good_pixels])
+
         self._object_relaxation = 1.
         self._alpha = 1.
         self._probe_power = 0.
@@ -109,10 +111,11 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 # calculate data error
                 diffraction_pattern = self._diffraction_patterns[idx]
                 intensity_diff = torch.abs(wavefield_intensity - diffraction_pattern)
-                data_error += torch.mean(intensity_diff[self._good_pixels]).item()
+                data_error += torch.sum(intensity_diff[self._good_pixels]).item()
 
                 # intensity correction
-                correctable_pixels = torch.logical_and(self._good_pixels, wavefield_intensity > 0.)
+                correctable_pixels = torch.logical_and(self._good_pixels, wavefield_intensity
+                                                       > EPS)
                 corrected_wavefield = wavefield * torch.where(
                     correctable_pixels, torch.sqrt(diffraction_pattern / wavefield_intensity), 1.)
 
@@ -140,7 +143,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     probe_update_lower = torch.lerp(object_abssq, object_abssq.max(), self._beta)
                     probe_update = probe_update_upper / probe_update_lower
                     probe_update = probe_update * self._probe_relaxation
-                    # TODO orthogonalize, center
+                    # FIXME orthogonalize, center
                     self._probe = self._probe + probe_update
 
                 if plan.position_correction.is_enabled(iteration):
@@ -162,9 +165,9 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     # update position
                     self._positions_px[idx, :] += self._pc_feedback * shift
 
-            iteration_data_error.append(data_error)
+            iteration_data_error.append(data_error / self._data_error_norm)
             self._iteration += 1
-            logger.info(f"iteration={self._iteration} error={data_error}")
+            logger.info(f"iteration={self._iteration} error={data_error:.6e}")
 
         return iteration_data_error
 

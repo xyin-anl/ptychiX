@@ -1,13 +1,8 @@
 from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TypeAlias
 
 import torch
-
-BooleanTensor: TypeAlias = torch.Tensor
-ComplexTensor: TypeAlias = torch.Tensor
-RealTensor: TypeAlias = torch.Tensor
 
 
 @dataclass(frozen=True)

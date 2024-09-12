@@ -6,7 +6,8 @@ import cmath
 import torch
 from torch.fft import fft2, fftfreq, fftshift, ifft2, ifftshift
 
-from .utilities import ComplexTensor, Device, RealTensor
+from .device import Device
+from .support import ComplexTensor, RealTensor
 
 
 @dataclass(frozen=True)
