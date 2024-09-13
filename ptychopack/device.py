@@ -1,5 +1,5 @@
 from __future__ import annotations
-from collections.abc import Iterator
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import torch
@@ -20,18 +20,25 @@ class Device:
         return cls("cpu", 0, "CPU:0")
 
 
-def list_available_devices(self) -> Iterator[Device]:
+def list_available_devices() -> Sequence[Device]:
+    available_devices = list()
+
     if torch.cpu.is_available():
         for ordinal in range(torch.cpu.device_count()):
             name = f"CPU:{ordinal}"
-            yield Device("cpu", ordinal, name)
+            device = Device("cpu", ordinal, name)
+            available_devices.append(device)
 
     if torch.cuda.is_available():
         for ordinal in range(torch.cuda.device_count()):
             name = torch.cuda.get_device_name(ordinal)
-            yield Device("cuda", ordinal, name)
+            device = Device("cuda", ordinal, name)
+            available_devices.append(device)
 
     if torch.xpu.is_available():
         for ordinal in range(torch.xpu.device_count()):
             name = torch.xpu.get_device_name(ordinal)
-            yield Device("xpu", ordinal, name)
+            device = Device("xpu", ordinal, name)
+            available_devices.append(device)
+
+    return available_devices

@@ -7,7 +7,7 @@ except PackageNotFoundError:
 
 from .api import (CorrectionPlan, CorrectionPlanElement, DataProduct, DetectorData,
                   IterativeAlgorithm)
-from .device import Device
+from .device import list_available_devices, Device
 from .dm import DifferenceMap
 from .pie import PtychographicIterativeEngine
 from .raar import RelaxedAveragedAlternatingReflections
@@ -22,4 +22,5 @@ __all__ = [
     "IterativeAlgorithm",
     "PtychographicIterativeEngine",
     "RelaxedAveragedAlternatingReflections",
+    "list_available_devices",
 ]
