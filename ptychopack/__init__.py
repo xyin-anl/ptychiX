@@ -5,7 +5,8 @@ try:
 except PackageNotFoundError:
     pass
 
-from .api import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
+from .api import (CorrectionPlan, CorrectionPlanElement, DataProduct, DetectorData,
+                  IterativeAlgorithm)
 from .device import Device
 from .dm import DifferenceMap
 from .pie import PtychographicIterativeEngine
@@ -13,6 +14,7 @@ from .raar import RelaxedAveragedAlternatingReflections
 
 __all__ = [
     "CorrectionPlan",
+    "CorrectionPlanElement",
     "DataProduct",
     "DetectorData",
     "Device",
