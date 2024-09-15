@@ -71,8 +71,8 @@ class WavefieldPropagatorParameters:
         return YY, XX
 
     def get_frequency_coordinates(self) -> tuple[RealTensor, RealTensor]:
-        fx = fftshift(fftfreq(self.width_px))
-        fy = fftshift(fftfreq(self.height_px))
+        fx = fftfreq(self.width_px)
+        fy = fftfreq(self.height_px)
         FY, FX = torch.meshgrid(fy, fx, indexing="ij")
         return FY, FX
 
@@ -121,29 +121,10 @@ class AngularSpectrumPropagator(WavefieldPropagator):
         self._transfer_function = torch.where(ratio < 1, tf, 0)
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fftshift(ifft2(self._transfer_function * fft2(ifftshift(wavefield))))
+        return ifft2(self._transfer_function * fft2(wavefield))
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        pass  # FIXME
-
-
-class FresnelTransferFunctionPropagator(WavefieldPropagator):
-
-    def __init__(self, parameters: WavefieldPropagatorParameters) -> None:
-        ar = parameters.pixel_aspect_ratio
-
-        i2piz = 2j * torch.pi * parameters.propagation_distance_wlu
-        FY, FX = parameters.get_frequency_coordinates()
-        F2 = torch.square(FX) + torch.square(ar * FY)
-        ratio = F2 / (parameters.pixel_width_wlu**2)
-
-        self._transfer_function = torch.exp(i2piz * (1 - ratio / 2))
-
-    def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fftshift(ifft2(self._transfer_function * fft2(ifftshift(wavefield))))
-
-    def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        pass  # FIXME
+        return ifft2(fft2(wavefield) / self._transfer_function)
 
 
 class FresnelTransformPropagator(WavefieldPropagator):
@@ -165,11 +146,11 @@ class FresnelTransformPropagator(WavefieldPropagator):
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         A = self._C2 * self._C1 * self._C0
-        return A * fftshift(fft2(ifftshift(wavefield * self._B)))
+        return A * fft2(wavefield * self._B)
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         A = self._C2 * self._C1 / self._C0
-        return self._B * fftshift(ifft2(ifftshift(wavefield * A)))
+        return self._B * ifft2(wavefield * A)
 
 
 class FraunhoferPropagator(WavefieldPropagator):
@@ -189,8 +170,8 @@ class FraunhoferPropagator(WavefieldPropagator):
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         A = self._C2 * self._C1 * self._C0
-        return A * fftshift(fft2(ifftshift(wavefield)))
+        return A * fft2(wavefield)
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         A = self._C2 * self._C1 / self._C0
-        return fftshift(ifft2(ifftshift(wavefield * A)))
+        return ifft2(wavefield * A)

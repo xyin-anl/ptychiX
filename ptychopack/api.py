@@ -2,11 +2,19 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any, TypeAlias
 
+import numpy
+import numpy.typing
 import torch
 
 from .propagate import FourierPropagator, WavefieldPropagator
 from .support import BooleanTensor, ComplexTensor, RealTensor
+
+BooleanArray: TypeAlias = numpy.typing.NDArray[numpy.bool_]
+IntegerArray: TypeAlias = numpy.typing.NDArray[numpy.integer[Any]]
+RealArray: TypeAlias = numpy.typing.NDArray[numpy.floating[Any]]
+ComplexArray: TypeAlias = numpy.typing.NDArray[numpy.complexfloating[Any, Any]]
 
 
 @dataclass(frozen=True)
@@ -45,13 +53,17 @@ class DetectorData:
     """bad pixel mask to exclude detector dead regions or saturated pixels"""
 
     @classmethod
-    def create_simple(cls,
-                      diffraction_patterns: RealTensor,
-                      bad_pixels: BooleanTensor | None = None) -> DetectorData:
+    def from_numpy(cls,
+                   diffraction_patterns: numpy.typing.NDArray[numpy.integer[Any]],
+                   bad_pixels: numpy.typing.NDArray[numpy.bool_] | None = None) -> DetectorData:
+        diffraction_patterns_tensor = torch.tensor(diffraction_patterns,
+                                                   dtype=torch.float,
+                                                   requires_grad=False)
+
         return cls(
-            torch.fft.ifftshift(diffraction_patterns, dim=(-2, -1)),
+            torch.fft.ifftshift(diffraction_patterns_tensor, dim=(-2, -1)),
             torch.full(diffraction_patterns.shape[1:], False)
-            if bad_pixels is None else bad_pixels,
+            if bad_pixels is None else torch.tensor(bad_pixels),
         )
 
 
@@ -69,14 +81,12 @@ class DataProduct:
     """sequence of wavefield propagators, one for each object layer"""
 
     @classmethod
-    def create_simple(
-        cls,
-        positions_px: RealTensor,
-        probe: ComplexTensor,
-        object_: ComplexTensor,
-    ) -> DataProduct:
+    def from_numpy(cls, positions_px: RealArray, probe: ComplexArray,
+                   object_: ComplexArray) -> DataProduct:
         propagators = [FourierPropagator()]
-        return cls(positions_px, probe, object_, propagators)
+        return cls(torch.tensor(positions_px, dtype=torch.float, requires_grad=False),
+                   torch.tensor(probe, dtype=torch.cfloat, requires_grad=False),
+                   torch.tensor(object_, dtype=torch.cfloat, requires_grad=False), propagators)
 
 
 class IterativeAlgorithm(ABC):

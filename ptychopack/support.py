@@ -6,18 +6,12 @@ BooleanTensor: TypeAlias = torch.Tensor
 ComplexTensor: TypeAlias = torch.Tensor
 RealTensor: TypeAlias = torch.Tensor
 
-EPS: Final[float] = 1e-10
-
-
-def safe_divide(upper: ComplexTensor, lower: ComplexTensor) -> ComplexTensor:
-    return torch.where(lower.abs() > EPS, upper / lower, 0.)
-
 
 def squared_modulus(values: ComplexTensor) -> RealTensor:
     return torch.abs(values)**2
 
 
-def proj(u: ComplexTensor, v: ComplexTensor) -> ComplexTensor:
+def project(u: ComplexTensor, v: ComplexTensor) -> ComplexTensor:
     return u * torch.vdot(u, v) / torch.vdot(u, u)
 
 
@@ -26,7 +20,7 @@ def gram_schmidt(V: ComplexTensor) -> ComplexTensor:
 
     for i in range(1, V.shape[0]):
         for j in range(i):
-            U[i, :] -= proj(U[j, :], V[i, :])
+            U[i, :] -= project(U[j, :], V[i, :])
 
     return U
 

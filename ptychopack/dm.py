@@ -5,7 +5,7 @@ import torch
 
 from .api import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
 from .device import Device
-from .support import safe_divide, squared_modulus, EPS, ObjectPatchInterpolator
+from .support import squared_modulus, ObjectPatchInterpolator
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +79,9 @@ class DifferenceMap(IterativeAlgorithm):
                 data_error += torch.sum(intensity_diff[self._good_pixels]).item()
 
                 # intensity correction
-                correctable_pixels = torch.logical_and(self._good_pixels, wavefield_intensity
-                                                       > EPS)
                 corrected_wavefield = wavefield * torch.where(
-                    correctable_pixels, torch.sqrt(diffraction_pattern / wavefield_intensity), 1.)
+                    self._good_pixels,
+                    torch.sqrt(diffraction_pattern / (wavefield_intensity + 1e-7)), 1.)
 
                 # propagate corrected wavefield to object plane
                 corrected_exit_wave = self._propagators[layer].propagate_backward(
@@ -104,7 +103,7 @@ class DifferenceMap(IterativeAlgorithm):
                     probe_lower += squared_modulus(object_patch)
 
                 # FIXME orthogonalize probe
-                self._probe = safe_divide(probe_upper, probe_lower)
+                self._probe = probe_upper / (probe_lower + 1e-7)
 
             if plan.object_correction.is_enabled(iteration):
                 object_upper = torch.zeros_like(self._object)
@@ -123,7 +122,7 @@ class DifferenceMap(IterativeAlgorithm):
                     interpolator_lower.update_patch(torch.sum(squared_modulus(self._probe),
                                                               dim=-3))
 
-                self._object = safe_divide(object_upper, object_lower)
+                self._object = object_upper / (object_lower + 1e-7)
 
             # FIXME position correction
 

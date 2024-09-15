@@ -5,7 +5,7 @@ import torch
 
 from .api import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
 from .device import Device
-from .support import (correct_positions_serial_cross_correlation, squared_modulus, EPS,
+from .support import (correct_positions_serial_cross_correlation, squared_modulus,
                       ObjectPatchInterpolator)
 
 logger = logging.getLogger(__name__)
@@ -114,10 +114,9 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 data_error += torch.sum(intensity_diff[self._good_pixels]).item()
 
                 # intensity correction
-                correctable_pixels = torch.logical_and(self._good_pixels, wavefield_intensity
-                                                       > EPS)
                 corrected_wavefield = wavefield * torch.where(
-                    correctable_pixels, torch.sqrt(diffraction_pattern / wavefield_intensity), 1.)
+                    self._good_pixels,
+                    torch.sqrt(diffraction_pattern / (wavefield_intensity + 1e-7)), 1.)
 
                 # propagate corrected wavefield to object plane
                 corrected_exit_wave = self._propagators[layer].propagate_backward(
@@ -131,7 +130,7 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     object_update_upper = torch.sum(self._probe.conj() * exit_wave_diff, dim=-3)
                     object_update_lower = torch.lerp(probe_abssq, probe_abssq.max(), self._alpha)
                     object_update = object_update_upper / object_update_lower
-                    object_update = object_update * self._object_relaxation
+                    object_update *= self._object_relaxation
                     corrected_object_patch = corrected_object_patch + object_update
 
                     # update object support
@@ -142,9 +141,9 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                     probe_update_upper = corrected_object_patch.conj() * exit_wave_diff
                     probe_update_lower = torch.lerp(object_abssq, object_abssq.max(), self._beta)
                     probe_update = probe_update_upper / probe_update_lower
-                    probe_update = probe_update * self._probe_relaxation
+                    probe_update *= self._probe_relaxation
                     # FIXME orthogonalize, center
-                    self._probe = self._probe + probe_update
+                    self._probe += probe_update
 
                 if plan.position_correction.is_enabled(iteration):
                     # indicate object pixels where the illumination significantlly
