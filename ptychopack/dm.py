@@ -5,7 +5,8 @@ import torch
 
 from .api import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
 from .device import Device
-from .support import squared_modulus, ObjectPatchInterpolator
+from .support import (correct_positions_serial_cross_correlation, squared_modulus,
+                      ObjectPatchInterpolator)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,9 @@ class DifferenceMap(IterativeAlgorithm):
         self._relaxation = 0.8
         self._probe_power = 0.
 
+        self._pc_probe_threshold = 0.1
+        self._pc_feedback = 50.
+
     def set_relaxation(self, value: float) -> None:
         self._relaxation = value
 
@@ -39,6 +43,18 @@ class DifferenceMap(IterativeAlgorithm):
 
     def get_probe_power(self) -> float:
         return self._probe_power
+
+    def set_pc_probe_threshold(self, value: float) -> None:
+        self._pc_probe_threshold = value
+
+    def get_pc_probe_threshold(self) -> float:
+        return self._pc_probe_threshold
+
+    def set_pc_feedback(self, value: float) -> None:
+        self._pc_feedback = value
+
+    def get_pc_feedback(self) -> float:
+        return self._pc_feedback
 
     def iterate(self, plan: CorrectionPlan) -> Sequence[float]:
         number_of_positions = self._positions_px.shape[0]
