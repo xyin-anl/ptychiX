@@ -14,14 +14,16 @@ class DifferenceMap(IterativeAlgorithm):
 
     def __init__(self, device: Device, detector_data: DetectorData, product: DataProduct) -> None:
         self._good_pixels = torch.logical_not(detector_data.bad_pixels).to(device.torch_device)
-        self._diffraction_patterns = detector_data.diffraction_patterns.to(device.torch_device)
+        self._detected_amplitude = torch.sqrt(
+            detector_data.diffraction_patterns.to(device.torch_device))
         self._positions_px = product.positions_px.to(device.torch_device)
         self._probe = product.probe[0].to(device.torch_device)  # TODO support OPR modes
         self._object = product.object_[0].to(device.torch_device)  # TODO support multislice
         self._propagators = [propagator.to(device) for propagator in product.propagators]
 
         self._iteration = 0
-        self._data_error_norm = torch.sum(self._diffraction_patterns.sum(dim=0)[self._good_pixels])
+        self._data_error_norm = torch.sum(
+            detector_data.diffraction_patterns.sum(dim=0)[self._good_pixels])
 
         self._relaxation = 0.8
         self._probe_power = 0.
@@ -74,14 +76,14 @@ class DifferenceMap(IterativeAlgorithm):
                 wavefield_intensity = torch.sum(squared_modulus(wavefield), dim=-3)
 
                 # calculate data error
-                diffraction_pattern = self._diffraction_patterns[idx]
-                intensity_diff = torch.abs(wavefield_intensity - diffraction_pattern)
+                detected_amplitude = self._detected_amplitude[idx]
+                intensity_diff = torch.abs(wavefield_intensity - detected_amplitude**2)
                 data_error += torch.sum(intensity_diff[self._good_pixels]).item()
 
                 # intensity correction
-                corrected_wavefield = wavefield * torch.where(
+                corrected_wavefield = torch.where(
                     self._good_pixels,
-                    torch.sqrt(diffraction_pattern / (wavefield_intensity + 1e-7)), 1.)
+                    detected_amplitude * torch.exp(1j * torch.angle(wavefield)), wavefield)
 
                 # propagate corrected wavefield to object plane
                 corrected_exit_wave = self._propagators[layer].propagate_backward(
@@ -124,7 +126,25 @@ class DifferenceMap(IterativeAlgorithm):
 
                 self._object = object_upper / (object_lower + 1e-7)
 
-            # FIXME position correction
+            if plan.position_correction.is_enabled(iteration):
+                for idx in range(number_of_positions):
+                    # indicate object pixels where the illumination significantlly
+                    # contributes to the diffraction pattern
+                    probe_amplitude = torch.sqrt(torch.sum(squared_modulus(self._probe),
+                                                           dim=-3))  # FIXME
+                    probe_amplitude_max = torch.max(probe_amplitude)
+                    probe_mask = (probe_amplitude > self._pc_probe_threshold * probe_amplitude_max)
+
+                    # mask low illumination regions
+                    masked_object_patch = object_patch * probe_mask
+                    masked_corrected_object_patch = corrected_object_patch * probe_mask
+
+                    # use serial cross correlation to determine correcting shift
+                    shift = correct_positions_serial_cross_correlation(
+                        masked_corrected_object_patch, masked_object_patch, 1.)  # FIXME scale
+
+                    # update position
+                    self._positions_px[idx, :] += self._pc_feedback * shift
 
             iteration_data_error.append(data_error / self._data_error_norm)
             self._iteration += 1

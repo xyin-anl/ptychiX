@@ -15,14 +15,16 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
 
     def __init__(self, device: Device, detector_data: DetectorData, product: DataProduct) -> None:
         self._good_pixels = torch.logical_not(detector_data.bad_pixels).to(device.torch_device)
-        self._diffraction_patterns = detector_data.diffraction_patterns.to(device.torch_device)
+        self._detected_amplitude = torch.sqrt(
+            detector_data.diffraction_patterns.to(device.torch_device))
         self._positions_px = product.positions_px.to(device.torch_device)
         self._probe = product.probe[0].to(device.torch_device)  # TODO support OPR modes
         self._object = product.object_[0].to(device.torch_device)  # TODO support multislice
         self._propagators = [propagator.to(device) for propagator in product.propagators]
 
         self._iteration = 0
-        self._data_error_norm = torch.sum(self._diffraction_patterns.sum(dim=0)[self._good_pixels])
+        self._data_error_norm = torch.sum(
+            detector_data.diffraction_patterns.sum(dim=0)[self._good_pixels])
 
         self._object_relaxation = 1.
         self._alpha = 1.
@@ -109,14 +111,14 @@ class PtychographicIterativeEngine(IterativeAlgorithm):
                 wavefield_intensity = torch.sum(squared_modulus(wavefield), dim=-3)
 
                 # calculate data error
-                diffraction_pattern = self._diffraction_patterns[idx]
-                intensity_diff = torch.abs(wavefield_intensity - diffraction_pattern)
+                detected_amplitude = self._detected_amplitude[idx]
+                intensity_diff = torch.abs(wavefield_intensity - detected_amplitude**2)
                 data_error += torch.sum(intensity_diff[self._good_pixels]).item()
 
                 # intensity correction
-                corrected_wavefield = wavefield * torch.where(
+                corrected_wavefield = torch.where(
                     self._good_pixels,
-                    torch.sqrt(diffraction_pattern / (wavefield_intensity + 1e-7)), 1.)
+                    detected_amplitude * torch.exp(1j * torch.angle(wavefield)), wavefield)
 
                 # propagate corrected wavefield to object plane
                 corrected_exit_wave = self._propagators[layer].propagate_backward(
