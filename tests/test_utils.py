@@ -23,7 +23,7 @@ def setup(gold_dir, cpu_only=True):
         os.makedirs(gold_dir)
         
         
-def load_data_ptychodus(diffraction_pattern_file, parameter_file, additional_opr_modes=0):
+def load_data_ptychodus(diffraction_pattern_file, parameter_file, subtract_position_mean=False, additional_opr_modes=0):
     patterns = h5py.File(diffraction_pattern_file, 'r')['dp'][...]
     dataset = PtychographyDataset(patterns)
 
@@ -38,6 +38,8 @@ def load_data_ptychodus(diffraction_pattern_file, parameter_file, additional_opr
     positions = np.stack([f_meta['probe_position_y_m'][...], f_meta['probe_position_x_m'][...]], axis=1)
     pixel_size_m = f_meta['object'].attrs['pixel_height_m']
     positions_px = positions / pixel_size_m
+    if subtract_position_mean:
+        positions_px -= positions_px.mean(axis=0)
     
     return dataset, probe, pixel_size_m, positions_px
     

@@ -3,20 +3,27 @@ import torch
 from torch import Tensor
 from torch.nn import ModuleList
 
-from ptychointerim.ptychotorch.data_structures import (Variable, VariableGroup, Ptychography2DVariableGroup)
+from ptychointerim.ptychotorch.data_structures import (Variable, VariableGroup, Ptychography2DVariableGroup,
+                                                       MultisliceObject)
 import ptychointerim.ptychotorch.propagation as prop
+from ptychointerim.propagate import WavefieldPropagatorParameters, AngularSpectrumPropagator
 from ptychointerim.metrics import MSELossOfSqrt
 
 
 class ForwardModel(torch.nn.Module):
     
-    def __init__(self, variable_group: VariableGroup, *args, **kwargs) -> None:
+    def __init__(self, 
+                 variable_group: VariableGroup, 
+                 retain_intermediates: bool = False,
+                 *args, **kwargs) -> None:
         super().__init__()
         
         assert isinstance(variable_group, VariableGroup)
         
         self.variable_group = variable_group
+        self.retain_intermediates = retain_intermediates
         self.optimizable_variables: ModuleList[Variable] = ModuleList()
+        self.intermediate_variables = {}
         
     def register_optimizable_parameters(self):
         for var in self.variable_group.__dict__.values():
@@ -29,6 +36,10 @@ class ForwardModel(torch.nn.Module):
     def post_differentiation_hook(self, *args, **kwargs):
         pass
     
+    def record_intermediate_variable(self, name, var):
+        if self.retain_intermediates:
+            self.intermediate_variables[name] = var
+        
     
 class Ptychography2DForwardModel(ForwardModel):
     
@@ -40,6 +51,9 @@ class Ptychography2DForwardModel(ForwardModel):
         super().__init__(variable_group, *args, **kwargs)
         self.retain_intermediates = retain_intermediates
         
+        # This step is essential as it sets the variables to be attributes of
+        # the forward modelobject. Only with this can these buffers be copied
+        # to the correct devices in DataParallel.
         self.object = variable_group.object
         self.probe = variable_group.probe
         self.probe_positions = variable_group.probe_positions
@@ -69,6 +83,8 @@ class Ptychography2DForwardModel(ForwardModel):
             probe = self.probe.data
         # Shape of psi:        (batch_size, n_probe_modes, h, w)
         psi = obj_patches[:, None, :, :] * probe
+        
+        self.record_intermediate_variable('psi', psi)
         return psi
     
     def forward_far_field(self, psi: Tensor) -> Tensor:
@@ -79,6 +95,7 @@ class Ptychography2DForwardModel(ForwardModel):
         :return: (n_patches, h, w) tensor of detected intensities.
         """
         psi_far = prop.propagate_far_field(psi)
+        self.record_intermediate_variable('psi_far', psi_far)
         return psi_far
 
     def forward(self, indices: Tensor, return_object_patches: bool = False) -> Tensor:
@@ -91,34 +108,15 @@ class Ptychography2DForwardModel(ForwardModel):
         positions = self.probe_positions.tensor[indices]
         obj_patches = self.object.extract_patches(positions, self.probe.get_spatial_shape())
         
-        if self.retain_intermediates:
-            self.intermediate_variables['positions'] = positions
-            self.intermediate_variables['obj_patches'] = obj_patches
-            psi = self.forward_real_space(indices, obj_patches)
-            psi_far = self.forward_far_field(psi)
-            
-            self.intermediate_variables['psi'] = psi
-            self.intermediate_variables['psi_far'] = psi_far
-            self.intermediate_variables['psi_far'].requires_grad_(True)
-            self.intermediate_variables['psi_far'].retain_grad()
-            
-            y = torch.abs(self.intermediate_variables['psi_far']) ** 2
-            # Sum along probe modes
-            y = y.sum(1)
-        else:
-            y = 0.0
-            if self.probe.has_multiple_opr_modes:
-                # Use OPR modes only for the first incoherent mode.
-                # Shape of p:       (batch_size, n_modes, h, w)
-                p = self.probe.get_unique_probes(self.opr_mode_weights.get_weights(indices), mode_to_apply=0)
-            else:
-                # Shape of p:       (n_modes, h, w)
-                p = self.probe.get_opr_mode(0)
-            for i_probe_mode in range(self.probe.n_modes):
-                p_ith_mode = p[i_probe_mode] if p.ndim == 3 else p[:, i_probe_mode]
-                psi = obj_patches * p_ith_mode
-                psi_far = prop.propagate_far_field(psi)
-                y = y + torch.abs(psi_far) ** 2
+        self.record_intermediate_variable('positions', positions)
+        self.record_intermediate_variable('obj_patches', obj_patches)
+        
+        psi = self.forward_real_space(indices, obj_patches)
+        psi_far = self.forward_far_field(psi)
+        
+        y = torch.abs(psi_far) ** 2
+        # Sum along probe modes
+        y = y.sum(1)
                     
         returns = [y]
         if return_object_patches:
@@ -172,6 +170,90 @@ class Ptychography2DForwardModel(ForwardModel):
         if self.probe.optimizable:
             self.probe.tensor.data.grad = \
                 self.probe.tensor.data.grad * (patterns.numel() / len(patterns))
+                
+                
+class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
+    def __init__(
+        self, 
+        variable_group: Ptychography2DVariableGroup,
+        retain_intermediates: bool = False,
+        wavelength_m: float = 1e-9,
+        *args, **kwargs
+    ) -> None:
+        super().__init__(
+            variable_group=variable_group,
+            retain_intermediates=retain_intermediates,
+            *args, **kwargs
+        )
+        assert isinstance(self.variable_group.object, MultisliceObject)
+        
+        self.wavelength_m = wavelength_m
+        self.near_field_propagator = None
+        self.prop_params = None
+        
+        self.build_propagator()
+        
+    def build_propagator(self):
+        self.prop_params = WavefieldPropagatorParameters.create_simple(
+                    wavelength_m=self.wavelength_m,
+                    width_px=self.probe.shape[-1],
+                    height_px=self.probe.shape[-2],
+                    pixel_width_m=self.object.pixel_size_m,
+                    pixel_height_m=self.object.pixel_size_m,
+                    propagation_distance_m=self.object.slice_spacings_m[0],
+                )
+        self.near_field_propagator = AngularSpectrumPropagator(self.prop_params)
+        
+    def forward_real_space(self, indices, obj_patches):
+        # Shape of obj_patches:   (batch_size, n_slices, h, w)
+        if self.probe.has_multiple_opr_modes:
+            # Shape of probe:     (batch_size, n_modes, h, w)
+            probe = self.probe.get_unique_probes(
+                self.opr_mode_weights.get_weights(indices), mode_to_apply=0
+            )
+        else:
+            # Shape of probe:     (n_modes, h, w)
+            probe = self.probe.data
+        
+        if self.retain_intermediates:
+            slice_psis = []
+        
+        slice_psi_prop = probe
+        for i_slice in range(self.variable_group.object.n_slices):
+            slice_patches = obj_patches[:, i_slice, ...]
+            
+            # Modulate wavefield.
+            # Shape of slice_psi: (batch_size, n_modes, h, w)
+            slice_psi = slice_patches[:, None, :, :] * slice_psi_prop
+            
+            if self.retain_intermediates:
+                slice_psis.append(slice_psi)
+                
+            # Propagate wavefield.
+            if i_slice < self.variable_group.object.n_slices - 1:
+                self.prop_params = WavefieldPropagatorParameters.create_simple(
+                    wavelength_m=self.wavelength_m,
+                    width_px=self.probe.shape[-1],
+                    height_px=self.probe.shape[-2],
+                    pixel_width_m=self.object.pixel_size_m,
+                    pixel_height_m=self.object.pixel_size_m,
+                    propagation_distance_m=self.object.slice_spacings_m[i_slice],
+                )
+                self.near_field_propagator.update(self.prop_params)
+                slice_psi_prop = self.near_field_propagator.propagate_forward(slice_psi)
+        if self.retain_intermediates:
+            # Shape of slice_psis: (batch_size, n_slices - 1, n_modes, h, w)
+            self.record_intermediate_variable('slice_psis', torch.stack(slice_psis, dim=1))
+        return slice_psi
+    
+    def forward(self, indices: Tensor, return_object_patches: bool = False) -> Tensor:
+        """Run ptychographic forward simulation and calculate the measured intensities.
+
+        :param indices: A (N,) tensor of diffraction pattern indices in the batch.
+        :param positions: A (N, 2) tensor of probe positions in pixels.
+        :return: measured intensities (squared magnitudes).
+        """
+        return super().forward(indices, return_object_patches=return_object_patches)
 
 
 class NoiseModel(torch.nn.Module):
