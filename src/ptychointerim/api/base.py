@@ -6,11 +6,11 @@ import json
 from torch import Tensor
 from numpy import ndarray
 
-import ptychointerim.configs
+import ptychointerim.api
 
 
 @dataclasses.dataclass
-class Config:
+class Options:
     
     @staticmethod
     def is_jsonable(x):
@@ -26,7 +26,7 @@ class Config:
             v = self.__dict__[key]
             v = self.object_to_string(key, v)
             d[key] = v
-        d['_config_class'] = self.__class__.__name__
+        d['_options_class'] = self.__class__.__name__
         return d
 
     def deserizalize_dict(self, d):
@@ -57,7 +57,7 @@ class Config:
         f.close()
 
     def object_to_string(self, v):
-        if isinstance(v, Config):
+        if isinstance(v, Options):
             return v.get_serializable_dict()
         elif isinstance(v, (Tensor, ndarray)):
             if v.ndim == 0:
@@ -69,9 +69,9 @@ class Config:
     def string_to_object(self, v):
         if isinstance(v, dict):
             try:
-                cls = getattr(ptychointerim.configs, v['_config_class'])
+                cls = getattr(ptychointerim.api, v['_options_class'])
             except AttributeError:
-                cls = Config
+                cls = Options
             return cls(**v)
         else:
             return v
@@ -93,7 +93,7 @@ class Config:
         
         
 @dataclasses.dataclass
-class ParameterConfig(Config):
+class ParameterOptions(Options):
     
     optimizable: bool = True
     """
@@ -112,7 +112,7 @@ class ParameterConfig(Config):
     
 
 @dataclasses.dataclass
-class ObjectConfig(ParameterConfig):
+class ObjectOptions(ParameterOptions):
     
     initial_guess: Union[ndarray, Tensor] = None
     """A (h, w) complex tensor of the object initial guess."""
@@ -122,7 +122,7 @@ class ObjectConfig(ParameterConfig):
     
     
 @dataclasses.dataclass
-class ProbeConfig(ParameterConfig):
+class ProbeOptions(ParameterOptions):
     """
     The probe configuration.
     
@@ -154,7 +154,7 @@ class ProbeConfig(ParameterConfig):
     
 
 @dataclasses.dataclass
-class ProbePositionConfig(ParameterConfig):
+class ProbePositionOptions(ParameterOptions):
     
     position_x_m: Union[ndarray, Tensor] = None
     """The x position in meters."""
@@ -170,7 +170,7 @@ class ProbePositionConfig(ParameterConfig):
 
 
 @dataclasses.dataclass
-class OPRModeWeightsConfig(ParameterConfig):
+class OPRModeWeightsOptions(ParameterOptions):
     
     initial_eigenmode_weights: Union[list[float], float] = 0.1
     """
@@ -206,7 +206,7 @@ class OPRModeWeightsConfig(ParameterConfig):
 
     
 @dataclasses.dataclass
-class ReconstructorConfig(Config):
+class ReconstructorOptions(Options):
     
     # This should be superseded by CorrectionPlan in ParameterConfig when it is there. 
     num_epochs: int = 100
@@ -239,13 +239,13 @@ class ReconstructorConfig(Config):
     
 
 @dataclasses.dataclass
-class DataConfig(Config):
+class DataOptions(Options):
     
     pass
     
     
 @dataclasses.dataclass
-class PtychographyDataConfig(DataConfig):
+class PtychographyDataOptions(DataOptions):
     
     data: Union[ndarray, Tensor] = None
     """The data."""
@@ -263,22 +263,22 @@ class PtychographyDataConfig(DataConfig):
     """A 2D boolean mask where valid pixels are True."""
 
 
-class JobConfig(Config):
+class TaskOptions(Options):
     pass
 
 
 @dataclasses.dataclass
-class PtychographyJobConfig(JobConfig):
+class PtychographyTaskOptions(TaskOptions):
     
-    data_config: PtychographyDataConfig = field(default_factory=PtychographyDataConfig)
+    data_options: PtychographyDataOptions = field(default_factory=PtychographyDataOptions)
     
-    reconstructor_config: ReconstructorConfig = field(default_factory=ReconstructorConfig)
+    reconstructor_options: ReconstructorOptions = field(default_factory=ReconstructorOptions)
     
-    object_config: ObjectConfig = field(default_factory=ObjectConfig)
+    object_options: ObjectOptions = field(default_factory=ObjectOptions)
     
-    probe_config: ProbeConfig = field(default_factory=ProbeConfig)
+    probe_options: ProbeOptions = field(default_factory=ProbeOptions)
     
-    probe_position_config: ProbePositionConfig = field(default_factory=ProbePositionConfig)
+    probe_position_options: ProbePositionOptions = field(default_factory=ProbePositionOptions)
     
-    opr_mode_weight_config: OPRModeWeightsConfig = field(default_factory=OPRModeWeightsConfig)
+    opr_mode_weight_options: OPRModeWeightsOptions = field(default_factory=OPRModeWeightsOptions)
 

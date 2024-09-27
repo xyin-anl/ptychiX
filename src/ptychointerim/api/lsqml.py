@@ -10,7 +10,7 @@ from .base import *
 
 
 @dataclasses.dataclass
-class LSQMLReconstructorConfig(ReconstructorConfig):
+class LSQMLReconstructorOptions(ReconstructorOptions):
 
     noise_model: Literal['gaussian', 'poisson'] = 'gaussian'
     
@@ -27,12 +27,12 @@ class LSQMLReconstructorConfig(ReconstructorConfig):
     
 
 @dataclasses.dataclass
-class LSQMLObjectConfig(ObjectConfig):
+class LSQMLObjectOptions(ObjectOptions):
     pass
 
 
 @dataclasses.dataclass
-class LSQMLProbeConfig(ProbeConfig):
+class LSQMLProbeOptions(ProbeOptions):
     
     eigenmode_update_relaxation: float = 0.1
     """
@@ -42,12 +42,12 @@ class LSQMLProbeConfig(ProbeConfig):
     
     
 @dataclasses.dataclass
-class LSQMLProbePositionConfig(ProbePositionConfig):
+class LSQMLProbePositionOptions(ProbePositionOptions):
     pass
 
 
 @dataclasses.dataclass
-class LSQMLOPRModeWeightsConfig(OPRModeWeightsConfig):
+class LSQMLOPRModeWeightsOptions(OPRModeWeightsOptions):
     
     update_relaxation: float = 0.1
     """
@@ -57,15 +57,15 @@ class LSQMLOPRModeWeightsConfig(OPRModeWeightsConfig):
     
 
 @dataclasses.dataclass
-class LSQMLConfig(PtychographyJobConfig):
+class LSQMLOptions(PtychographyTaskOptions):
 
-    reconstructor_config: LSQMLReconstructorConfig = field(default_factory=LSQMLReconstructorConfig)
+    reconstructor_options: LSQMLReconstructorOptions = field(default_factory=LSQMLReconstructorOptions)
     
-    object_config: LSQMLObjectConfig = field(default_factory=LSQMLObjectConfig)
+    object_options: LSQMLObjectOptions = field(default_factory=LSQMLObjectOptions)
     
-    probe_config: LSQMLProbeConfig = field(default_factory=LSQMLProbeConfig)
+    probe_options: LSQMLProbeOptions = field(default_factory=LSQMLProbeOptions)
     
-    probe_position_config: LSQMLProbePositionConfig = field(default_factory=LSQMLProbePositionConfig)
+    probe_position_options: LSQMLProbePositionOptions = field(default_factory=LSQMLProbePositionOptions)
     
-    opr_mode_weight_config: LSQMLOPRModeWeightsConfig = field(default_factory=LSQMLOPRModeWeightsConfig)
+    opr_mode_weight_options: LSQMLOPRModeWeightsOptions = field(default_factory=LSQMLOPRModeWeightsOptions)
         

@@ -8,7 +8,7 @@ import numpy as np
 from torch import Tensor
 from numpy import ndarray
 
-import ptychointerim.configs as configs
+import ptychointerim.api as api
 from ptychointerim.ptychotorch.data_structures import *
 from ptychointerim.ptychotorch.io_handles import PtychographyDataset
 from ptychointerim.forward_models import Ptychography2DForwardModel
@@ -54,12 +54,12 @@ def get_loss_function(loss_name: str):
         return MSELossOfSqrt()
     
     
-def get_reconstructor_class(config_class: Type[configs.Config]):
-    if config_class is configs.LSQMLReconstructorConfig:
+def get_reconstructor_class(config_class: Type[api.Options]):
+    if config_class is api.LSQMLReconstructorOptions:
         return LSQMLReconstructor
-    elif config_class is configs.AutodiffPtychographyReconstructorConfig:
+    elif config_class is api.AutodiffPtychographyReconstructorOptions:
         return AutodiffPtychographyReconstructor
-    elif config_class is configs.PIEReconstructorConfig:
+    elif config_class is api.PIEReconstructorConfig:
         return EPIEReconstructor
 
 
@@ -72,16 +72,16 @@ class Job:
 class PtychographyJob(Job):
     
     def __init__(self,
-                 config: configs.PtychographyJobConfig,
+                 config: api.PtychographyTaskOptions,
                  *args, **kwargs
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.data_config = config.data_config
-        self.object_config = config.object_config
-        self.probe_config = config.probe_config
-        self.position_config = config.probe_position_config
-        self.opr_mode_weight_config = config.opr_mode_weight_config
-        self.reconstructor_config = config.reconstructor_config
+        self.data_options = config.data_options
+        self.object_options = config.object_options
+        self.probe_options = config.probe_options
+        self.position_options = config.probe_position_options
+        self.opr_mode_weight_options = config.opr_mode_weight_options
+        self.reconstructor_options = config.reconstructor_options
         
         self.dataset = None
         self.object = None
@@ -103,78 +103,78 @@ class PtychographyJob(Job):
         self.build_reconstructor()
         
     def build_random_seed(self):
-        if self.reconstructor_config.random_seed is not None:
-            torch.manual_seed(self.reconstructor_config.random_seed)
-            np.random.seed(self.reconstructor_config.random_seed)
-            random.seed(self.reconstructor_config.random_seed)
+        if self.reconstructor_options.random_seed is not None:
+            torch.manual_seed(self.reconstructor_options.random_seed)
+            np.random.seed(self.reconstructor_options.random_seed)
+            random.seed(self.reconstructor_options.random_seed)
             
     def build_logger(self):
         ldict = {'error': logging.ERROR, 'warning': logging.WARNING, 'info': logging.INFO, 'debug': logging.DEBUG}
-        logging.basicConfig(level=ldict[self.reconstructor_config.log_level])
+        logging.basicConfig(level=ldict[self.reconstructor_options.log_level])
     
     def build_default_device(self):
         dmap = {'cpu': 'cpu', 'gpu': 'cuda'}
-        torch.set_default_device(dmap[self.reconstructor_config.default_device])
-        if self.reconstructor_config.gpu_indices is not None:
-            os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, self.reconstructor_config.gpu_indices))
+        torch.set_default_device(dmap[self.reconstructor_options.default_device])
+        if self.reconstructor_options.gpu_indices is not None:
+            os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, self.reconstructor_options.gpu_indices))
         
     def build_default_dtype(self):
         dmap = {'float32': torch.float32, 'float64': torch.float64}
         cdmap = {'float32': torch.complex64, 'float64': torch.complex128}
-        torch.set_default_dtype(dmap[self.reconstructor_config.default_dtype])
-        utils.set_default_complex_dtype(cdmap[self.reconstructor_config.default_dtype])
+        torch.set_default_dtype(dmap[self.reconstructor_options.default_dtype])
+        utils.set_default_complex_dtype(cdmap[self.reconstructor_options.default_dtype])
         
     def build_data(self):
-        self.dataset = PtychographyDataset(self.data_config.data)
+        self.dataset = PtychographyDataset(self.data_options.data)
         
     def build_object(self):
-        data = to_tensor(self.object_config.initial_guess)
+        data = to_tensor(self.object_options.initial_guess)
         self.object = Object2D(
             data=data, 
-            pixel_size_m=self.object_config.pixel_size_m,
-            optimizable=self.object_config.optimizable,
-            optimizer_class=get_optimizer_class(self.object_config.optimizer),
-            optimizer_params={'lr': self.object_config.step_size},
-            **self.object_config.uninherited_fields()
+            pixel_size_m=self.object_options.pixel_size_m,
+            optimizable=self.object_options.optimizable,
+            optimizer_class=get_optimizer_class(self.object_options.optimizer),
+            optimizer_params={'lr': self.object_options.step_size},
+            **self.object_options.uninherited_fields()
         )
         
     def build_probe(self):
-        data = to_tensor(self.probe_config.initial_guess)
+        data = to_tensor(self.probe_options.initial_guess)
         self.probe = Probe(
             data=data, 
-            optimizable=self.probe_config.optimizable,
-            optimizer_class=get_optimizer_class(self.probe_config.optimizer),
-            optimizer_params={'lr': self.probe_config.step_size},
-            **self.probe_config.uninherited_fields()
+            optimizable=self.probe_options.optimizable,
+            optimizer_class=get_optimizer_class(self.probe_options.optimizer),
+            optimizer_params={'lr': self.probe_options.step_size},
+            **self.probe_options.uninherited_fields()
         )
         
     def build_probe_positions(self):
-        pos_y = to_tensor(self.position_config.position_y_m)
-        pos_x = to_tensor(self.position_config.position_x_m)
+        pos_y = to_tensor(self.position_options.position_y_m)
+        pos_x = to_tensor(self.position_options.position_x_m)
         data = torch.stack([pos_y, pos_x], dim=1)
-        data = data / self.position_config.pixel_size_m
+        data = data / self.position_options.pixel_size_m
 
         self.probe_positions = ProbePositions(
             data=data,
-            optimizable=self.position_config.optimizable,
-            optimizer_class=get_optimizer_class(self.position_config.optimizer),
-            optimizer_params={'lr': self.position_config.step_size},
-            **self.position_config.uninherited_fields()
+            optimizable=self.position_options.optimizable,
+            optimizer_class=get_optimizer_class(self.position_options.optimizer),
+            optimizer_params={'lr': self.position_options.step_size},
+            **self.position_options.uninherited_fields()
         )
         
     def build_opr_mode_weights(self):
-        n_opr_modes = self.probe_config.initial_guess.shape[0]
+        n_opr_modes = self.probe_options.initial_guess.shape[0]
         if n_opr_modes == 1:
             self.opr_mode_weights = DummyVariable()
         else:
             self.opr_mode_weights = OPRModeWeights(
                 data=utils.generate_initial_opr_mode_weights(
-                    n_points=len(self.position_config.position_x_m), 
+                    n_points=len(self.position_options.position_x_m), 
                     n_opr_modes=n_opr_modes, 
-                    eigenmode_weight=self.opr_mode_weight_config.initial_eigenmode_weights),
-                optimizable=self.opr_mode_weight_config.optimizable,
-                optimize_intensity_variation=self.opr_mode_weight_config.optimize_intensity_variation,
-                **self.opr_mode_weight_config.uninherited_fields()
+                    eigenmode_weight=self.opr_mode_weight_options.initial_eigenmode_weights),
+                optimizable=self.opr_mode_weight_options.optimizable,
+                optimize_intensity_variation=self.opr_mode_weight_options.optimize_intensity_variation,
+                **self.opr_mode_weight_options.uninherited_fields()
             )
             
     def build_reconstructor(self):
@@ -185,20 +185,20 @@ class PtychographyJob(Job):
             opr_mode_weights=self.opr_mode_weights
         )
         
-        reconstructor_class = get_reconstructor_class(self.reconstructor_config.__class__)
+        reconstructor_class = get_reconstructor_class(self.reconstructor_options.__class__)
         
         reconstructor_kwargs = {
             'variable_group': var_group,
             'dataset': self.dataset,
-            'batch_size': self.reconstructor_config.batch_size,
-            'n_epochs': self.reconstructor_config.num_epochs,
-            'metric_function': get_loss_function(self.reconstructor_config.metric_function),
-            **self.reconstructor_config.uninherited_fields()
+            'batch_size': self.reconstructor_options.batch_size,
+            'n_epochs': self.reconstructor_options.num_epochs,
+            'metric_function': get_loss_function(self.reconstructor_options.metric_function),
+            **self.reconstructor_options.uninherited_fields()
         }
         # Special treatments.
         if reconstructor_class == AutodiffPtychographyReconstructor:
             reconstructor_kwargs['forward_model_class'] = Ptychography2DForwardModel
-            reconstructor_kwargs['loss_function'] = get_loss_function(self.reconstructor_config.loss_function)
+            reconstructor_kwargs['loss_function'] = get_loss_function(self.reconstructor_options.loss_function)
         
         self.reconstructor = reconstructor_class(**reconstructor_kwargs)
         self.reconstructor.build()
