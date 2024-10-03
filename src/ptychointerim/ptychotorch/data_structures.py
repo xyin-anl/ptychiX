@@ -133,7 +133,6 @@ class ReconstructParameter(Module):
             else:
                 self.optimizer = self.optimizer_class([self.tensor], **self.optimizer_params)
             
-            
     def set_optimizable(self, optimizable):
         self.optimizable = optimizable
         self.tensor.requires_grad_(optimizable)
@@ -193,7 +192,7 @@ class ReconstructParameter(Module):
             self.tensor.data.grad = grad
         else:
             self.tensor.grad = grad
-            
+    
     def post_update_hook(self, *args, **kwargs):
         pass
     
@@ -344,13 +343,13 @@ class MultisliceObject(Object2D):
         
 class Probe(ReconstructParameter):
     
-    n_modes = 1
-    
     # TODO: eigenmode_update_relaxation is only used for LSQML. We should create dataclasses
     # to contain additional options for Variable classes, and subclass them for specific
     # reconstruction algorithms - for example, ProbeOptions -> LSQMLProbeOptions.
     def __init__(self, *args, name='probe', eigenmode_update_relaxation=0.1, 
-                 probe_power=0.0, probe_power_constraint_stride=1, **kwargs):
+                 probe_power=0.0, probe_power_constraint_stride=1, 
+                 orthogonalize_incoherent_modes=False, orthogonalize_incoherent_modes_stride=1, 
+                 **kwargs):
         """
         Represents the probe function in a tensor of shape 
             `(n_opr_modes, n_modes, h, w)`
@@ -367,6 +366,11 @@ class Probe(ReconstructParameter):
             and object intensity such that the power of the far-field probe is `probe_power`. 
         :param probe_power_constraint_stride: the number of epochs between probe power constraint
             updates. 
+        :param orthogonalize_incoherent_modes: whether to orthogonalize incoherent probe modes. If 
+            True, the incoherent probe modes are orthogonalized every 
+            `orthogonalize_incoherent_modes_stride` epochs. 
+        :param orthogonalize_incoherent_modes_stride: the number of epochs between orthogonalizing 
+            the incoherent probe modes.
         """
         super().__init__(*args, name=name, is_complex=True, **kwargs)
         if len(self.shape) != 4:
@@ -375,6 +379,8 @@ class Probe(ReconstructParameter):
         self.eigenmode_update_relaxation = eigenmode_update_relaxation
         self.probe_power = probe_power
         self.probe_power_constraint_stride = probe_power_constraint_stride
+        self.orthogonalize_incoherent_modes = orthogonalize_incoherent_modes
+        self.orthogonalize_incoherent_modes_stride = orthogonalize_incoherent_modes_stride
         
     def shift(self, shifts: Tensor):
         """
@@ -411,6 +417,10 @@ class Probe(ReconstructParameter):
     @property
     def has_multiple_opr_modes(self):
         return self.n_opr_modes > 1
+    
+    @property
+    def has_multiple_incoherent_modes(self):
+        return self.n_modes > 1
 
     def get_mode(self, mode: int):
         return self.tensor.complex()[:, mode]
@@ -487,6 +497,16 @@ class Probe(ReconstructParameter):
                 unique_probe = p_orig[:, 0, ...]
         return unique_probe
     
+    def constrain_incoherent_modes_orthogonality(self):
+        """Orthogonalize the incoherent probe modes for the first OPR mode.""" 
+        probe = self.data
+        probe[0] = pmath.orthogonalize_gs(
+            probe[0],
+            dim=(-2, -1),
+            group_dim=0,
+        )
+        self.set_data(probe)
+    
     def constrain_opr_mode_orthogonality(self, weights: Union[Tensor, ReconstructParameter], eps=1e-5):
         """Add the following constraints to variable probe weights
 
@@ -529,7 +549,7 @@ class Probe(ReconstructParameter):
         probe = pmath.orthogonalize_gs(
             probe,
             dim=(-2, -1),
-            group_dim=-4,
+            group_dim=0,
         )
 
         # Compute the energies of variable OPR modes (i.e., the second and following) 
@@ -554,7 +574,7 @@ class Probe(ReconstructParameter):
                 keepdims=True,
             ).type(weights.dtype),
         ) * torch.sign(weights)
-            
+
         # Update stored data.
         self.set_data(probe)
         return weights
@@ -587,13 +607,13 @@ class Probe(ReconstructParameter):
 
         
         logging.info('Probe and object scaled by {}.'.format(power_correction))
-    
-    def post_update_hook(self, weights: Union[Tensor, ReconstructParameter]) -> Tensor:
+
+    def post_update_hook(self, weights: Union[Tensor, ReconstructParameter]=None) -> Union[Tensor, None]:
         super().post_update_hook()
         if self.has_multiple_opr_modes:
             weights = self.constrain_opr_mode_orthogonality(weights)
-        return weights
-    
+            return weights
+     
     def normalize_eigenmodes(self):
         """
         Normalize all eigenmodes (the second and following OPR modes) such that each of them
