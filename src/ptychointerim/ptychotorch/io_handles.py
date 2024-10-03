@@ -13,6 +13,8 @@ class PtychographyDataset(Dataset):
     def __init__(self, 
                  patterns: Union[Tensor, ndarray], 
                  valid_pixel_mask: Optional[Union[Tensor, ndarray]] = None,
+                 wavelength_m: float = None,
+                 propagation_distance_m: float = 1.0,
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.patterns = to_tensor(patterns, device='cpu')
@@ -20,6 +22,9 @@ class PtychographyDataset(Dataset):
         if valid_pixel_mask is None:
             valid_pixel_mask = torch.ones(self.patterns.shape[-2:])
         self.valid_pixel_mask = to_tensor(valid_pixel_mask, device='cpu', dtype=torch.bool)
+        
+        self.wavelength_m = wavelength_m
+        self.propagation_distance_m = propagation_distance_m
     
     def __getitem__(self, index):
         index = torch.tensor(index, device='cpu', dtype=torch.long)

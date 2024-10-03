@@ -6,7 +6,7 @@ import tqdm
 from torch.utils.data import Dataset
 
 from ptychointerim.ptychotorch.reconstructors.base import AnalyticalIterativePtychographyReconstructor, LossTracker
-from ptychointerim.ptychotorch.data_structures import Ptychography2DVariableGroup, DummyVariable
+from ptychointerim.ptychotorch.data_structures import Ptychography2DVariableGroup, DummyVariable, Object2D
 from ptychointerim.forward_models import Ptychography2DForwardModel, PtychographyGaussianNoiseModel, PtychographyPoissonNoiseModel
 from ptychointerim.metrics import MSELossOfSqrt
 import ptychointerim.ptychotorch.propagation as prop
@@ -56,6 +56,8 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.alpha_psi_far_all_points = None
                 
     def check_inputs(self, *args, **kwargs):
+        if not isinstance(self.variable_group.object, Object2D):
+            raise NotImplementedError('LSQMLReconstructor only supports 2D objects.')
         if self.variable_group.opr_mode_weights.optimizer is not None:
             logging.warning('Selecting optimizer for OPRModeWeights is not supported for '
                             'LSQMLReconstructor and will be disregarded.')

@@ -4,8 +4,8 @@ import torch
 import tqdm
 from torch.utils.data import Dataset
 
-from ptychointerim.ptychotorch.data_structures import PtychographyVariableGroup
-from ptychointerim.forward_models import ForwardModel
+from ptychointerim.ptychotorch.data_structures import PtychographyVariableGroup, MultisliceObject
+from ptychointerim.forward_models import ForwardModel, MultislicePtychographyForwardModel
 from ptychointerim.ptychotorch.reconstructors.ad_general import AutodiffReconstructor
 from ptychointerim.ptychotorch.reconstructors.base import IterativePtychographyReconstructor
 
@@ -33,6 +33,15 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
             metric_function=metric_function,
             *args, **kwargs
         )
+        
+    def check_inputs(self, *args, **kwargs):
+        super().check_inputs(*args, **kwargs)
+        
+        if isinstance(self.variable_group.object, MultisliceObject):
+            if self.forward_model_class != MultislicePtychographyForwardModel:
+                raise ValueError(
+                    "If the object is multislice, the forward model must be MultislicePtychographyForwardModel."
+                )
 
     def run_post_update_hooks(self) -> None:
         with torch.no_grad():

@@ -5,7 +5,7 @@ import tqdm
 from torch.utils.data import Dataset
 
 import ptychointerim.ptychotorch.propagation as prop
-from ptychointerim.ptychotorch.data_structures import Ptychography2DVariableGroup
+from ptychointerim.ptychotorch.data_structures import Ptychography2DVariableGroup, Object2D
 from ptychointerim.ptychotorch.reconstructors.base import AnalyticalIterativePtychographyReconstructor
 from ptychointerim.image_proc import place_patches_fourier_shift
 from ptychointerim.position_correction import compute_positions_cross_correlation_update
@@ -28,6 +28,8 @@ class EPIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             *args, **kwargs)
 
     def check_inputs(self, *args, **kwargs):
+        if not isinstance(self.variable_group.object, Object2D):
+            raise NotImplementedError('EPIEReconstructor only supports 2D objects.')
         for var in self.variable_group.get_optimizable_variables():
             if 'lr' not in var.optimizer_params.keys():
                 raise ValueError("Optimizable variable {} must have 'lr' in optimizer_params.".format(var.name))

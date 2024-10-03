@@ -68,12 +68,16 @@ class WavefieldPropagatorParameters:
         JJ, II = torch.meshgrid(jj, ii, indexing="ij")
         XX = II - self.width_px // 2
         YY = JJ - self.height_px // 2
+        XX = XX.to(torch.get_default_device())
+        YY = YY.to(torch.get_default_device())
         return YY, XX
 
     def get_frequency_coordinates(self) -> tuple[RealTensor, RealTensor]:
         fx = fftfreq(self.width_px)
         fy = fftfreq(self.height_px)
         FY, FX = torch.meshgrid(fy, fx, indexing="ij")
+        FY = FY.to(torch.get_default_device())
+        FX = FX.to(torch.get_default_device())
         return FY, FX
 
 
@@ -110,21 +114,45 @@ class FourierPropagator(WavefieldPropagator):
 class AngularSpectrumPropagator(WavefieldPropagator):
 
     def __init__(self, parameters: WavefieldPropagatorParameters) -> None:
+        super().__init__()
+        
         ar = parameters.pixel_aspect_ratio
 
         i2piz = 2j * torch.pi * parameters.propagation_distance_wlu
+        
         FY, FX = parameters.get_frequency_coordinates()
         F2 = torch.square(FX) + torch.square(ar * FY)
-        ratio = F2 / (parameters.pixel_width_wlu**2)
+        self.register_buffer('F2', F2)
+        
+        ratio = self.F2 / (parameters.pixel_width_wlu**2)
         tf = torch.exp(i2piz * torch.sqrt(1 - ratio))
 
-        self._transfer_function = torch.where(ratio < 1, tf, 0)
+        _transfer_function = torch.where(ratio < 1, tf, 0)
+        # Separate registered buffer into real and imaginary parts to prevent it
+        # from breaking in DataParallel.
+        self.register_buffer('_transfer_function_real', _transfer_function.real)
+        self.register_buffer('_transfer_function_imag', _transfer_function.imag)
+        
+    def update(self, parameters: WavefieldPropagatorParameters) -> None:
+        i2piz = 2j * torch.pi * parameters.propagation_distance_wlu
+        
+        ratio = self.F2 / (parameters.pixel_width_wlu**2)
+        tf = torch.exp(i2piz * torch.sqrt(1 - ratio))
+        
+        _transfer_function = torch.where(ratio < 1, tf, 0)
+        self._transfer_function_real[...] = _transfer_function.real
+        self._transfer_function_imag[...] = _transfer_function.imag
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return ifft2(self._transfer_function * fft2(wavefield))
+        tf = self._transfer_function_real + 1j * self._transfer_function_imag
+        return ifft2(tf * fft2(wavefield))
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return ifft2(fft2(wavefield) / self._transfer_function)
+        tf = self._transfer_function_real + 1j * self._transfer_function_imag
+        return ifft2(fft2(wavefield) / tf)
+    
+    def to(self, device: Device) -> WavefieldPropagator:
+        return self
 
 
 class FresnelTransformPropagator(WavefieldPropagator):

@@ -28,6 +28,11 @@ class Reconstructors(StrEnum):
     PIE = auto()
     
     
+class ObjectTypes(StrEnum):
+    TWO_D = auto()
+    MULTISLICE = auto()
+    
+    
 class NoiseModels(StrEnum):
     GAUSSIAN = auto()
     POISSON = auto()

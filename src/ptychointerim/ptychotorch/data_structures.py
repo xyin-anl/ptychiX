@@ -269,6 +269,77 @@ class Object2D(Object):
         image = torch.zeros(self.shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device)
         image = ip.place_patches_fourier_shift(image, positions, patches, op='add')
         return image
+    
+
+class MultisliceObject(Object2D):
+    
+    def __init__(self, slice_spacings_m: Tensor = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        if len(self.shape) != 3: 
+            raise ValueError('MultisliceObject should have a shape of (n_slices, h, w).')
+        if slice_spacings_m is None or len(slice_spacings_m) != self.n_slices - 1:
+            raise ValueError('The number of slice spacings must be n_slices - 1.')
+            
+        self.register_buffer('slice_spacings_m', to_tensor(slice_spacings_m))
+        
+        center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
+        self.register_buffer('center_pixel', center_pixel)
+        
+    @property
+    def n_slices(self):
+        return self.shape[0]
+    
+    @property
+    def lateral_shape(self):
+        return self.shape[1:]
+        
+    def get_slice(self, index):
+        return self.data[index, ...]
+    
+    def extract_patches(self, positions: Tensor, patch_shape: Tuple[int, int]):
+        """Extract (n_patches, n_slices, h', w') patches from the multislice object.
+
+        :param positions: a tensor of shape (N, 2) giving the center positions of the patches in pixels.
+            The origin of the given positions are assumed to be `self.center_pixel`.
+        :param patch_shape: a tuple giving the lateral patch shape in pixels.
+        """
+        # Positions are provided with the origin in the center of the object support. 
+        # We shift the positions so that the origin is in the upper left corner.
+        positions = positions + self.center_pixel
+        patches_all_slices = []
+        for i_slice in range(self.n_slices):
+            patches = ip.extract_patches_fourier_shift(self.get_slice(i_slice), positions, patch_shape)
+            patches_all_slices.append(patches)
+        patches_all_slices = torch.stack(patches_all_slices, dim=1)
+        return patches_all_slices
+    
+    def place_patches(self, positions: Tensor, patches: Tensor, *args, **kwargs):
+        """Place patches into a 2D object.
+        
+        :param positions: a tensor of shape (N, 2) giving the center positions of the patches in pixels.
+            The origin of the given positions are assumed to be `self.center_pixel`.
+        :param patches: (n_patches, n_slices, H, W) tensor ofimage patches.
+        """
+        positions = positions + self.center_pixel
+        updated_slices = []
+        for i_slice in range(self.n_slices):
+            image = ip.place_patches_fourier_shift(self.get_slice(i_slice), positions, patches[:, i_slice, ...])
+            updated_slices.append(image)
+        updated_slices = torch.stack(updated_slices, dim=0)
+        self.tensor.set_data(updated_slices)
+        
+    def place_patches_on_empty_buffer(self, positions: Tensor, patches: Tensor, *args, **kwargs):
+        """Place patches into a zero array with the lateral shape of the object.
+        
+        :param positions: a tensor of shape (N, 2) giving the center positions of the patches in pixels.
+        :param patches: (N, H, W) tensor ofimage patches.
+        :return: a tensor with the lateral shape of the object with patches added onto it.
+        """
+        positions = positions + self.center_pixel
+        image = torch.zeros(self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device)
+        image = ip.place_patches_fourier_shift(image, positions, patches, op='add')
+        return image
         
         
 class Probe(ReconstructParameter):

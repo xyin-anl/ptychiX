@@ -13,7 +13,7 @@ import ptychointerim.api as api
 import ptychointerim.maps as maps
 from ptychointerim.ptychotorch.data_structures import *
 from ptychointerim.ptychotorch.io_handles import PtychographyDataset
-from ptychointerim.forward_models import Ptychography2DForwardModel
+from ptychointerim.forward_models import Ptychography2DForwardModel, MultislicePtychographyForwardModel
 from ptychointerim.ptychotorch.utils import to_tensor
 import ptychointerim.ptychotorch.utils as utils
 from ptychointerim.ptychotorch.reconstructors import *
@@ -95,19 +95,25 @@ class PtychographyTask(Task):
         utils.set_default_complex_dtype(maps.complex_dtype_dict[self.reconstructor_options.default_dtype])
         
     def build_data(self):
-        self.dataset = PtychographyDataset(self.data_options.data)
+        self.dataset = PtychographyDataset(self.data_options.data, wavelength_m=self.data_options.wavelength_m)
         
     def build_object(self):
         data = to_tensor(self.object_options.initial_guess)
-        self.object = Object2D(
-            data=data, 
-            pixel_size_m=self.object_options.pixel_size_m,
-            optimizable=self.object_options.optimizable,
-            optimization_plan=self.object_options.optimization_plan,
-            optimizer_class=maps.optimizer_dict[self.object_options.optimizer],
-            optimizer_params={'lr': self.object_options.step_size},
-            **self.object_options.uninherited_fields()
-        )
+        kwargs = {
+            'data': data, 
+            'pixel_size_m': self.object_options.pixel_size_m,
+            'optimizable': self.object_options.optimizable,
+            'optimization_plan': self.object_options.optimization_plan,
+            'optimizer_class': maps.optimizer_dict[self.object_options.optimizer],
+            'optimizer_params': {'lr': self.object_options.step_size},
+        }
+        kwargs.update(self.object_options.uninherited_fields())
+        if self.object_options.type == api.ObjectTypes.MULTISLICE:
+            kwargs['slice_spacings_m'] = self.object_options.slice_spacings_m
+        if self.object_options.type == api.ObjectTypes.TWO_D:
+            self.object = Object2D(**kwargs)
+        elif self.object_options.type == api.ObjectTypes.MULTISLICE:
+            self.object = MultisliceObject(**kwargs)
         
     def build_probe(self):
         data = to_tensor(self.probe_options.initial_guess)
@@ -175,13 +181,21 @@ class PtychographyTask(Task):
             'dataset': self.dataset,
             'batch_size': self.reconstructor_options.batch_size,
             'n_epochs': self.reconstructor_options.num_epochs,
-            'metric_function': maps.loss_function_dict[self.reconstructor_options.metric_function](),
+            'metric_function': (None if self.reconstructor_options.metric_function is None 
+                                else maps.loss_function_dict[self.reconstructor_options.metric_function]()),
             **self.reconstructor_options.uninherited_fields()
         }
         # Special handling. We should change the expected input type of the reconstructor so that no conversion
         # needs to be done here. 
         if reconstructor_class == AutodiffPtychographyReconstructor:
-            reconstructor_kwargs['forward_model_class'] = Ptychography2DForwardModel
+            if self.object_options.type == api.ObjectTypes.TWO_D:
+                reconstructor_kwargs['forward_model_class'] = Ptychography2DForwardModel
+            elif self.object_options.type == api.ObjectTypes.MULTISLICE:
+                reconstructor_kwargs['forward_model_class'] = MultislicePtychographyForwardModel
+                reconstructor_kwargs['forward_model_params'] = {
+                    'wavelength_m': self.data_options.wavelength_m, 
+                    'propagation_distance_m': self.data_options.propagation_distance_m
+                }
             reconstructor_kwargs['loss_function'] = maps.loss_function_dict[self.reconstructor_options.loss_function]()
         
         self.reconstructor = reconstructor_class(**reconstructor_kwargs)
