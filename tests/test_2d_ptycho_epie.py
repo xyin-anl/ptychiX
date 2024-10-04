@@ -16,9 +16,9 @@ import test_utils as tutils
 
 
 def test_2d_ptycho_epie(generate_gold=False, debug=False):
-    gold_dir = os.path.join('gold_data', 'test_2d_ptycho_epie')
+    name = 'test_2d_ptycho_epie'
     
-    tutils.setup(gold_dir, cpu_only=True)
+    tutils.setup(name, cpu_only=True)
     
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
     probe = probe[:, [0], :, :]
@@ -63,10 +63,9 @@ def test_2d_ptycho_epie(generate_gold=False, debug=False):
         ax[1].imshow(np.angle(recon))
         plt.show()
     if generate_gold:
-        np.save(os.path.join(gold_dir, 'recon.npy'), recon)
+        tutils.save_gold_data(name, recon)
     else:
-        recon_gold = np.load(os.path.join(gold_dir, 'recon.npy'))
-        assert np.allclose(recon, recon_gold)
+        tutils.run_comparison(name, recon, high_tol=True)
     
     
 if __name__ == '__main__':

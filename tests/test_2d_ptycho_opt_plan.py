@@ -37,9 +37,9 @@ def test_2d_ptycho_opt_plan(pytestconfig, generate_gold=False, debug=False, high
     if pytestconfig is not None:
         high_tol = pytestconfig.getoption("high_tol")
         
-    gold_dir = os.path.join('gold_data', 'test_2d_ptycho_opt_plan')
+    name = 'test_2d_ptycho_opt_plan'
     
-    tutils.setup(gold_dir, cpu_only=True)
+    tutils.setup(name, cpu_only=True)
 
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true', additional_opr_modes=3)
     data = dataset.patterns
@@ -102,7 +102,10 @@ def test_2d_ptycho_opt_plan(pytestconfig, generate_gold=False, debug=False, high
             ax[1].imshow(np.angle(recon))
             plt.show()    
     
-    compare_results(recon, gold_dir, generate_gold=generate_gold, high_tol=high_tol)
+    if generate_gold:
+        tutils.save_gold_data(name, recon)
+    else:
+        tutils.run_comparison(name, recon, high_tol=high_tol)
     
     
 if __name__ == '__main__':

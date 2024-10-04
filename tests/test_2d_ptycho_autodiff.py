@@ -16,9 +16,9 @@ import test_utils as tutils
 
 
 def test_2d_ptycho_autodiff(generate_gold=False, debug=False):
-    gold_dir = os.path.join('gold_data', 'test_2d_ptycho_autodiff')
+    name = 'test_2d_ptycho_autodiff'
     
-    tutils.setup(gold_dir, cpu_only=True)
+    tutils.setup(name, cpu_only=True)
     
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
     
@@ -58,16 +58,15 @@ def test_2d_ptycho_autodiff(generate_gold=False, debug=False):
     recon = reconstructor.variable_group.object.tensor.complex().detach().cpu().numpy()
     
     if generate_gold:
-        np.save(os.path.join(gold_dir, 'recon.npy'), recon)
+        tutils.save_gold_data(name, recon)
     else:
-        recon_gold = np.load(os.path.join(gold_dir, 'recon.npy'))
-        assert np.allclose(recon, recon_gold)
+        tutils.run_comparison(name, recon)
         
         
 def test_2d_ptycho_autodiff_opr(generate_gold=False, debug=False):
-    gold_dir = os.path.join('gold_data', 'test_2d_ptycho_autodiff_opr')
+    name = 'test_2d_ptycho_autodiff_opr'
     
-    tutils.setup(gold_dir, cpu_only=True)
+    tutils.setup(name, cpu_only=True)
     
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=3)
     
@@ -114,10 +113,9 @@ def test_2d_ptycho_autodiff_opr(generate_gold=False, debug=False):
     recon = reconstructor.variable_group.object.tensor.complex().detach().cpu().numpy()
     
     if generate_gold:
-        np.save(os.path.join(gold_dir, 'recon.npy'), recon)
+        tutils.save_gold_data(name, recon)
     else:
-        recon_gold = np.load(os.path.join(gold_dir, 'recon.npy'))
-        assert np.allclose(recon, recon_gold, atol=1e-3, rtol=1e-3)
+        tutils.run_comparison(name, recon)
     
     
 if __name__ == '__main__':

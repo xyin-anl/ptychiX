@@ -27,9 +27,6 @@ jobs:
     - name: Create environment
       run: |
         conda create --quiet --yes --force -n ci_py311 python=3.11
-
-    - name: List build environment
-      run: conda list -n ci_py311
       
     - name: Install dependencies
       run: |
@@ -40,7 +37,11 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip install -e .
 
+    - name: List build environment
+      run: conda list -n ci_py311
+
     - name: Test with pytest
       run: |
+        export PTYCHO_CI_DATA_DIR="/local/ptycho_aux_data/ci_data"
         cd tests
         pytest -s --high-tol

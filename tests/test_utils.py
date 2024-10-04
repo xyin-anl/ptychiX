@@ -1,6 +1,7 @@
 import random
 import os
 from pathlib import Path
+import datetime
 
 import torch
 import h5py
@@ -11,7 +12,32 @@ from ptychointerim.forward_models import Ptychography2DForwardModel
 from ptychointerim.ptychotorch.utils import rescale_probe, add_additional_opr_probe_modes_to_probe, set_default_complex_dtype, to_tensor
 
 
-def setup(gold_dir, cpu_only=True, gpu_indices=()):
+def get_timestamp():
+    return datetime.datetime.now().strftime('%Y%m%d%H%M')
+
+def get_ci_data_dir():
+    try:
+        dir = os.environ['PTYCHO_CI_DATA_DIR']
+    except KeyError:
+        raise KeyError('PTYCHO_CI_DATA_DIR not set. Please set it to the path to the data folder.')
+    return dir
+
+
+def get_ci_input_data_dir():
+    return os.path.join(get_ci_data_dir(), 'data')
+
+
+def get_ci_gold_data_dir():
+    return os.path.join(get_ci_data_dir(), 'gold_data')
+
+
+def get_default_input_data_file_paths(name):
+    dp = os.path.join(get_ci_input_data_dir(), name, 'ptychodus_dp.hdf5')
+    para = os.path.join(get_ci_input_data_dir(), name, 'ptychodus_para.hdf5')
+    return dp, para
+
+
+def setup(name, cpu_only=True, gpu_indices=()):
     torch.manual_seed(123)
     random.seed(123)
     np.random.seed(123)
@@ -23,8 +49,9 @@ def setup(gold_dir, cpu_only=True, gpu_indices=()):
     if not cpu_only:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, gpu_indices))
     
-    if not os.path.exists(gold_dir):
-        os.makedirs(gold_dir)
+    name = os.path.join(get_ci_gold_data_dir(), name)
+    if not os.path.exists(name):
+        os.makedirs(name)
         
         
 def load_data_ptychodus(diffraction_pattern_file, parameter_file, subtract_position_mean=False, additional_opr_modes=0):
@@ -50,7 +77,49 @@ def load_data_ptychodus(diffraction_pattern_file, parameter_file, subtract_posit
     
 def load_tungsten_data(additional_opr_modes=0, pos_type='true'):
     return load_data_ptychodus(
-        'data/2d_ptycho/dp_250.hdf5', 
-        'data/2d_ptycho/metadata_250_{}Pos.hdf5'.format(pos_type), 
+        os.path.join(get_ci_input_data_dir(), '2d_ptycho', 'dp_250.hdf5'), 
+        os.path.join(get_ci_input_data_dir(), '2d_ptycho', 'metadata_250_{}Pos.hdf5'.format(pos_type)), 
         additional_opr_modes=additional_opr_modes
     )
+    
+
+def save_gold_data(name, data):
+    fname = os.path.join(get_ci_gold_data_dir(), name, 'recon.npy')
+    np.save(fname, data)
+    
+    
+def load_gold_data(name):
+    fname = os.path.join(get_ci_gold_data_dir(), name, 'recon.npy')
+    return np.load(fname)
+
+
+def save_test_data(name, data):
+    dirname = os.path.join(name + '_dump_{}'.format(get_timestamp()))
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    fname = os.path.join(dirname, 'recon.npy')
+    np.save(fname, data)
+
+
+def run_comparison(name, test_data, high_tol=False):
+    gold_data = load_gold_data(name)
+    atol = 1e-3
+    rtol = 1e-2 if high_tol else 1e-4
+    if not np.allclose(gold_data.shape, test_data.shape):
+        print('{} FAILED [SHAPE MISMATCH]'.format(name))
+        print('  Gold shape: {}'.format(gold_data.shape))
+        print('  Test shape: {}'.format(test_data.shape))
+        raise AssertionError
+    if not np.allclose(gold_data, test_data, atol=atol, rtol=rtol):
+        print('{} FAILED [MISMATCH]'.format(name))
+        abs_diff = np.abs(gold_data - test_data)
+        loc_max_diff = np.unravel_index(np.argmax(abs_diff), abs_diff.shape)
+        loc_max_diff = [a.item() for a in loc_max_diff]
+        print('  Mean abs diff: {}'.format(abs_diff.mean()))
+        print('  Location of max diff: {}'.format(loc_max_diff))
+        print('  Max abs diff: {}'.format(abs_diff[*loc_max_diff].item()))
+        print('  Value at max abs diff (test): {}'.format(test_data[*loc_max_diff].item()))
+        print('  Value at max abs diff (gold): {}'.format(gold_data[*loc_max_diff].item()))
+        raise AssertionError
+    print('{} PASSED'.format(name))
+    return
