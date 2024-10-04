@@ -123,3 +123,12 @@ def run_comparison(name, test_data, high_tol=False):
         raise AssertionError
     print('{} PASSED'.format(name))
     return
+
+def plot_complex_image(img):
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(1, 2)
+    ax[0].imshow(np.abs(img))
+    ax[0].set_title('magnitude')
+    ax[1].imshow(np.angle(img))
+    ax[1].set_title('phase')
+    plt.show()

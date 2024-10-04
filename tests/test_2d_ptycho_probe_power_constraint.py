@@ -19,7 +19,7 @@ def test_2d_ptycho_probe_power_constraint_lsqml(pytestconfig, generate_gold=Fals
         
     name = 'test_2d_ptycho_probe_power_constraint_lsqml'
     
-    tutils.setup(name, cpu_only=True)
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
 
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true', additional_opr_modes=3)
     data = dataset.patterns
@@ -59,8 +59,8 @@ def test_2d_ptycho_probe_power_constraint_lsqml(pytestconfig, generate_gold=Fals
     
     options.reconstructor_options.num_epochs = 4
     options.reconstructor_options.batch_size = 40
-    options.reconstructor_options.default_device = api.Devices.CPU
-    # options.reconstructor_options.gpu_indices = [0]
+    options.reconstructor_options.default_device = api.Devices.GPU
+    options.reconstructor_options.gpu_indices = [0]
     options.reconstructor_options.metric_function = api.LossFunctions.MSE_SQRT
     options.reconstructor_options.log_level = logging.INFO
     
@@ -91,7 +91,7 @@ def test_2d_ptycho_probe_power_constraint_ad(pytestconfig, generate_gold=False, 
         
     name = 'test_2d_ptycho_probe_power_constraint_ad'
     
-    tutils.setup(name, cpu_only=True)
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
 
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true', additional_opr_modes=3)
     data = dataset.patterns
@@ -133,8 +133,8 @@ def test_2d_ptycho_probe_power_constraint_ad(pytestconfig, generate_gold=False, 
     
     options.reconstructor_options.num_epochs = 4
     options.reconstructor_options.batch_size = 40
-    options.reconstructor_options.default_device = api.Devices.CPU
-    # options.reconstructor_options.gpu_indices = [0]
+    options.reconstructor_options.default_device = api.Devices.GPU
+    options.reconstructor_options.gpu_indices = [0]
     options.reconstructor_options.metric_function = api.LossFunctions.MSE_SQRT
     options.reconstructor_options.log_level = logging.INFO
     
@@ -147,12 +147,7 @@ def test_2d_ptycho_probe_power_constraint_ad(pytestconfig, generate_gold=False, 
         recon = task.get_data_to_cpu(name='object')
         
         if debug and not generate_gold:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(1, 2)
-            ax[0].imshow(abs(recon))       
-            ax[1].imshow(np.angle(recon))
-            plt.show()    
-    
+            tutils.plot_complex_image(recon)
         if generate_gold:
             tutils.save_gold_data(name, recon)
         else:

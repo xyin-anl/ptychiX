@@ -22,7 +22,7 @@ def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=Fa
 
     name = 'test_2d_ptycho_epie_mixed_states'
     
-    tutils.setup(name, cpu_only=True)
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
 
@@ -62,12 +62,8 @@ def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=Fa
 
     recon = reconstructor.variable_group.object.tensor.complex().detach().cpu().numpy()
     
-    if debug:
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(1, 2)
-        ax[0].imshow(np.abs(recon))
-        ax[1].imshow(np.angle(recon))
-        plt.show()
+    if debug and not generate_gold:
+        tutils.plot_complex_image(recon)
     if generate_gold:
         tutils.save_gold_data(name, recon)
     else:

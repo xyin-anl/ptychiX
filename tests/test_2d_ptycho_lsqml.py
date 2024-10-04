@@ -20,7 +20,7 @@ def test_2d_ptycho_lsqml(pytestconfig, generate_gold=False, debug=False, high_to
         
     name = 'test_2d_ptycho_lsqml'
     
-    tutils.setup(name, cpu_only=True)
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
 
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true')
     
@@ -68,7 +68,7 @@ def test_2d_ptycho_lsqml_poscorr(pytestconfig, generate_gold=False, debug=False,
         
     name = 'test_2d_ptycho_lsqml_poscorr'
     
-    tutils.setup(name, cpu_only=True)
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
 
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='nominal')
     
@@ -108,14 +108,7 @@ def test_2d_ptycho_lsqml_poscorr(pytestconfig, generate_gold=False, debug=False,
     recon = reconstructor.variable_group.object.tensor.complex().detach().cpu().numpy()
     
     if debug and not generate_gold:
-        import matplotlib.pyplot as plt
-        pos = reconstructor.variable_group.probe_positions.tensor.detach().cpu().numpy()
-        pos_true = tutils.load_tungsten_data(pos_type='true')[3]
-        plt.figure()
-        plt.plot(pos[:, 1], pos[:, 0], label='corrected')
-        plt.plot(pos_true[:, 1], pos_true[:, 0], label='true')
-        plt.show()
-    
+        tutils.plot_complex_image(recon)
     if generate_gold:
         tutils.save_gold_data(name, recon)
     else:
@@ -128,7 +121,7 @@ def test_2d_ptycho_lsqml_opr(pytestconfig, generate_gold=False, debug=False, hig
         
     name = 'test_2d_ptycho_lsqml_opr'
     
-    tutils.setup(name, cpu_only=True)
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
 
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true', additional_opr_modes=3)
     

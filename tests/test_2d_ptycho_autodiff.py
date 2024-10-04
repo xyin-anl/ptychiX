@@ -18,7 +18,7 @@ import test_utils as tutils
 def test_2d_ptycho_autodiff(generate_gold=False, debug=False):
     name = 'test_2d_ptycho_autodiff'
     
-    tutils.setup(name, cpu_only=True)
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
     
@@ -66,7 +66,7 @@ def test_2d_ptycho_autodiff(generate_gold=False, debug=False):
 def test_2d_ptycho_autodiff_opr(generate_gold=False, debug=False):
     name = 'test_2d_ptycho_autodiff_opr'
     
-    tutils.setup(name, cpu_only=True)
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
     dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=3)
     
