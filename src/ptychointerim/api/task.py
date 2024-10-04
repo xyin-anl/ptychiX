@@ -125,6 +125,8 @@ class PtychographyTask(Task):
             optimizer_params={'lr': self.probe_options.step_size},
             probe_power=self.probe_options.probe_power,
             probe_power_constraint_stride=self.probe_options.probe_power_constraint_stride,
+            orthogonalize_incoherent_modes=self.probe_options.orthogonalize_incoherent_modes,
+            orthogonalize_incoherent_modes_stride=self.probe_options.orthogonalize_incoherent_modes_stride,
             **self.probe_options.uninherited_fields()
         )
         
