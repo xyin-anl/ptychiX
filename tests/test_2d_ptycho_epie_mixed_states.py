@@ -4,13 +4,9 @@ import os
 import torch
 import numpy as np
 
-from ptychointerim.ptychotorch.data_structures import *
-from ptychointerim.ptychotorch.io_handles import PtychographyDataset
-from ptychointerim.forward_models import Ptychography2DForwardModel
-from ptychointerim.ptychotorch.utils import (get_suggested_object_size, set_default_complex_dtype, get_default_complex_dtype, 
-                            rescale_probe)
-from ptychointerim.ptychotorch.reconstructors import *
-from ptychointerim.metrics import MSELossOfSqrt
+import ptychointerim.api as api
+from ptychointerim.api.task import PtychographyTask
+from ptychointerim.ptychotorch.utils import get_suggested_object_size, get_default_complex_dtype, rescale_probe
 from ptychointerim.maths import orthogonalize_gs
 
 import test_utils as tutils
@@ -28,39 +24,38 @@ def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=Fa
 
     probe = orthogonalize_gs(torch.tensor(probe), (-1, -2), 1)
     probe = rescale_probe(probe[0], dataset.patterns)[None]
-        
-    object = Object2D(
-        data=torch.ones(get_suggested_object_size(positions_px, probe.shape[-2:], extra=100), dtype=get_default_complex_dtype()), 
-        pixel_size_m=pixel_size_m,
-        optimizable=True,
-        optimizer_class=torch.optim.SGD,
-        optimizer_params={'lr': 1e-1}
-    )
-
-    probe = Probe(
-        data=probe,
-        optimizable=True,
-        optimizer_class=torch.optim.SGD,
-        optimizer_params={'lr': 1e-1}
-    )
     
-    probe_positions = ProbePositions(
-        data=positions_px,
-        optimizable=True,
-        optimizer_class=torch.optim.SGD,
-        optimizer_params={'lr': 1000}
-    )
+    data = dataset.patterns
+    
+    options = api.PIEOptions()
+    
+    options.data_options.data = data
+    
+    options.object_options.initial_guess = torch.ones(get_suggested_object_size(positions_px, probe.shape[-2:], extra=100), dtype=get_default_complex_dtype())
+    options.object_options.pixel_size_m = pixel_size_m
+    options.object_options.optimizable = True
+    options.object_options.optimizer = api.Optimizers.SGD
+    options.object_options.step_size = 0.1
+    
+    options.probe_options.initial_guess = probe
+    options.probe_options.optimizable = True
+    options.probe_options.optimizer = api.Optimizers.SGD
+    options.probe_options.step_size = 0.1
 
-    reconstructor = EPIEReconstructor(
-        variable_group=Ptychography2DVariableGroup(object=object, probe=probe, probe_positions=probe_positions),
-        dataset=dataset,
-        batch_size=96,
-        n_epochs=32,
-    )
-    reconstructor.build()
-    reconstructor.run()
+    options.probe_position_options.position_x_m = positions_px[:, 1]
+    options.probe_position_options.position_y_m = positions_px[:, 0]
+    options.probe_position_options.pixel_size_m = 1
+    options.probe_position_options.optimizable = True
+    options.probe_position_options.optimizer = api.Optimizers.SGD
+    options.probe_position_options.step_size = 1000
+    
+    options.reconstructor_options.batch_size = 96
+    options.reconstructor_options.num_epochs = 32
+    
+    task = PtychographyTask(options)
+    task.run()
 
-    recon = reconstructor.variable_group.object.tensor.complex().detach().cpu().numpy()
+    recon = task.get_data_to_cpu('object', as_numpy=True)
     
     if debug and not generate_gold:
         tutils.plot_complex_image(recon)
