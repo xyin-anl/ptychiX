@@ -135,13 +135,15 @@ class PtychographyTask(Task):
         pos_x = to_tensor(self.position_options.position_x_m)
         data = torch.stack([pos_y, pos_x], dim=1)
         data = data / self.position_options.pixel_size_m
-
+        
         self.probe_positions = ProbePositions(
             data=data,
             optimizable=self.position_options.optimizable,
             optimization_plan=self.position_options.optimization_plan,
             optimizer_class=maps.optimizer_dict[self.position_options.optimizer],
             optimizer_params={'lr': self.position_options.step_size},
+            pixel_size_m=self.position_options.pixel_size_m,
+            update_magnitude_limit=self.position_options.update_magnitude_limit,
             **self.position_options.uninherited_fields()
         )
         
