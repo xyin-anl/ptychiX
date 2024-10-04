@@ -45,14 +45,15 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
 
     def run_post_update_hooks(self) -> None:
         with torch.no_grad():
-            if self.variable_group.object.optimizable:
+            if self.variable_group.object.optimization_enabled(self.current_epoch):
                 self.variable_group.object.post_update_hook()
 
-            if self.variable_group.probe.optimizable and self.variable_group.opr_mode_weights.optimizable:
-                    weights = self.variable_group.probe.post_update_hook(self.variable_group.opr_mode_weights)
-                    self.variable_group.opr_mode_weights.set_data(weights)
+            if self.variable_group.probe.optimization_enabled(self.current_epoch) \
+                    and self.variable_group.opr_mode_weights.optimization_enabled(self.current_epoch):
+                weights = self.variable_group.probe.post_update_hook(self.variable_group.opr_mode_weights)
+                self.variable_group.opr_mode_weights.set_data(weights)
 
-            if self.variable_group.probe_positions.optimizable:
+            if self.variable_group.probe_positions.optimization_enabled(self.current_epoch):
                 self.variable_group.probe_positions.post_update_hook()
                 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):

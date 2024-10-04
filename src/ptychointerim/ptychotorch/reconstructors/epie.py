@@ -80,20 +80,20 @@ class EPIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         psi_prime = prop.back_propagate_far_field(psi_prime)
 
         delta_o = None
-        if object_.optimizable:
+        if object_.optimization_enabled(self.current_epoch):
             delta_o_patches = p.conj() / (torch.abs(p) ** 2).sum(0).max()
             delta_o_patches = delta_o_patches * (psi_prime - psi)
             delta_o_patches = delta_o_patches.sum(axis=1)
             delta_o = place_patches_fourier_shift(torch.zeros_like(object_.data), positions + object_.center_pixel, delta_o_patches, op='add')
 
         delta_pos = None
-        if probe_positions.optimizable and object_.optimizable:
+        if probe_positions.optimization_enabled(self.current_epoch) and object_.optimizable:
             updated_obj_patches = obj_patches + delta_o_patches * object_.optimizer_params['lr']
             delta_pos = compute_positions_cross_correlation_update(
                 obj_patches, updated_obj_patches, indices, probe_positions.data, probe.data[0, 0])
 
         delta_p_all_modes = None
-        if probe.optimizable:
+        if probe.optimization_enabled(self.current_epoch):
             delta_p = obj_patches.conj() / (torch.abs(obj_patches) ** 2).max(-1).values.max(-1).values.view(-1, 1, 1)
             delta_p = delta_p[:, None] * (psi_prime - psi)
             delta_p = delta_p.mean(0)
