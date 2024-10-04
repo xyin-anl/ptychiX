@@ -73,7 +73,7 @@ def test_2d_ptycho_opt_plan(pytestconfig, generate_gold=False, debug=False, high
         # for _ in range(64):
         #     task.iterate(1)
         
-        recon = task.get_data_to_cpu(name='object')
+        recon = task.get_data_to_cpu(name='object', as_numpy=True)
         
         if debug and not generate_gold:
             tutils.plot_complex_image(recon)

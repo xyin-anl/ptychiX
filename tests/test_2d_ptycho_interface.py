@@ -68,17 +68,12 @@ def test_2d_ptycho_interface_lsqml(pytestconfig, generate_gold=False, debug=Fals
         # for _ in range(64):
         #     task.iterate(1)
         
-        recon = task.get_data_to_cpu(name='object')
+        recon = task.get_data_to_cpu(name='object', as_numpy=True)
         
         if debug and not generate_gold:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(1, 2)
-            ax[0].imshow(abs(recon))       
-            ax[1].imshow(np.angle(recon))
-            plt.show()    
-    
+            tutils.plot_complex_image(recon)   
         if generate_gold:
-            tutils.save_gold(name, recon)
+            tutils.save_gold_data(name, recon)
         else:
             tutils.run_comparison(name, recon, high_tol=high_tol)
     
@@ -140,12 +135,12 @@ def test_2d_ptycho_interface_ad(pytestconfig, generate_gold=False, debug=False, 
         # for _ in range(64):
         #     job.iterate(1)
         
-        recon = task.get_data_to_cpu(name='object')
+        recon = task.get_data_to_cpu(name='object', as_numpy=True)
         
         if debug and not generate_gold:
             tutils.plot_complex_image(recon)
         if generate_gold:
-            tutils.save_gold(name, recon)
+            tutils.save_gold_data(name, recon)
         else:
             tutils.run_comparison(name, recon, high_tol=high_tol)
     

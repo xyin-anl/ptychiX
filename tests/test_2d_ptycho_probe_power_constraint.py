@@ -70,7 +70,7 @@ def test_2d_ptycho_probe_power_constraint_lsqml(pytestconfig, generate_gold=Fals
         # for _ in range(64):
         #     task.iterate(1)
         
-        recon = task.get_data_to_cpu(name='object')
+        recon = task.get_data_to_cpu(name='object', as_numpy=True)
         
         if debug and not generate_gold:
             import matplotlib.pyplot as plt
@@ -144,7 +144,7 @@ def test_2d_ptycho_probe_power_constraint_ad(pytestconfig, generate_gold=False, 
         # for _ in range(64):
         #     task.iterate(1)
         
-        recon = task.get_data_to_cpu(name='object')
+        recon = task.get_data_to_cpu(name='object', as_numpy=True)
         
         if debug and not generate_gold:
             tutils.plot_complex_image(recon)
