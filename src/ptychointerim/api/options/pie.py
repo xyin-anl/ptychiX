@@ -12,7 +12,7 @@ import ptychointerim.api.enums as enums
 
 
 @dataclasses.dataclass
-class PIEPtychographyReconstructorOptions(base.ReconstructorOptions):
+class PIEReconstructorOptions(base.ReconstructorOptions):
         
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.PIE
@@ -25,60 +25,60 @@ class PIEPtychographyReconstructorOptions(base.ReconstructorOptions):
 
 
 @dataclasses.dataclass
-class PIEPtychographyObjectOptions(base.ObjectOptions):
+class PIEObjectOptions(base.ObjectOptions):
     pass
 
 
 @dataclasses.dataclass
-class PIEPtychographyProbeOptions(base.ProbeOptions):
+class PIEProbeOptions(base.ProbeOptions):
     pass
 
 
 @dataclasses.dataclass
-class PIEPtychographyProbePositionOptions(base.ProbePositionOptions):
+class PIEProbePositionOptions(base.ProbePositionOptions):
     pass
 
 
 @dataclasses.dataclass
-class PIEPtychographyOPRModeWeightsOptions(base.OPRModeWeightsOptions):
+class PIEOPRModeWeightsOptions(base.OPRModeWeightsOptions):
     pass
 
 
 @dataclasses.dataclass
-class PIEPtychographyOptions(task_options.PtychographyTaskOptions):
+class PIEOptions(task_options.PtychographyTaskOptions):
     
-    reconstructor_options: PIEPtychographyReconstructorOptions = field(default_factory=PIEPtychographyReconstructorOptions)
+    reconstructor_options: PIEReconstructorOptions = field(default_factory=PIEReconstructorOptions)
     
-    object_options: PIEPtychographyObjectOptions = field(default_factory=PIEPtychographyObjectOptions)
+    object_options: PIEObjectOptions = field(default_factory=PIEObjectOptions)
     
-    probe_options: PIEPtychographyProbeOptions = field(default_factory=PIEPtychographyProbeOptions)
+    probe_options: PIEProbeOptions = field(default_factory=PIEProbeOptions)
     
-    probe_position_options: PIEPtychographyProbePositionOptions = field(default_factory=PIEPtychographyProbePositionOptions)
+    probe_position_options: PIEProbePositionOptions = field(default_factory=PIEProbePositionOptions)
     
-    opr_mode_weight_options: PIEPtychographyOPRModeWeightsOptions = field(default_factory=PIEPtychographyOPRModeWeightsOptions)
+    opr_mode_weight_options: PIEOPRModeWeightsOptions = field(default_factory=PIEOPRModeWeightsOptions)
 
 
 @dataclasses.dataclass
-class EPIEPtychographyReconstructorOptions(PIEPtychographyReconstructorOptions):
+class EPIEReconstructorOptions(PIEReconstructorOptions):
     
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.EPIE
 
 
 @dataclasses.dataclass
-class EPIEPtychographyOptions(PIEPtychographyOptions):
+class EPIEOptions(PIEOptions):
 
-    reconstructor_options: EPIEPtychographyReconstructorOptions = field(default_factory=EPIEPtychographyReconstructorOptions)
+    reconstructor_options: EPIEReconstructorOptions = field(default_factory=EPIEReconstructorOptions)
 
 
 @dataclasses.dataclass
-class RPIEPtychographyReconstructorOptions(PIEPtychographyReconstructorOptions):
+class RPIEReconstructorOptions(PIEReconstructorOptions):
     
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.RPIE
 
 
 @dataclasses.dataclass
-class RPIEPtychographyOptions(PIEPtychographyOptions):
+class RPIEOptions(PIEOptions):
 
-    reconstructor_options: RPIEPtychographyReconstructorOptions = field(default_factory=RPIEPtychographyReconstructorOptions)
+    reconstructor_options: RPIEReconstructorOptions = field(default_factory=RPIEReconstructorOptions)

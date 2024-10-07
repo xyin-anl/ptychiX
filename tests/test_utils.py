@@ -37,7 +37,7 @@ def get_default_input_data_file_paths(name):
     return dp, para
 
 
-def setup(name, cpu_only=True, gpu_indices=()):
+def setup(name, cpu_only=True, gpu_indices=(0,)):
     torch.manual_seed(123)
     random.seed(123)
     np.random.seed(123)

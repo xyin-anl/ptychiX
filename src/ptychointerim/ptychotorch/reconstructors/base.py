@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Sequence
 
 import pandas as pd
 import torch
@@ -170,9 +170,12 @@ class IterativeReconstructor(Reconstructor):
                   'n_epochs': self.n_epochs})
         return d
                 
-    def run_minibatch(self, input_data, y_true, *args, **kwargs) -> None:
+    def run_minibatch(self, input_data: Sequence[Tensor], y_true: Tensor, *args, **kwargs) -> None:
         """
         Process batch, update variables, calculate loss, and update loss tracker.
+        
+        :param input_data: a list of input data. In many cases it is [indices].
+        :param y_true: the measured data.
         """
         raise NotImplementedError
     
@@ -220,6 +223,9 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
             probe = self.variable_group.probe
+            object_ = self.variable_group.object
+            
+            # Apply probe power constraint.
             if probe.probe_power > 0. \
                     and self.current_epoch >= probe.optimization_plan.start \
                     and (self.current_epoch - probe.optimization_plan.start) % probe.probe_power_constraint_stride == 0:
@@ -227,11 +233,18 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                     self.variable_group.object,
                     self.variable_group.opr_mode_weights
                 )
+            
+            # Apply incoherent mode orthogonality constraint.
             if probe.has_multiple_incoherent_modes \
                     and probe.orthogonalize_incoherent_modes \
                     and self.current_epoch >= probe.optimization_plan.start \
                     and (self.current_epoch - probe.optimization_plan.start) % probe.orthogonalize_incoherent_modes_stride == 0:
                 probe.constrain_incoherent_modes_orthogonality()
+                
+            # Apply object L1-norm constraint.
+            if object_.l1_norm_constraint_enabled(self.current_epoch):
+                object_.constrain_l1_norm()
+            
     
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
 

@@ -106,6 +106,8 @@ class PtychographyTask(Task):
             'optimization_plan': self.object_options.optimization_plan,
             'optimizer_class': maps.optimizer_dict[self.object_options.optimizer],
             'optimizer_params': {'lr': self.object_options.step_size},
+            'l1_norm_constraint_weight': self.object_options.l1_norm_constraint_weight,
+            'l1_norm_constraint_stride': self.object_options.l1_norm_constraint_stride,
         }
         kwargs.update(self.object_options.uninherited_fields())
         if self.object_options.type == api.ObjectTypes.MULTISLICE:
@@ -135,13 +137,15 @@ class PtychographyTask(Task):
         pos_x = to_tensor(self.position_options.position_x_m)
         data = torch.stack([pos_y, pos_x], dim=1)
         data = data / self.position_options.pixel_size_m
-
+        
         self.probe_positions = ProbePositions(
             data=data,
             optimizable=self.position_options.optimizable,
             optimization_plan=self.position_options.optimization_plan,
             optimizer_class=maps.optimizer_dict[self.position_options.optimizer],
             optimizer_params={'lr': self.position_options.step_size},
+            pixel_size_m=self.position_options.pixel_size_m,
+            update_magnitude_limit=self.position_options.update_magnitude_limit,
             **self.position_options.uninherited_fields()
         )
         
@@ -164,6 +168,7 @@ class PtychographyTask(Task):
                 optimization_plan=self.opr_mode_weight_options.optimization_plan,
                 optimizer_class=maps.optimizer_dict[self.opr_mode_weight_options.optimizer],
                 optimizer_params={'lr': self.opr_mode_weight_options.step_size},
+                optimize_eigenmode_weights=self.opr_mode_weight_options.optimize_eigenmode_weights,
                 optimize_intensity_variation=self.opr_mode_weight_options.optimize_intensity_variation,
                 **self.opr_mode_weight_options.uninherited_fields()
             )

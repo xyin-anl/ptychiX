@@ -189,12 +189,13 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             self._apply_object_update(alpha_o_i, delta_o_hat)
             
         if self.variable_group.probe.has_multiple_opr_modes \
-                and self.variable_group.opr_mode_weights.optimization_enabled(self.current_epoch) \
-                and self.variable_group.opr_mode_weights.optimize_eigenmode_weights:
+                and (self.variable_group.probe.optimization_enabled(self.current_epoch) \
+                    or (not self.variable_group.opr_mode_weights.is_dummy \
+                        and self.variable_group.opr_mode_weights.eigenmode_weight_optimization_enabled(self.current_epoch))):
             self.update_opr_probe_modes_and_weights(indices, chi, delta_p_i, delta_p_hat, obj_patches)
             
-        if self.variable_group.opr_mode_weights.optimization_enabled(self.current_epoch) \
-                and self.variable_group.opr_mode_weights.optimize_intensity_variation:
+        if not self.variable_group.opr_mode_weights.is_dummy \
+                and self.variable_group.opr_mode_weights.intensity_variation_optimization_enabled(self.current_epoch):
             delta_weights_int = self._calculate_intensity_variation_update_direction(indices, chi, obj_patches)
             self._apply_variable_intensity_updates(delta_weights_int)
         
@@ -432,7 +433,10 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             eigenmode_i = self.variable_group.probe.get_mode_and_opr_mode(mode=0, opr_mode=i_opr_mode)
             weights_i = self.variable_group.opr_mode_weights.get_weights(indices)[:, i_opr_mode]
             eigenmode_i, weights_i = self._update_first_eigenmode_and_weight(
-                residue_update, eigenmode_i, weights_i, relax_u, relax_v, obj_patches, chi)
+                residue_update, eigenmode_i, weights_i, relax_u, relax_v, obj_patches, chi,
+                update_eigenmode=self.variable_group.probe.optimization_enabled(self.current_epoch),
+                update_weights=self.variable_group.opr_mode_weights.eigenmode_weight_optimization_enabled(self.current_epoch)
+            )
             
             # Project residue on this eigenmode, then subtract it.
             residue_update = residue_update - pmath.project(residue_update, eigenmode_i) * eigenmode_i
@@ -440,10 +444,13 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             probe[i_opr_mode, 0, :, :] = eigenmode_i
             weights[indices, i_opr_mode] = weights_i
         
-        self.variable_group.probe.set_data(probe)
-        self.variable_group.opr_mode_weights.set_data(weights)
+        if self.variable_group.probe.optimization_enabled(self.current_epoch):
+            self.variable_group.probe.set_data(probe)
+        if self.variable_group.opr_mode_weights.eigenmode_weight_optimization_enabled(self.current_epoch):
+            self.variable_group.opr_mode_weights.set_data(weights)
             
-    def _update_first_eigenmode_and_weight(self, residue_update, eigenmode_i, weights_i, relax_u, relax_v, obj_patches, chi, eps=1e-5):
+    def _update_first_eigenmode_and_weight(self, residue_update, eigenmode_i, weights_i, relax_u, relax_v, obj_patches, chi, eps=1e-5,
+                                           update_eigenmode=True, update_weights=True):
         # Shape of residue_update:          (batch_size, h, w)
         # Shape of eigenmode_i:             (h, w)
         # Shape of weights_i:               (batch_size,)
@@ -453,21 +460,23 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         # FIXME: What happens when weights is zero!?
         proj = ((residue_update.conj() * eigenmode_i).real + weights_i[:, None, None]) / pmath.norm(weights_i) ** 2
 
-        # Shape of eigenmode_update:        (h, w)
-        eigenmode_update = torch.mean(residue_update * torch.mean(proj, dim=(-2, -1), keepdim=True), dim=0)
-        eigenmode_i = eigenmode_i + relax_u * eigenmode_update / (pmath.mnorm(eigenmode_update.view(-1)) + eps)
-        eigenmode_i = eigenmode_i / pmath.mnorm(eigenmode_i.view(-1) + eps)
+        if update_eigenmode:
+            # Shape of eigenmode_update:        (h, w)
+            eigenmode_update = torch.mean(residue_update * torch.mean(proj, dim=(-2, -1), keepdim=True), dim=0)
+            eigenmode_i = eigenmode_i + relax_u * eigenmode_update / (pmath.mnorm(eigenmode_update.view(-1)) + eps)
+            eigenmode_i = eigenmode_i / pmath.mnorm(eigenmode_i.view(-1) + eps)
         
-        # Update weights using Eq. 23a.
-        # Shape of psi:                     (batch_size, h, w)
-        psi = eigenmode_i * obj_patches
-        # The denominator can get smaller and smaller as eigenmode_i goes down. 
-        # Weight update needs to be clamped. 
-        denom = torch.mean((torch.abs(psi) ** 2), dim=(-2, -1))
-        num = torch.mean((chi[:, 0, :, :] * psi.conj()).real, dim=(-2, -1))
-        weight_update = num / (denom + 0.1 * torch.mean(denom))
-        weight_update = weight_update.clamp(max=10)
-        weights_i = weights_i + relax_v * weight_update
+        if update_weights:
+            # Update weights using Eq. 23a.
+            # Shape of psi:                     (batch_size, h, w)
+            psi = eigenmode_i * obj_patches
+            # The denominator can get smaller and smaller as eigenmode_i goes down. 
+            # Weight update needs to be clamped. 
+            denom = torch.mean((torch.abs(psi) ** 2), dim=(-2, -1))
+            num = torch.mean((chi[:, 0, :, :] * psi.conj()).real, dim=(-2, -1))
+            weight_update = num / (denom + 0.1 * torch.mean(denom))
+            weight_update = weight_update.clamp(max=10)
+            weights_i = weights_i + relax_v * weight_update
                 
         return eigenmode_i, weights_i
     

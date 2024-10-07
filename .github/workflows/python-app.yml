@@ -9,6 +9,11 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  PTYCHO_CI_DATA_DIR: /local/ptycho_aux_data/ci_data
+  CONDA_EXE: /local/actions-env/miniconda3/condabin/conda
+  CONDA_ROOT: /local/actions-env/miniconda3/
+
 permissions:
   contents: read
 
@@ -25,23 +30,32 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Create environment
+      id: create_env
       run: |
-        conda create --quiet --yes --force -n ci_py311 python=3.11
+        export ENVNAME=ci_py311_$(date +%s)
+        $CONDA_EXE create --quiet --yes --force -n $ENVNAME --clone ci_py311_base
+        echo "ENVNAME=$ENVNAME" >> $GITHUB_ENV
       
     - name: Install dependencies
       run: |
-        conda env list
-        conda activate ci_py311
+        $CONDA_EXE env list
+        source $CONDA_ROOT/bin/activate $ENVNAME
         python -m pip install --upgrade pip
         pip install pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip install -e .
 
     - name: List build environment
-      run: conda list -n ci_py311
+      run: $CONDA_EXE list -n $ENVNAME
 
     - name: Test with pytest
       run: |
-        export PTYCHO_CI_DATA_DIR="/local/ptycho_aux_data/ci_data"
+        source $CONDA_ROOT/bin/activate $ENVNAME
+        echo $(which python)
         cd tests
         pytest -s --high-tol
+
+    - name: Remove environment
+      run: |
+        $CONDA_EXE remove -n $ENVNAME --all --yes --force
+  

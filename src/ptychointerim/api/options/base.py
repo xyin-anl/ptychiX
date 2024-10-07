@@ -68,30 +68,24 @@ class ObjectOptions(ParameterOptions):
 
     pixel_size_m: float = 1.0
     """The pixel size in meters."""
+    
+    l1_norm_constraint_weight: float = 0
+    """The weight of the L1 norm constraint. Disabled if equal or less than 0."""
+    
+    l1_norm_constraint_stride: int = 1
+    """The number of epochs between L1 norm constraint updates."""
 
 
 @dataclasses.dataclass
 class ProbeOptions(ParameterOptions):
     """
     The probe configuration.
-
-    The update behavior of eigenmodes (the second and following OPR modes) is currently
-    different between LSQMLReconstructor and other reconstructors.
-
-    LSQMLReconstructor:
-        - The first OPR mode is always optimized as long as `optimizable == True`.
-        - The eigenmodes are optimized only when
-            - The probe has multiple OPR modes;
-            - `optimizable == True`;
-            - `OPRModeWeightsConfig` is given;
-            - `OPRModeWeightsConfig` is optimizable.
-
-    Other reconstructors:
-        - The first OPR mode is always optimized as long as `optimizable == True`.
-        - The eigenmodes are optimized when
-            - The probe has multiple OPR modes;
-            - `optimizable == True`;
-            - `OPRModeWeightsConfig` is given.
+    
+    The first OPR mode of all incoherent modes are always optimized aslong as 
+    `optimizable` is `True`. In addition to thtat, eigenmodes (of the first 
+    incoherent mode) are optimized when:
+    - The probe has multiple OPR modes;
+    - `OPRModeWeightsConfig` is given.
     """
 
     initial_guess: Union[ndarray, Tensor] = None
@@ -146,25 +140,22 @@ class OPRModeWeightsOptions(ParameterOptions):
     - a (n_opr_modes,) array that gives the weights of each OPR mode. These weights
         will be duplicated for every point.
     """
+    
+    optimize_eigenmode_weights: bool = True
+    """
+    Whether to optimize eigenmode weights, i.e., the weights of the second and
+    following OPR modes.
+    
+    At least one of `optimize_eigenmode_weights` and `optimize_intensity_variation`
+    should be set to `True` if `optimizable` is `True`.
+    """
 
     optimize_intensity_variation: bool = False
     """
     Whether to optimize intensity variation, i.e., the weight of the first OPR mode.
-
-    The behavior of this parameter is currently different between LSQMLReconstructor and
-    other reconstructors.
-
-    LSQMLReconstructor:
-        - If `optimizable == True` but `optimize_intensity_variation == False`: only
-            the weights of eigenmodes (2nd and following OPR modes) are optimized.
-        - If `optimizable == True` and `optimize_intensity_variation == True`: both
-            the weights of eigenmodes and the weight of the first OPR mode are optimized.
-        - If `optimizable == False`: nothing is optimized.
-    Other reconstructors:
-        - This parameter is ignored.
-        - If `optimizable == True`: both the weights of eigenmodes and the weight of 
-            the first OPR mode are optimized. 
-        - If `optimizable == False`: nothing is optimized.
+    
+    At least one of `optimize_eigenmode_weights` and `optimize_intensity_variation`
+    should be set to `True` if `optimizable` is `True`.
     """
 
     def check(self):

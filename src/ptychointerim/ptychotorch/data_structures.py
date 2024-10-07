@@ -71,6 +71,7 @@ class ReconstructParameter(Module):
     optimizable: bool = True
     optimization_plan: api.OptimizationPlan = None
     optimizer = None
+    is_dummy = False
     
     def __init__(self, 
                  shape: Optional[Tuple[int, ...]] = None, 
@@ -206,17 +207,30 @@ class ReconstructParameter(Module):
     
 
 class DummyVariable(ReconstructParameter):
+    
+    is_dummy = True
+    
     def __init__(self, *args, **kwargs):
         super().__init__(shape=(1,), optimizable=False, *args, **kwargs)
+        
+    def optimization_enabled(self, *args, **kwargs):
+        return False
 
 
 class Object(ReconstructParameter):
     
     pixel_size_m: float = 1.0
     
-    def __init__(self, *args, pixel_size_m: float = 1.0, name='object', **kwargs):
+    def __init__(self, 
+                 pixel_size_m: float = 1.0, 
+                 name: str = 'object', 
+                 l1_norm_constraint_weight: float = 0, 
+                 l1_norm_constraint_stride: int = 1,
+                 *args, **kwargs):
         super().__init__(*args, name=name, is_complex=True, **kwargs)
         self.pixel_size_m = pixel_size_m
+        self.l1_norm_constraint_weight = l1_norm_constraint_weight
+        self.l1_norm_constraint_stride = l1_norm_constraint_stride
         center_pixel = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
         
         self.register_buffer('center_pixel', center_pixel)
@@ -226,6 +240,30 @@ class Object(ReconstructParameter):
     
     def place_patches(self, positions, patches, *args, **kwargs):
         raise NotImplementedError
+    
+    def l1_norm_constraint_enabled(self, current_epoch: int):
+        if self.l1_norm_constraint_weight > 0 \
+                and self.optimization_enabled(current_epoch) \
+                and (current_epoch - self.optimization_plan.start) % self.l1_norm_constraint_stride == 0:
+            return True
+        else:
+            return False
+    
+    def constrain_l1_norm(self):
+        data = self.data
+        l1_grad = torch.sgn(data)
+        data = data - self.l1_norm_constraint_weight * l1_grad
+        self.set_data(data)
+        logging.debug("L1 norm constraint applied to object.")
+        
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'pixel_size_m': self.pixel_size_m,
+            'l1_norm_constraint_weight': self.l1_norm_constraint_weight,
+            'l1_norm_constraint_stride': self.l1_norm_constraint_stride
+        })
+        return d
         
 
 class Object2D(Object):
@@ -339,6 +377,13 @@ class MultisliceObject(Object2D):
         image = torch.zeros(self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device)
         image = ip.place_patches_fourier_shift(image, positions, patches, op='add')
         return image
+    
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'slice_spacings_m': self.slice_spacings_m,
+        })
+        return d
         
         
 class Probe(ReconstructParameter):
@@ -656,6 +701,15 @@ class Probe(ReconstructParameter):
                     ] = torch.angle(data[i_opr_mode, i_mode, :, :]).detach().cpu().numpy()
         tifffile.imsave(fname + '_mag.tif', mag_img)
         tifffile.imsave(fname + '_phase.tif', phase_img)
+        
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'eigenmode_update_relaxation': self.eigenmode_update_relaxation,
+            'probe_power': self.probe_power,
+            'orthogonalize_incoherent_modes': self.orthogonalize_incoherent_modes,
+        })
+        return d
                 
     
     
@@ -702,6 +756,26 @@ class OPRModeWeights(ReconstructParameter):
     def get_weights(self, indices: Union[tuple[int, ...], slice]) -> Tensor:
         return self.data[indices]
     
+    def optimization_enabled(self, epoch: int):
+        enabled = super().optimization_enabled(epoch)
+        return enabled and (self.optimize_eigenmode_weights or self.optimize_intensity_variation)
+    
+    def eigenmode_weight_optimization_enabled(self, epoch: int):
+        enabled = super().optimization_enabled(epoch)
+        return enabled and self.optimize_eigenmode_weights
+    
+    def intensity_variation_optimization_enabled(self, epoch: int):
+        enabled = super().optimization_enabled(epoch)
+        return enabled and self.optimize_intensity_variation
+    
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'update_relaxation': self.update_relaxation,
+            'optimize_eigenmode_weights': self.optimize_eigenmode_weights,
+            'optimize_intensity_variation': self.optimize_intensity_variation
+        })
+    
 
 class ProbePositions(ReconstructParameter):
     
@@ -721,6 +795,14 @@ class ProbePositions(ReconstructParameter):
         
     def get_positions_in_physical_unit(self, unit: str = 'm'):
         return self.tensor * self.pixel_size_m * self.conversion_factor_dict[unit]
+    
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'pixel_size_m': self.pixel_size_m,
+            'update_magnitude_limit': self.update_magnitude_limit,
+        })
+        return d
 
 
 @dataclasses.dataclass
