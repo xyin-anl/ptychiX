@@ -168,6 +168,7 @@ class PtychographyTask(Task):
                 optimization_plan=self.opr_mode_weight_options.optimization_plan,
                 optimizer_class=maps.optimizer_dict[self.opr_mode_weight_options.optimizer],
                 optimizer_params={'lr': self.opr_mode_weight_options.step_size},
+                optimize_eigenmode_weights=self.opr_mode_weight_options.optimize_eigenmode_weights,
                 optimize_intensity_variation=self.opr_mode_weight_options.optimize_intensity_variation,
                 **self.opr_mode_weight_options.uninherited_fields()
             )

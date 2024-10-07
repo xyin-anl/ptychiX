@@ -140,25 +140,22 @@ class OPRModeWeightsOptions(ParameterOptions):
     - a (n_opr_modes,) array that gives the weights of each OPR mode. These weights
         will be duplicated for every point.
     """
+    
+    optimize_eigenmode_weights: bool = True
+    """
+    Whether to optimize eigenmode weights, i.e., the weights of the second and
+    following OPR modes.
+    
+    At least one of `optimize_eigenmode_weights` and `optimize_intensity_variation`
+    should be set to `True` if `optimizable` is `True`.
+    """
 
     optimize_intensity_variation: bool = False
     """
     Whether to optimize intensity variation, i.e., the weight of the first OPR mode.
-
-    The behavior of this parameter is currently different between LSQMLReconstructor and
-    other reconstructors.
-
-    LSQMLReconstructor:
-        - If `optimizable == True` but `optimize_intensity_variation == False`: only
-            the weights of eigenmodes (2nd and following OPR modes) are optimized.
-        - If `optimizable == True` and `optimize_intensity_variation == True`: both
-            the weights of eigenmodes and the weight of the first OPR mode are optimized.
-        - If `optimizable == False`: nothing is optimized.
-    Other reconstructors:
-        - This parameter is ignored.
-        - If `optimizable == True`: both the weights of eigenmodes and the weight of 
-            the first OPR mode are optimized. 
-        - If `optimizable == False`: nothing is optimized.
+    
+    At least one of `optimize_eigenmode_weights` and `optimize_intensity_variation`
+    should be set to `True` if `optimizable` is `True`.
     """
 
     def check(self):

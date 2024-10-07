@@ -190,11 +190,12 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             
         if self.variable_group.probe.has_multiple_opr_modes \
                 and (self.variable_group.probe.optimization_enabled(self.current_epoch) \
-                    or self.variable_group.opr_mode_weights.optimization_enabled(self.current_epoch)):
+                    or (not self.variable_group.opr_mode_weights.is_dummy \
+                        and self.variable_group.opr_mode_weights.eigenmode_weight_optimization_enabled(self.current_epoch))):
             self.update_opr_probe_modes_and_weights(indices, chi, delta_p_i, delta_p_hat, obj_patches)
             
-        if self.variable_group.opr_mode_weights.optimization_enabled(self.current_epoch) \
-                and self.variable_group.opr_mode_weights.optimize_intensity_variation:
+        if not self.variable_group.opr_mode_weights.is_dummy \
+                and self.variable_group.opr_mode_weights.intensity_variation_optimization_enabled(self.current_epoch):
             delta_weights_int = self._calculate_intensity_variation_update_direction(indices, chi, obj_patches)
             self._apply_variable_intensity_updates(delta_weights_int)
         
@@ -434,7 +435,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             eigenmode_i, weights_i = self._update_first_eigenmode_and_weight(
                 residue_update, eigenmode_i, weights_i, relax_u, relax_v, obj_patches, chi,
                 update_eigenmode=self.variable_group.probe.optimization_enabled(self.current_epoch),
-                update_weights=self.variable_group.opr_mode_weights.optimization_enabled(self.current_epoch)
+                update_weights=self.variable_group.opr_mode_weights.eigenmode_weight_optimization_enabled(self.current_epoch)
             )
             
             # Project residue on this eigenmode, then subtract it.
@@ -445,7 +446,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         
         if self.variable_group.probe.optimization_enabled(self.current_epoch):
             self.variable_group.probe.set_data(probe)
-        if self.variable_group.opr_mode_weights.optimization_enabled(self.current_epoch):
+        if self.variable_group.opr_mode_weights.eigenmode_weight_optimization_enabled(self.current_epoch):
             self.variable_group.opr_mode_weights.set_data(weights)
             
     def _update_first_eigenmode_and_weight(self, residue_update, eigenmode_i, weights_i, relax_u, relax_v, obj_patches, chi, eps=1e-5,

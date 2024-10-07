@@ -127,9 +127,8 @@ class Ptychography2DForwardModel(ForwardModel):
         else:
             return returns
         
-    def post_differentiation_hook(self, *data_and_label, **kwargs):
-        patterns = data_and_label[-1]
-        self.scale_gradients(patterns)
+    def post_differentiation_hook(self, indices, y_true, **kwargs):
+        self.scale_gradients(y_true)
     
     def scale_gradients(self, patterns):
         """

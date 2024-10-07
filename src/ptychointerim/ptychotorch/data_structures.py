@@ -71,6 +71,7 @@ class ReconstructParameter(Module):
     optimizable: bool = True
     optimization_plan: api.OptimizationPlan = None
     optimizer = None
+    is_dummy = False
     
     def __init__(self, 
                  shape: Optional[Tuple[int, ...]] = None, 
@@ -206,8 +207,14 @@ class ReconstructParameter(Module):
     
 
 class DummyVariable(ReconstructParameter):
+    
+    is_dummy = True
+    
     def __init__(self, *args, **kwargs):
         super().__init__(shape=(1,), optimizable=False, *args, **kwargs)
+        
+    def optimization_enabled(self, *args, **kwargs):
+        return False
 
 
 class Object(ReconstructParameter):
@@ -748,6 +755,18 @@ class OPRModeWeights(ReconstructParameter):
         
     def get_weights(self, indices: Union[tuple[int, ...], slice]) -> Tensor:
         return self.data[indices]
+    
+    def optimization_enabled(self, epoch: int):
+        enabled = super().optimization_enabled(epoch)
+        return enabled and (self.optimize_eigenmode_weights or self.optimize_intensity_variation)
+    
+    def eigenmode_weight_optimization_enabled(self, epoch: int):
+        enabled = super().optimization_enabled(epoch)
+        return enabled and self.optimize_eigenmode_weights
+    
+    def intensity_variation_optimization_enabled(self, epoch: int):
+        enabled = super().optimization_enabled(epoch)
+        return enabled and self.optimize_intensity_variation
     
     def get_config_dict(self):
         d = super().get_config_dict()

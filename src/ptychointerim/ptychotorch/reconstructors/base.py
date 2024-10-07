@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Sequence
 
 import pandas as pd
 import torch
@@ -170,9 +170,12 @@ class IterativeReconstructor(Reconstructor):
                   'n_epochs': self.n_epochs})
         return d
                 
-    def run_minibatch(self, input_data, y_true, *args, **kwargs) -> None:
+    def run_minibatch(self, input_data: Sequence[Tensor], y_true: Tensor, *args, **kwargs) -> None:
         """
         Process batch, update variables, calculate loss, and update loss tracker.
+        
+        :param input_data: a list of input data. In many cases it is [indices].
+        :param y_true: the measured data.
         """
         raise NotImplementedError
     

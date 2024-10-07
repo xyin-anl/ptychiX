@@ -52,12 +52,15 @@ class AutodiffReconstructor(IterativeReconstructor):
             self.forward_model = torch.nn.DataParallel(self.forward_model)
             self.forward_model.to(torch.get_default_device())
             
+    def run_post_differentiation_hooks(self, input_data, y_true):
+        self.get_forward_model().post_differentiation_hook(*input_data, y_true)
+            
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
         y_pred = self.forward_model(*input_data)
         batch_loss = self.loss_function(y_pred, y_true)
 
         batch_loss.backward()
-        self.get_forward_model().post_differentiation_hook(*input_data, y_true)
+        self.run_post_differentiation_hooks(input_data, y_true)
         self.step_all_optimizers()
         self.forward_model.zero_grad()
         self.run_post_update_hooks()
