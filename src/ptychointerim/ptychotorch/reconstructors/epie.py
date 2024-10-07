@@ -67,14 +67,10 @@ class EPIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         psi = self.forward_model.intermediate_variables['psi']
         psi_far = self.forward_model.intermediate_variables['psi_far']
 
-        # Get psi_prime
         p = probe.get_opr_mode(0)
-        I_total = (torch.abs(probe.get_opr_mode(0)) ** 2).sum()
 
-        sqrt_power_fractions = (((torch.abs(p) ** 2).sum((1, 2)) / I_total ) ** 0.5)
-        psi_prime = psi_far / torch.abs(psi_far) * torch.sqrt(y_true + 1e-7)[:, None] 
-        psi_prime = psi_prime * sqrt_power_fractions[None, :, None, None]
-
+        psi_prime = psi_far / ((psi_far.abs() ** 2).sum(1, keepdims=True).sqrt() + 1e-7) \
+            * torch.sqrt(y_true + 1e-7)[:, None]
         # Do not swap magnitude for bad pixels.
         psi_prime = torch.where(valid_pixel_mask.repeat(psi_prime.shape[0], probe.n_modes, 1, 1), psi_prime, psi_far)
         psi_prime = prop.back_propagate_far_field(psi_prime)
@@ -83,7 +79,7 @@ class EPIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         if object_.optimization_enabled(self.current_epoch):
             delta_o_patches = p.conj() / (torch.abs(p) ** 2).sum(0).max()
             delta_o_patches = delta_o_patches * (psi_prime - psi)
-            delta_o_patches = delta_o_patches.sum(axis=1)
+            delta_o_patches = delta_o_patches.sum(1)
             delta_o = place_patches_fourier_shift(torch.zeros_like(object_.data), positions + object_.center_pixel, delta_o_patches, op='add')
 
         delta_pos = None
