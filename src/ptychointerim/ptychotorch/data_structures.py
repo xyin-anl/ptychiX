@@ -249,6 +249,15 @@ class Object(ReconstructParameter):
         self.set_data(data)
         logging.debug("L1 norm constraint applied to object.")
         
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'pixel_size_m': self.pixel_size_m,
+            'l1_norm_constraint_weight': self.l1_norm_constraint_weight,
+            'l1_norm_constraint_stride': self.l1_norm_constraint_stride
+        })
+        return d
+        
 
 class Object2D(Object):
     
@@ -361,6 +370,13 @@ class MultisliceObject(Object2D):
         image = torch.zeros(self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device)
         image = ip.place_patches_fourier_shift(image, positions, patches, op='add')
         return image
+    
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'slice_spacings_m': self.slice_spacings_m,
+        })
+        return d
         
         
 class Probe(ReconstructParameter):
@@ -678,6 +694,15 @@ class Probe(ReconstructParameter):
                     ] = torch.angle(data[i_opr_mode, i_mode, :, :]).detach().cpu().numpy()
         tifffile.imsave(fname + '_mag.tif', mag_img)
         tifffile.imsave(fname + '_phase.tif', phase_img)
+        
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'eigenmode_update_relaxation': self.eigenmode_update_relaxation,
+            'probe_power': self.probe_power,
+            'orthogonalize_incoherent_modes': self.orthogonalize_incoherent_modes,
+        })
+        return d
                 
     
     
@@ -724,6 +749,14 @@ class OPRModeWeights(ReconstructParameter):
     def get_weights(self, indices: Union[tuple[int, ...], slice]) -> Tensor:
         return self.data[indices]
     
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'update_relaxation': self.update_relaxation,
+            'optimize_eigenmode_weights': self.optimize_eigenmode_weights,
+            'optimize_intensity_variation': self.optimize_intensity_variation
+        })
+    
 
 class ProbePositions(ReconstructParameter):
     
@@ -743,6 +776,14 @@ class ProbePositions(ReconstructParameter):
         
     def get_positions_in_physical_unit(self, unit: str = 'm'):
         return self.tensor * self.pixel_size_m * self.conversion_factor_dict[unit]
+    
+    def get_config_dict(self):
+        d = super().get_config_dict()
+        d.update({
+            'pixel_size_m': self.pixel_size_m,
+            'update_magnitude_limit': self.update_magnitude_limit,
+        })
+        return d
 
 
 @dataclasses.dataclass
