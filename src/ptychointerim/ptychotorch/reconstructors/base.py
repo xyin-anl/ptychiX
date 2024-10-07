@@ -220,6 +220,9 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
             probe = self.variable_group.probe
+            object_ = self.variable_group.object
+            
+            # Apply probe power constraint.
             if probe.probe_power > 0. \
                     and self.current_epoch >= probe.optimization_plan.start \
                     and (self.current_epoch - probe.optimization_plan.start) % probe.probe_power_constraint_stride == 0:
@@ -227,11 +230,18 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                     self.variable_group.object,
                     self.variable_group.opr_mode_weights
                 )
+            
+            # Apply incoherent mode orthogonality constraint.
             if probe.has_multiple_incoherent_modes \
                     and probe.orthogonalize_incoherent_modes \
                     and self.current_epoch >= probe.optimization_plan.start \
                     and (self.current_epoch - probe.optimization_plan.start) % probe.orthogonalize_incoherent_modes_stride == 0:
                 probe.constrain_incoherent_modes_orthogonality()
+                
+            # Apply object L1-norm constraint.
+            if object_.l1_norm_constraint_enabled(self.current_epoch):
+                object_.constrain_l1_norm()
+            
     
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
 

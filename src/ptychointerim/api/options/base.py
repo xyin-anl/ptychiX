@@ -68,6 +68,12 @@ class ObjectOptions(ParameterOptions):
 
     pixel_size_m: float = 1.0
     """The pixel size in meters."""
+    
+    l1_norm_constraint_weight: float = 0
+    """The weight of the L1 norm constraint. Disabled if equal or less than 0."""
+    
+    l1_norm_constraint_stride: int = 1
+    """The number of epochs between L1 norm constraint updates."""
 
 
 @dataclasses.dataclass

@@ -214,9 +214,16 @@ class Object(ReconstructParameter):
     
     pixel_size_m: float = 1.0
     
-    def __init__(self, *args, pixel_size_m: float = 1.0, name='object', **kwargs):
+    def __init__(self, 
+                 pixel_size_m: float = 1.0, 
+                 name: str = 'object', 
+                 l1_norm_constraint_weight: float = 0, 
+                 l1_norm_constraint_stride: int = 1,
+                 *args, **kwargs):
         super().__init__(*args, name=name, is_complex=True, **kwargs)
         self.pixel_size_m = pixel_size_m
+        self.l1_norm_constraint_weight = l1_norm_constraint_weight
+        self.l1_norm_constraint_stride = l1_norm_constraint_stride
         center_pixel = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
         
         self.register_buffer('center_pixel', center_pixel)
@@ -226,6 +233,21 @@ class Object(ReconstructParameter):
     
     def place_patches(self, positions, patches, *args, **kwargs):
         raise NotImplementedError
+    
+    def l1_norm_constraint_enabled(self, current_epoch: int):
+        if self.l1_norm_constraint_weight > 0 \
+                and self.optimization_enabled(current_epoch) \
+                and (current_epoch - self.optimization_plan.start) % self.l1_norm_constraint_stride == 0:
+            return True
+        else:
+            return False
+    
+    def constrain_l1_norm(self):
+        data = self.data
+        l1_grad = torch.sgn(data)
+        data = data - self.l1_norm_constraint_weight * l1_grad
+        self.set_data(data)
+        logging.debug("L1 norm constraint applied to object.")
         
 
 class Object2D(Object):
