@@ -80,24 +80,12 @@ class ObjectOptions(ParameterOptions):
 class ProbeOptions(ParameterOptions):
     """
     The probe configuration.
-
-    The update behavior of eigenmodes (the second and following OPR modes) is currently
-    different between LSQMLReconstructor and other reconstructors.
-
-    LSQMLReconstructor:
-        - The first OPR mode is always optimized as long as `optimizable == True`.
-        - The eigenmodes are optimized only when
-            - The probe has multiple OPR modes;
-            - `optimizable == True`;
-            - `OPRModeWeightsConfig` is given;
-            - `OPRModeWeightsConfig` is optimizable.
-
-    Other reconstructors:
-        - The first OPR mode is always optimized as long as `optimizable == True`.
-        - The eigenmodes are optimized when
-            - The probe has multiple OPR modes;
-            - `optimizable == True`;
-            - `OPRModeWeightsConfig` is given.
+    
+    The first OPR mode of all incoherent modes are always optimized aslong as 
+    `optimizable` is `True`. In addition to thtat, eigenmodes (of the first 
+    incoherent mode) are optimized when:
+    - The probe has multiple OPR modes;
+    - `OPRModeWeightsConfig` is given.
     """
 
     initial_guess: Union[ndarray, Tensor] = None
