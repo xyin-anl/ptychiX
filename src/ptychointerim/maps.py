@@ -2,7 +2,13 @@ import torch
 
 from ptychointerim.api.enums import *
 from ptychointerim.metrics import MSELossOfSqrt
-from ptychointerim.ptychotorch.reconstructors import AutodiffPtychographyReconstructor, EPIEReconstructor, LSQMLReconstructor
+from ptychointerim.ptychotorch.reconstructors import (
+    AutodiffPtychographyReconstructor,
+    PIEReconstructor,
+    EPIEReconstructor,
+    RPIEReconstructor,
+    LSQMLReconstructor,
+)
 from ptychointerim.ptychotorch.reconstructors.base import Reconstructor
 
 
@@ -35,7 +41,9 @@ reconstructor_dict = {
     Reconstructors.base: Reconstructor,
     Reconstructors.LSQML: LSQMLReconstructor,
     Reconstructors.AD_PTYCHO: AutodiffPtychographyReconstructor,
-    Reconstructors.PIE: EPIEReconstructor
+    Reconstructors.PIE: PIEReconstructor,
+    Reconstructors.EPIE: EPIEReconstructor,
+    Reconstructors.RPIE: RPIEReconstructor
 }
 
 noise_model_dict = {

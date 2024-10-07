@@ -26,6 +26,8 @@ class Reconstructors(StrEnum):
     LSQML = auto()
     AD_PTYCHO = auto()
     PIE = auto()
+    EPIE = auto()
+    RPIE = auto()
     
     
 class ObjectTypes(StrEnum):
