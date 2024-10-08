@@ -20,7 +20,7 @@ def test_2d_ptycho_epie(generate_gold=False, debug=False):
     probe = probe[:, [0], :, :]
     data = dataset.patterns
     
-    options = api.PIEOptions()
+    options = api.EPIEOptions()
     
     options.data_options.data = data
     
@@ -42,6 +42,8 @@ def test_2d_ptycho_epie(generate_gold=False, debug=False):
     
     options.reconstructor_options.batch_size = 96
     options.reconstructor_options.num_epochs = 32
+    options.reconstructor_options.object_alpha = 1
+    options.reconstructor_options.probe_alpha = 1
     
     task = PtychographyTask(options)
     task.run()

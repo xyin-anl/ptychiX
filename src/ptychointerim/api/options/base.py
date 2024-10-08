@@ -10,16 +10,17 @@ from torch import Tensor
 import ptychointerim.api.enums as enums
 from ptychointerim.api.options.plan import OptimizationPlan
 
-
 @dataclasses.dataclass
 class Options:
         
     def uninherited_fields(self) -> dict:
         """
-        Find fields that are not inherited from the parent class, and return
-        them as a dictionary. 
+        Find fields that are not inherited from the generic options parent 
+        class (typically the direct subclass of `ParameterOptions` or 
+        `Options`), and return them as a dictionary. 
         """
-        parent_class = self.__class__.__bases__[0]
+        parent_classes = [ObjectOptions, ProbeOptions, ReconstructorOptions, ProbePositionOptions, OPRModeWeightsOptions]
+        parent_class = [parent_class for parent_class in parent_classes if isinstance(self, parent_class)][0]
         if parent_class == object:
             return self.__dict__
         parent_fields = [f.name for f in dataclasses.fields(parent_class)]
@@ -50,7 +51,14 @@ class ParameterOptions(Options):
 
     step_size: float = 1
     """
-    Step size of the optimizer.
+    Step size of the optimizer. This will be the learning rate `lr` in 
+    `optimizer_params`.
+    """
+
+    optimizer_params: dict = dataclasses.field(default_factory=dict)
+    """
+    Settings for the optimizer of the parameter. For additional information on
+    optimizer parameters, see: https://pytorch.org/docs/stable/optim.html
     """
 
 
