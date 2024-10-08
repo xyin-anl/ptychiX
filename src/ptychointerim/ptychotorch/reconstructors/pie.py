@@ -21,7 +21,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
                  batch_size: int = 1,
                  n_epochs: int = 100,
                  object_alpha: float = 0.1,
-                 probe_alpha: float= 0.1,
+                 probe_alpha: float = 0.1,
                  *args, **kwargs
     ) -> None:
         super().__init__(
