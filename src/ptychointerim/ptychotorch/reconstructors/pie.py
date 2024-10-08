@@ -14,6 +14,18 @@ from ptychointerim.forward_models import Ptychography2DForwardModel
 
 
 class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
+    """
+    The ptychographic iterative engine (PIE), as described in: 
+    
+    Andrew Maiden, Daniel Johnson, and Peng Li, "Further improvements to the 
+    ptychographical iterative engine," Optica 4, 736-745 (2017)
+
+    Object and probe updates are calculated using the formulas in table 1 of
+    Maiden (2017).
+
+    The `step_size` parameter is equivalent to gamma in Eq. 22 of Maiden (2017)
+    when `optimizer == SGD`.
+    """
 
     def __init__(self,
                  variable_group: Ptychography2DVariableGroup,
@@ -144,6 +156,18 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
 
 
 class EPIEReconstructor(PIEReconstructor):
+    """
+    The extended ptychographic iterative engine (ePIE), as described in: 
+    
+    Andrew Maiden, Daniel Johnson, and Peng Li, "Further improvements to the 
+    ptychographical iterative engine," Optica 4, 736-745 (2017)
+
+    Object and probe updates are calculated using the formulas in table 1 of
+    Maiden (2017).
+
+    The `step_size` parameter is equivalent to gamma in Eq. 22 of Maiden (2017)
+    when `optimizer == SGD`.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -161,6 +185,22 @@ class EPIEReconstructor(PIEReconstructor):
 
 
 class RPIEReconstructor(PIEReconstructor):
+    """
+    The regularized ptychographic iterative engine (rPIE), as described in: 
+    
+    Andrew Maiden, Daniel Johnson, and Peng Li, "Further improvements to the 
+    ptychographical iterative engine," Optica 4, 736-745 (2017)
+
+    Object and probe updates are calculated using the formulas in table 1 of
+    Maiden (2017).
+
+    The `step_size` parameter is equivalent to gamma in Eq. 22 of Maiden (2017)
+    when `optimizer == SGD`.
+
+    To get the momentum-accelerated PIE (mPIE), use `optimizer == SGD` and use 
+    the optimizer settings `{'momentum': eta, 'nesterov': True}` where `eta` is
+    the constant used in  Eq. 19 of Maiden (2017). 
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
