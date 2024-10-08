@@ -68,6 +68,22 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
             if self.variable_group.probe_positions.optimization_enabled(self.current_epoch):
                 self.variable_group.probe_positions.post_update_hook()
                 
+    def apply_regularizers(self) -> None:
+        """
+        Apply Tikonov regularizers, e.g., L1 norm for the object.
+        
+        This function calculates the regularization terms and backpropagates them. Since the gradients
+        of the parameters haven't been zeroed, the regularizers' gradients will be added to them.
+        """
+        super().apply_regularizers()
+        
+        object_ = self.variable_group.object
+        if object_.l1_norm_constraint_enabled(self.current_epoch):
+            # object.data returns a copy, so we directly access the tensor here.
+            obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]
+            reg = object_.l1_norm_constraint_weight * obj_data.abs().sum()
+            reg.backward()
+                
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
         y_pred = self.forward_model(*input_data)
         batch_loss = self.loss_function(

@@ -54,6 +54,13 @@ class AutodiffReconstructor(IterativeReconstructor):
             
     def run_post_differentiation_hooks(self, input_data, y_true):
         self.get_forward_model().post_differentiation_hook(*input_data, y_true)
+        self.apply_regularizers()
+        
+    def apply_regularizers(self) -> None:
+        """
+        Apply Tikonov regularizers.
+        """
+        pass
             
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
         y_pred = self.forward_model(*input_data)
