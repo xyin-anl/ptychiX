@@ -51,7 +51,14 @@ class ParameterOptions(Options):
 
     step_size: float = 1
     """
-    Step size of the optimizer.
+    Step size of the optimizer. This will be the learning rate `lr` in 
+    `optimizer_params`.
+    """
+
+    optimizer_params: dict = dataclasses.field(default_factory=dict)
+    """
+    Settings for the optimizer of the parameter. For additional information on
+    optimizer parameters, see: https://pytorch.org/docs/stable/optim.html
     """
 
 

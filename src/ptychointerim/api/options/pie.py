@@ -18,7 +18,7 @@ class PIEReconstructorOptions(base.ReconstructorOptions):
         return enums.Reconstructors.PIE
     
     probe_alpha: float = 0.1
-    """Multiplier for the update to the object."""
+    """Multiplier for the update to the probe."""
 
     object_alpha: float = 0.1
     """Multiplier for the update to the object."""

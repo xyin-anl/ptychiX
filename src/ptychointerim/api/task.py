@@ -105,9 +105,9 @@ class PtychographyTask(Task):
             'optimizable': self.object_options.optimizable,
             'optimization_plan': self.object_options.optimization_plan,
             'optimizer_class': maps.optimizer_dict[self.object_options.optimizer],
-            'optimizer_params': {'lr': self.object_options.step_size},
+            'optimizer_params': dict({'lr': self.object_options.step_size}, **self.object_options.optimizer_params),
             'l1_norm_constraint_weight': self.object_options.l1_norm_constraint_weight,
-            'l1_norm_constraint_stride': self.object_options.l1_norm_constraint_stride,
+            'l1_norm_constraint_stride': self.object_options.l1_norm_constraint_stride
         }
         kwargs.update(self.object_options.uninherited_fields())
         if self.object_options.type == api.ObjectTypes.MULTISLICE:
@@ -124,7 +124,7 @@ class PtychographyTask(Task):
             optimizable=self.probe_options.optimizable,
             optimization_plan=self.probe_options.optimization_plan,
             optimizer_class=maps.optimizer_dict[self.probe_options.optimizer],
-            optimizer_params={'lr': self.probe_options.step_size},
+            optimizer_params=dict({'lr': self.probe_options.step_size}, **self.probe_options.optimizer_params),
             probe_power=self.probe_options.probe_power,
             probe_power_constraint_stride=self.probe_options.probe_power_constraint_stride,
             orthogonalize_incoherent_modes=self.probe_options.orthogonalize_incoherent_modes,
@@ -143,7 +143,7 @@ class PtychographyTask(Task):
             optimizable=self.position_options.optimizable,
             optimization_plan=self.position_options.optimization_plan,
             optimizer_class=maps.optimizer_dict[self.position_options.optimizer],
-            optimizer_params={'lr': self.position_options.step_size},
+            optimizer_params=dict({'lr': self.position_options.step_size}, **self.position_options.optimizer_params),
             pixel_size_m=self.position_options.pixel_size_m,
             update_magnitude_limit=self.position_options.update_magnitude_limit,
             **self.position_options.uninherited_fields()
@@ -167,7 +167,7 @@ class PtychographyTask(Task):
                 optimizable=self.opr_mode_weight_options.optimizable,
                 optimization_plan=self.opr_mode_weight_options.optimization_plan,
                 optimizer_class=maps.optimizer_dict[self.opr_mode_weight_options.optimizer],
-                optimizer_params={'lr': self.opr_mode_weight_options.step_size},
+                optimizer_params=dict({'lr': self.opr_mode_weight_options.step_size}, **self.opr_mode_weight_options.optimizer_params),
                 optimize_eigenmode_weights=self.opr_mode_weight_options.optimize_eigenmode_weights,
                 optimize_intensity_variation=self.opr_mode_weight_options.optimize_intensity_variation,
                 **self.opr_mode_weight_options.uninherited_fields()
