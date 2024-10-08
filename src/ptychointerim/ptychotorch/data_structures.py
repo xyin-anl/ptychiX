@@ -775,6 +775,7 @@ class OPRModeWeights(ReconstructParameter):
             'optimize_eigenmode_weights': self.optimize_eigenmode_weights,
             'optimize_intensity_variation': self.optimize_intensity_variation
         })
+        return d
     
 
 class ProbePositions(ReconstructParameter):
