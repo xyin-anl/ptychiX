@@ -394,6 +394,7 @@ class Probe(ReconstructParameter):
     def __init__(self, *args, name='probe', eigenmode_update_relaxation=0.1, 
                  probe_power=0.0, probe_power_constraint_stride=1, 
                  orthogonalize_incoherent_modes=False, orthogonalize_incoherent_modes_stride=1, 
+                 orthogonalize_opr_modes=False, orthogonalize_opr_modes_stride=1,
                  **kwargs):
         """
         Represents the probe function in a tensor of shape 
@@ -426,6 +427,8 @@ class Probe(ReconstructParameter):
         self.probe_power_constraint_stride = probe_power_constraint_stride
         self.orthogonalize_incoherent_modes = orthogonalize_incoherent_modes
         self.orthogonalize_incoherent_modes_stride = orthogonalize_incoherent_modes_stride
+        self.orthogonalize_opr_modes = orthogonalize_opr_modes
+        self.orthogonalize_opr_modes_stride = orthogonalize_opr_modes_stride
         
     def shift(self, shifts: Tensor):
         """
@@ -580,14 +583,16 @@ class Probe(ReconstructParameter):
         # variable OPR modes should all be orthogonal to it. 
         probe = self.data
         
-        if False:
-            # Normalize variable probes
-            vnorm = pmath.mnorm(probe, dim=(-2, -1), keepdims=True)
-            probe /= (vnorm + eps)
-            # Shape of weights:      (n_points, n_opr_modes). 
-            # Currently, only the first incoherent mode has OPR modes, and the
-            # stored weights are for that mode.
-            weights = weights * vnorm[:, 0, 0, 0]
+        # TODO: remove outliars by polynomial fitting (remove_variable_probe_ambiguities.m)
+        
+        # Normalize eigenmodes and adjust weights.
+        eigenmodes = probe[1:, ...]
+        vnorm = pmath.mnorm(eigenmodes, dim=(-2, -1), keepdims=True)
+        eigenmodes /= (vnorm + eps)
+        # Shape of weights:      (n_points, n_opr_modes). 
+        # Currently, only the first incoherent mode has OPR modes, and the
+        # stored weights are for that mode.
+        weights[:, 1:] = weights[:, 1:] * vnorm[:, 0, 0, 0]
 
         # Orthogonalize variable probes. With Gram-Schmidt, the first
         # OPR mode (i.e., the main mode) should not change during orthogonalization.
@@ -597,16 +602,17 @@ class Probe(ReconstructParameter):
             group_dim=0,
         )
 
-        # Compute the energies of variable OPR modes (i.e., the second and following) 
-        # in order to sort probes by energy.
-        # Shape of power:         (n_opr_modes - 1,).
-        power = pmath.norm(weights[..., 1:], dim=0) ** 2
-        
-        # Sort the probes by energy
-        sorted = torch.argsort(-power)
-        weights[:, 1:] = weights[:, sorted + 1]
-        # Apply only to the first incoherent mode.
-        probe[1:, 0, :, :] = probe[sorted + 1, 0, :, :]
+        if False:
+            # Compute the energies of variable OPR modes (i.e., the second and following) 
+            # in order to sort probes by energy.
+            # Shape of power:         (n_opr_modes - 1,).
+            power = pmath.norm(weights[..., 1:], dim=0) ** 2
+            
+            # Sort the probes by energy
+            sorted = torch.argsort(-power)
+            weights[:, 1:] = weights[:, sorted + 1]
+            # Apply only to the first incoherent mode.
+            probe[1:, 0, :, :] = probe[sorted + 1, 0, :, :]
 
         # Remove outliars from variable probe weights.
         aevol = torch.abs(weights)
@@ -653,11 +659,8 @@ class Probe(ReconstructParameter):
         
         logging.info('Probe and object scaled by {}.'.format(power_correction))
 
-    def post_update_hook(self, weights: Union[Tensor, ReconstructParameter]=None) -> Union[Tensor, None]:
+    def post_update_hook(self) -> None:
         super().post_update_hook()
-        if self.has_multiple_opr_modes:
-            weights = self.constrain_opr_mode_orthogonality(weights)
-            return weights
      
     def normalize_eigenmodes(self):
         """
@@ -676,6 +679,13 @@ class Probe(ReconstructParameter):
         new_data = self.data
         new_data[1:, ...] = eigen_modes
         self.set_data(new_data)
+        
+    def opr_mode_orthogonalization_enabled(self, current_epoch: int) -> bool:
+        enabled = self.optimization_enabled(current_epoch)
+        return enabled \
+            and self.has_multiple_opr_modes \
+            and self.orthogonalize_opr_modes \
+            and (current_epoch - self.optimization_plan.start) % self.orthogonalize_opr_modes_stride == 0
     
     def save_tiff(self, path: str):
         """
@@ -707,7 +717,11 @@ class Probe(ReconstructParameter):
         d.update({
             'eigenmode_update_relaxation': self.eigenmode_update_relaxation,
             'probe_power': self.probe_power,
+            'probe_power_constraint_stride': self.probe_power_constraint_stride,
             'orthogonalize_incoherent_modes': self.orthogonalize_incoherent_modes,
+            'orthogonalize_incoherent_modes_stride': self.orthogonalize_incoherent_modes_stride,
+            'orthogonalize_opr_modes': self.orthogonalize_opr_modes,
+            'orthogonalize_opr_modes_stride': self.orthogonalize_opr_modes_stride
         })
         return d
                 

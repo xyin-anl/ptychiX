@@ -116,6 +116,14 @@ class ProbeOptions(ParameterOptions):
 
     orthogonalize_incoherent_modes_stride: int = 1
     """The number of epochs between orthogonalizing the incoherent probe modes."""
+    
+    orthogonalize_opr_modes: bool = False
+    """Whether to orthogonalize OPR modes. If True, the OPR modes are orthogonalized 
+    every `orthogonalize_opr_modes_stride` epochs.
+    """
+
+    orthogonalize_opr_modes_stride: int = 1
+    """The number of epochs between orthogonalizing the OPR modes."""
 
     def check(self):
         if not (self.initial_guess is not None and self.initial_guess.ndim == 4):

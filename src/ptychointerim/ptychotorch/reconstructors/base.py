@@ -239,7 +239,13 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                     and self.current_epoch >= probe.optimization_plan.start \
                     and (self.current_epoch - probe.optimization_plan.start) % probe.orthogonalize_incoherent_modes_stride == 0:
                 probe.constrain_incoherent_modes_orthogonality()
-            
+                
+            # Apply OPR orthogonality constraint.
+            if probe.opr_mode_orthogonalization_enabled(self.current_epoch):
+                weights = self.variable_group.opr_mode_weights
+                weights_data = probe.constrain_opr_mode_orthogonality(weights)
+                weights.set_data(weights_data)
+                
     
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
 
