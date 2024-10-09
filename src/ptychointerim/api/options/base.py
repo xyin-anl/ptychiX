@@ -82,6 +82,24 @@ class ObjectOptions(ParameterOptions):
     
     l1_norm_constraint_stride: int = 1
     """The number of epochs between L1 norm constraint updates."""
+    
+    smoothness_constraint_alpha: float = 0
+    """
+    The relaxation smoothing constant. If greater than 0, the magnitude (but not phase)
+    of the object will be smoothed every `smoothness_constraint_stride` epochs.
+    
+    Smoothing is done by constructing a 3x3 kernel of
+    ```
+        alpha, alpha,         alpha
+        alpha, 1 - 8 * alpha, alpha
+        alpha, alpha,         alpha
+    ```
+    and convolve it with the object magnitude. When `alpha == 1 / 8`, the smoothing power
+    is maximal. The value of alpha should not be larger than 1 / 8.
+    """
+    
+    smoothness_constraint_stride: int = 1
+    """The number of epochs between smoothness constraint updates."""
 
 
 @dataclasses.dataclass

@@ -223,6 +223,7 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
             probe = self.parameter_group.probe
+            object_ = self.parameter_group.object
             
             # Apply probe power constraint.
             if probe.probe_power > 0. \
@@ -245,6 +246,10 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                 weights = self.parameter_group.opr_mode_weights
                 weights_data = probe.constrain_opr_mode_orthogonality(weights)
                 weights.set_data(weights_data)
+                
+            # Apply smoothness constraint.
+            if object_.smoothness_constraint_enabled(self.current_epoch):
+                object_.constrain_smoothness()
                 
     
 class AnalyticalIterativeReconstructor(IterativeReconstructor):

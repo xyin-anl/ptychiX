@@ -107,7 +107,9 @@ class PtychographyTask(Task):
             'optimizer_class': maps.optimizer_dict[self.object_options.optimizer],
             'optimizer_params': dict({'lr': self.object_options.step_size}, **self.object_options.optimizer_params),
             'l1_norm_constraint_weight': self.object_options.l1_norm_constraint_weight,
-            'l1_norm_constraint_stride': self.object_options.l1_norm_constraint_stride
+            'l1_norm_constraint_stride': self.object_options.l1_norm_constraint_stride,
+            'smoothness_constraint_alpha': self.object_options.smoothness_constraint_alpha,
+            'smoothness_constraint_stride': self.object_options.smoothness_constraint_stride
         }
         kwargs.update(self.object_options.uninherited_fields())
         if self.object_options.type == api.ObjectTypes.MULTISLICE:

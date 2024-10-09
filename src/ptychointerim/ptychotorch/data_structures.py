@@ -226,11 +226,15 @@ class Object(ReconstructParameter):
                  name: str = 'object', 
                  l1_norm_constraint_weight: float = 0, 
                  l1_norm_constraint_stride: int = 1,
+                 smoothness_constraint_alpha: float = 0,
+                 smoothness_constraint_stride: int = 1,
                  *args, **kwargs):
         super().__init__(*args, name=name, is_complex=True, **kwargs)
         self.pixel_size_m = pixel_size_m
         self.l1_norm_constraint_weight = l1_norm_constraint_weight
         self.l1_norm_constraint_stride = l1_norm_constraint_stride
+        self.smoothness_constraint_alpha = smoothness_constraint_alpha
+        self.smoothness_constraint_stride = smoothness_constraint_stride
         center_pixel = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
         
         self.register_buffer('center_pixel', center_pixel)
@@ -255,6 +259,29 @@ class Object(ReconstructParameter):
         data = data - self.l1_norm_constraint_weight * l1_grad
         self.set_data(data)
         logging.debug("L1 norm constraint applied to object.")
+        
+    def smoothness_constraint_enabled(self, current_epoch: int):
+        if self.smoothness_constraint_alpha > 0 \
+                and self.optimization_enabled(current_epoch) \
+                and (current_epoch - self.optimization_plan.start) % self.smoothness_constraint_stride == 0:
+            return True
+        else:
+            return False
+        
+    def constrain_smoothness(self) -> None:
+        """
+        Smooth the magnitude of the object. 
+        """
+        if self.smoothness_constraint_alpha > 1. / 8:
+            logging.warning(f'Alpha = {self.smoothness_constraint_alpha} in smoothness constraint should be less than 1/8.')
+        psf = torch.ones(3, 3, device=self.device) * self.smoothness_constraint_alpha
+        psf[2, 2] = 1 - 8 * self.smoothness_constraint_alpha
+        
+        data = self.data
+        mag = data.abs()
+        mag = ip.convolve2d(mag, psf, 'same')
+        data = data / data.abs() * mag
+        self.set_data(data)
         
     def get_config_dict(self):
         d = super().get_config_dict()
