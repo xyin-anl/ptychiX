@@ -108,7 +108,7 @@ class ReconstructParameter(Module):
             else:
                 tensor = torch.zeros(shape).requires_grad_(optimizable)
             # Register the tensor as a parameter. In subclasses, do the same for any
-            # additional differentiable variables. If you have a buffer that does not
+            # additional differentiable parameters. If you have a buffer that does not
             # need gradients, use register_buffer instead.
             self.register_parameter('tensor', Parameter(tensor))
                 
@@ -127,7 +127,7 @@ class ReconstructParameter(Module):
             
     def build_optimizer(self):
         if self.optimizable and self.optimizer_class is None:
-            raise ValueError("Variable {} is optimizable but no optimizer is specified.".format(self.name))
+            raise ValueError("Parameter {} is optimizable but no optimizer is specified.".format(self.name))
         if self.optimizable:
             if isinstance(self.tensor, ComplexTensor):
                 self.optimizer = self.optimizer_class([self.tensor.data], **self.optimizer_params)
@@ -206,7 +206,7 @@ class ReconstructParameter(Module):
         return enabled
     
 
-class DummyVariable(ReconstructParameter):
+class DummyParameter(ReconstructParameter):
     
     is_dummy = True
     
@@ -389,7 +389,7 @@ class MultisliceObject(Object2D):
 class Probe(ReconstructParameter):
     
     # TODO: eigenmode_update_relaxation is only used for LSQML. We should create dataclasses
-    # to contain additional options for Variable classes, and subclass them for specific
+    # to contain additional options for ReconstructParameter classes, and subclass them for specific
     # reconstruction algorithms - for example, ProbeOptions -> LSQMLProbeOptions.
     def __init__(self, *args, name='probe', eigenmode_update_relaxation=0.1, 
                  probe_power=0.0, probe_power_constraint_stride=1, 
@@ -404,7 +404,7 @@ class Probe(ReconstructParameter):
           probe relaxation (OPR). 
         - n_modes is the number of mutually incoherent probe modes.
 
-        :param name: name of the variable, defaults to 'probe'.
+        :param name: name of the parameter, defaults to 'probe'.
         :param eigenmode_update_relaxation: relaxation factor, or effectively the step size, 
             for eigenmode update in LSQML.
         :param probe_power: the target probe power. If greater than 0, probe power constraint
@@ -730,14 +730,14 @@ class Probe(ReconstructParameter):
 class OPRModeWeights(ReconstructParameter):
     
     # TODO: update_relaxation is only used for LSQML. We should create dataclasses
-    # to contain additional options for Variable classes, and subclass them for specific
+    # to contain additional options for ReconstructParameter classes, and subclass them for specific
     # reconstruction algorithms - for example, OPRModeWeightsOptions -> LSQMLOPRModeWeightsOptions.
     def __init__(self, *args, name='opr_weights', update_relaxation=0.1, optimize_eigenmode_weights=True, 
                  optimize_intensity_variation=False, **kwargs):
         """
         Weights of OPR modes for each scan point.
 
-        :param name: name of the variable.
+        :param name: name of the parameter.
         :param update_relaxation: relaxation factor, or effectively the step size, for 
             the update step in LSQML.
         """
@@ -821,24 +821,24 @@ class ProbePositions(ReconstructParameter):
 
 
 @dataclasses.dataclass
-class VariableGroup:
+class ParameterGroup:
 
-    def get_all_variables(self) -> list[ReconstructParameter]:
+    def get_all_parameters(self) -> list[ReconstructParameter]:
         return list(self.__dict__.values())
 
-    def get_optimizable_variables(self) -> list[ReconstructParameter]:
+    def get_optimizable_parameters(self) -> list[ReconstructParameter]:
         ovs = []
-        for var in self.get_all_variables():
+        for var in self.get_all_parameters():
             if var.optimizable:
                 ovs.append(var)
         return ovs
     
     def get_config_dict(self):
-        return {var.name: var.get_config_dict() for var in self.get_all_variables()}
+        return {var.name: var.get_config_dict() for var in self.get_all_parameters()}
     
 
 @dataclasses.dataclass
-class PtychographyVariableGroup(VariableGroup):
+class PtychographyParameterGroup(ParameterGroup):
     
     object: Object
 
@@ -846,7 +846,7 @@ class PtychographyVariableGroup(VariableGroup):
 
     probe_positions: ProbePositions
     
-    opr_mode_weights: Optional[OPRModeWeights] = dataclasses.field(default_factory=DummyVariable)
+    opr_mode_weights: Optional[OPRModeWeights] = dataclasses.field(default_factory=DummyParameter)
     
     def __post_init__(self):
         if self.probe.has_multiple_opr_modes and self.opr_mode_weights is None:
@@ -854,6 +854,6 @@ class PtychographyVariableGroup(VariableGroup):
 
 
 @dataclasses.dataclass
-class Ptychography2DVariableGroup(PtychographyVariableGroup):
+class Ptychography2DParameterGroup(PtychographyParameterGroup):
 
     object: Object2D

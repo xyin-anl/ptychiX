@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 from torch.nn import ModuleList
 
-from ptychointerim.ptychotorch.data_structures import (ReconstructParameter, VariableGroup, Ptychography2DVariableGroup,
+from ptychointerim.ptychotorch.data_structures import (ReconstructParameter, ParameterGroup, Ptychography2DParameterGroup,
                                                        MultisliceObject)
 import ptychointerim.ptychotorch.propagation as prop
 from ptychointerim.propagate import WavefieldPropagatorParameters, AngularSpectrumPropagator
@@ -13,23 +13,23 @@ from ptychointerim.metrics import MSELossOfSqrt
 class ForwardModel(torch.nn.Module):
     
     def __init__(self, 
-                 variable_group: VariableGroup, 
+                 parameter_group: ParameterGroup, 
                  retain_intermediates: bool = False,
                  *args, **kwargs) -> None:
         super().__init__()
         
-        if not isinstance(variable_group, VariableGroup):
-            raise TypeError(f"variable_group must be a VariableGroup, not {type(variable_group)}")
+        if not isinstance(parameter_group, ParameterGroup):
+            raise TypeError(f"variable_group must be a VariableGroup, not {type(parameter_group)}")
         
-        self.variable_group = variable_group
+        self.parameter_group = parameter_group
         self.retain_intermediates = retain_intermediates
-        self.optimizable_variables: ModuleList[ReconstructParameter] = ModuleList()
+        self.optimizable_parameters: ModuleList[ReconstructParameter] = ModuleList()
         self.intermediate_variables = {}
         
     def register_optimizable_parameters(self):
-        for var in self.variable_group.__dict__.values():
+        for var in self.parameter_group.__dict__.values():
             if var.optimizable:
-                self.optimizable_variables.append(var)
+                self.optimizable_parameters.append(var)
 
     def forward(self, *args, **kwargs):
         raise NotImplementedError
@@ -46,19 +46,19 @@ class Ptychography2DForwardModel(ForwardModel):
     
     def __init__(
             self, 
-            variable_group: Ptychography2DVariableGroup,
+            parameter_group: Ptychography2DParameterGroup,
             retain_intermediates: bool = False,
             *args, **kwargs) -> None:
-        super().__init__(variable_group, *args, **kwargs)
+        super().__init__(parameter_group, *args, **kwargs)
         self.retain_intermediates = retain_intermediates
         
         # This step is essential as it sets the variables to be attributes of
         # the forward modelobject. Only with this can these buffers be copied
         # to the correct devices in DataParallel.
-        self.object = variable_group.object
-        self.probe = variable_group.probe
-        self.probe_positions = variable_group.probe_positions
-        self.opr_mode_weights = variable_group.opr_mode_weights
+        self.object = parameter_group.object
+        self.probe = parameter_group.probe
+        self.probe_positions = parameter_group.probe_positions
+        self.opr_mode_weights = parameter_group.opr_mode_weights
         
         # Intermediate variables. Only used if retain_intermediate is True.
         self.intermediate_variables = {
@@ -175,17 +175,17 @@ class Ptychography2DForwardModel(ForwardModel):
 class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
     def __init__(
         self, 
-        variable_group: Ptychography2DVariableGroup,
+        parameter_group: Ptychography2DParameterGroup,
         retain_intermediates: bool = False,
         wavelength_m: float = 1e-9,
         *args, **kwargs
     ) -> None:
         super().__init__(
-            variable_group=variable_group,
+            parameter_group=parameter_group,
             retain_intermediates=retain_intermediates,
             *args, **kwargs
         )
-        assert isinstance(self.variable_group.object, MultisliceObject)
+        assert isinstance(self.parameter_group.object, MultisliceObject)
         
         self.wavelength_m = wavelength_m
         self.near_field_propagator = None
@@ -219,7 +219,7 @@ class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
             slice_psis = []
         
         slice_psi_prop = probe
-        for i_slice in range(self.variable_group.object.n_slices):
+        for i_slice in range(self.parameter_group.object.n_slices):
             slice_patches = obj_patches[:, i_slice, ...]
             
             # Modulate wavefield.
@@ -230,7 +230,7 @@ class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
                 slice_psis.append(slice_psi)
                 
             # Propagate wavefield.
-            if i_slice < self.variable_group.object.n_slices - 1:
+            if i_slice < self.parameter_group.object.n_slices - 1:
                 self.prop_params = WavefieldPropagatorParameters.create_simple(
                     wavelength_m=self.wavelength_m,
                     width_px=self.probe.shape[-1],

@@ -4,7 +4,7 @@ import torch
 import tqdm
 from torch.utils.data import Dataset
 
-from ptychointerim.ptychotorch.data_structures import PtychographyVariableGroup, MultisliceObject
+from ptychointerim.ptychotorch.data_structures import PtychographyParameterGroup, MultisliceObject
 from ptychointerim.forward_models import ForwardModel, MultislicePtychographyForwardModel
 from ptychointerim.ptychotorch.reconstructors.ad_general import AutodiffReconstructor
 from ptychointerim.ptychotorch.reconstructors.base import IterativePtychographyReconstructor
@@ -12,7 +12,7 @@ from ptychointerim.ptychotorch.reconstructors.base import IterativePtychographyR
 
 class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychographyReconstructor):
     def __init__(self,
-                 variable_group: PtychographyVariableGroup,
+                 parameter_group: PtychographyParameterGroup,
                  dataset: Dataset,
                  forward_model_class: Type[ForwardModel],
                  forward_model_params: Optional[dict] = None,
@@ -23,7 +23,7 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
                  *args, **kwargs
     ) -> None:
         super().__init__(
-            variable_group=variable_group,
+            parameter_group=parameter_group,
             dataset=dataset,
             forward_model_class=forward_model_class,
             forward_model_params=forward_model_params,
@@ -37,7 +37,7 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
     def check_inputs(self, *args, **kwargs):
         super().check_inputs(*args, **kwargs)
         
-        if isinstance(self.variable_group.object, MultisliceObject):
+        if isinstance(self.parameter_group.object, MultisliceObject):
             if self.forward_model_class != MultislicePtychographyForwardModel:
                 raise ValueError(
                     "If the object is multislice, the forward model must be MultislicePtychographyForwardModel."
@@ -49,22 +49,22 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
         # If OPRModeWeights is optimized in the current epoch (i.e., it has gradient) but intensity variation
         # optimization is not enabled, set the gradient of the principal mode's weights to 0. Similar is done
         # for the gradient of the eigenmode weights.
-        if self.variable_group.opr_mode_weights.optimization_enabled(self.current_epoch):
-            if not self.variable_group.opr_mode_weights.intensity_variation_optimization_enabled(self.current_epoch):
-                self.variable_group.opr_mode_weights.tensor.grad[:, 0] = 0
-            if not self.variable_group.opr_mode_weights.eigenmode_weight_optimization_enabled(self.current_epoch):
-                self.variable_group.opr_mode_weights.tensor.grad[:, 1:] = 0
+        if self.parameter_group.opr_mode_weights.optimization_enabled(self.current_epoch):
+            if not self.parameter_group.opr_mode_weights.intensity_variation_optimization_enabled(self.current_epoch):
+                self.parameter_group.opr_mode_weights.tensor.grad[:, 0] = 0
+            if not self.parameter_group.opr_mode_weights.eigenmode_weight_optimization_enabled(self.current_epoch):
+                self.parameter_group.opr_mode_weights.tensor.grad[:, 1:] = 0
 
     def run_post_update_hooks(self) -> None:
         with torch.no_grad():
-            if self.variable_group.object.optimization_enabled(self.current_epoch):
-                self.variable_group.object.post_update_hook()
+            if self.parameter_group.object.optimization_enabled(self.current_epoch):
+                self.parameter_group.object.post_update_hook()
 
-            if self.variable_group.probe.optimization_enabled(self.current_epoch):
-                self.variable_group.probe.post_update_hook()
+            if self.parameter_group.probe.optimization_enabled(self.current_epoch):
+                self.parameter_group.probe.post_update_hook()
 
-            if self.variable_group.probe_positions.optimization_enabled(self.current_epoch):
-                self.variable_group.probe_positions.post_update_hook()
+            if self.parameter_group.probe_positions.optimization_enabled(self.current_epoch):
+                self.parameter_group.probe_positions.post_update_hook()
                 
     def apply_regularizers(self) -> None:
         """
@@ -75,7 +75,7 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
         """
         super().apply_regularizers()
         
-        object_ = self.variable_group.object
+        object_ = self.parameter_group.object
         if object_.l1_norm_constraint_enabled(self.current_epoch):
             # object.data returns a copy, so we directly access the tensor here.
             obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]

@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 from torch import Tensor
 
 import ptychointerim.ptychotorch.propagation as prop
-from ptychointerim.ptychotorch.data_structures import Ptychography2DVariableGroup, Object2D
+from ptychointerim.ptychotorch.data_structures import Ptychography2DParameterGroup, Object2D
 from ptychointerim.ptychotorch.reconstructors.base import AnalyticalIterativePtychographyReconstructor
 from ptychointerim.image_proc import place_patches_fourier_shift
 from ptychointerim.position_correction import compute_positions_cross_correlation_update
@@ -28,7 +28,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
     """
 
     def __init__(self,
-                 variable_group: Ptychography2DVariableGroup,
+                 parameter_group: Ptychography2DParameterGroup,
                  dataset: Dataset,
                  batch_size: int = 1,
                  n_epochs: int = 100,
@@ -37,24 +37,24 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
                  *args, **kwargs
     ) -> None:
         super().__init__(
-            variable_group=variable_group,
+            parameter_group=parameter_group,
             dataset=dataset,
             batch_size=batch_size,
             n_epochs=n_epochs,
             *args, **kwargs)
         self.object_alpha = object_alpha
         self.probe_alpha = probe_alpha
-        self.forward_model = Ptychography2DForwardModel(variable_group, retain_intermediates=True)
+        self.forward_model = Ptychography2DForwardModel(parameter_group, retain_intermediates=True)
 
     def check_inputs(self, *args, **kwargs):
-        if not isinstance(self.variable_group.object, Object2D):
+        if not isinstance(self.parameter_group.object, Object2D):
             raise NotImplementedError('EPIEReconstructor only supports 2D objects.')
-        for var in self.variable_group.get_optimizable_variables():
+        for var in self.parameter_group.get_optimizable_parameters():
             if 'lr' not in var.optimizer_params.keys():
-                raise ValueError("Optimizable variable {} must have 'lr' in optimizer_params.".format(var.name))
+                raise ValueError("Optimizable parameter {} must have 'lr' in optimizer_params.".format(var.name))
         if self.metric_function is not None:
             raise NotImplementedError('EPIEReconstructor does not support metric function yet.')
-        if self.variable_group.probe.has_multiple_opr_modes:
+        if self.parameter_group.probe.has_multiple_opr_modes:
             raise NotImplementedError('EPIEReconstructor does not support multiple OPR modes yet.')
         
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
@@ -70,12 +70,12 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
                         valid_pixel_mask: torch.Tensor
         ) -> tuple[torch.Tensor, ...]:
         """
-        Calculates the updates of the whole object, the probe, and other variables.
+        Calculates the updates of the whole object, the probe, and other parameters.
         This function is called in self.update_step_module.forward. 
         """
-        object_ = self.variable_group.object
-        probe = self.variable_group.probe
-        probe_positions = self.variable_group.probe_positions
+        object_ = self.parameter_group.object
+        probe = self.parameter_group.probe
+        probe_positions = self.parameter_group.probe_positions
 
         indices = indices.cpu()
         positions = probe_positions.tensor[indices]
@@ -138,9 +138,9 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         :param delta_p: A (n_replicate, n_opr_modes, n_modes, h, w, 2) tensor of probe update vector.
         :param delta_pos: A (n_positions, 2) tensor of probe position vectors.
         """
-        object_ = self.variable_group.object
-        probe = self.variable_group.probe
-        probe_positions = self.variable_group.probe_positions
+        object_ = self.parameter_group.object
+        probe = self.parameter_group.probe
+        probe_positions = self.parameter_group.probe_positions
 
         if delta_o is not None:
             object_.set_grad(-delta_o)

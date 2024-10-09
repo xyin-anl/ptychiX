@@ -6,7 +6,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 import tqdm
 
-from ptychointerim.ptychotorch.data_structures import VariableGroup, PtychographyVariableGroup
+from ptychointerim.ptychotorch.data_structures import ParameterGroup, PtychographyParameterGroup
 from ptychointerim.ptychotorch.utils import to_numpy
 
 
@@ -91,9 +91,9 @@ class LossTracker:
 
 class Reconstructor:
 
-    def __init__(self, variable_group: VariableGroup):
+    def __init__(self, parameter_group: ParameterGroup):
         self.loss_tracker = LossTracker()
-        self.variable_group = variable_group
+        self.parameter_group = parameter_group
                 
     def check_inputs(self, *args, **kwargs):
         pass
@@ -103,23 +103,23 @@ class Reconstructor:
 
 
     def get_config_dict(self) -> dict:
-        d = self.variable_group.get_config_dict()
+        d = self.parameter_group.get_config_dict()
         d.update({'reconstructor': self.__class__.__name__})
         return d
     
 
 class PtychographyReconstructor(Reconstructor):
     
-    variable_group: PtychographyVariableGroup
+    parameter_group: PtychographyParameterGroup
 
-    def __init__(self, variable_group: PtychographyVariableGroup, *args, **kwargs) -> None:
-        super().__init__(variable_group, *args, **kwargs)
+    def __init__(self, parameter_group: PtychographyParameterGroup, *args, **kwargs) -> None:
+        super().__init__(parameter_group, *args, **kwargs)
 
 
 class IterativeReconstructor(Reconstructor):
 
     def __init__(self,
-                 variable_group: VariableGroup,
+                 parameter_group: ParameterGroup,
                  dataset: Dataset,
                  batch_size: int = 1,
                  n_epochs: int = 100,
@@ -129,7 +129,7 @@ class IterativeReconstructor(Reconstructor):
         """
         Iterative reconstructor base class.
         
-        :param variable_group: The variable group containing optimizable and non-optimizable variables.
+        :param parameter_group: The ParameterGroup containing optimizable and non-optimizable parameters.
         :param dataset: The dataset containing diffraction patterns.
         :param batch_size: The batch size.
         :param n_epochs: The number of epochs.
@@ -137,7 +137,7 @@ class IterativeReconstructor(Reconstructor):
             loss_function argument in some reconstructors, this function is only used for cost tracking
             and is not involved in the reconstruction math.
         """
-        super().__init__(variable_group, *args, **kwargs)
+        super().__init__(parameter_group, *args, **kwargs)
         self.batch_size = batch_size
         self.dataset = dataset
         self.n_epochs = n_epochs
@@ -172,7 +172,7 @@ class IterativeReconstructor(Reconstructor):
                 
     def run_minibatch(self, input_data: Sequence[Tensor], y_true: Tensor, *args, **kwargs) -> None:
         """
-        Process batch, update variables, calculate loss, and update loss tracker.
+        Process batch, update parameters, calculate loss, and update loss tracker.
         
         :param input_data: a list of input data. In many cases it is [indices].
         :param y_true: the measured data.
@@ -215,22 +215,22 @@ class IterativeReconstructor(Reconstructor):
             
 class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyReconstructor):
     
-    variable_group: PtychographyVariableGroup
+    parameter_group: PtychographyParameterGroup
 
-    def __init__(self, variable_group: PtychographyVariableGroup, *args, **kwargs) -> None:
-        super().__init__(variable_group, *args, **kwargs)
+    def __init__(self, parameter_group: PtychographyParameterGroup, *args, **kwargs) -> None:
+        super().__init__(parameter_group, *args, **kwargs)
         
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
-            probe = self.variable_group.probe
+            probe = self.parameter_group.probe
             
             # Apply probe power constraint.
             if probe.probe_power > 0. \
                     and self.current_epoch >= probe.optimization_plan.start \
                     and (self.current_epoch - probe.optimization_plan.start) % probe.probe_power_constraint_stride == 0:
                 probe.constrain_probe_power(
-                    self.variable_group.object,
-                    self.variable_group.opr_mode_weights
+                    self.parameter_group.object,
+                    self.parameter_group.opr_mode_weights
                 )
             
             # Apply incoherent mode orthogonality constraint.
@@ -242,7 +242,7 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                 
             # Apply OPR orthogonality constraint.
             if probe.opr_mode_orthogonalization_enabled(self.current_epoch):
-                weights = self.variable_group.opr_mode_weights
+                weights = self.parameter_group.opr_mode_weights
                 weights_data = probe.constrain_opr_mode_orthogonality(weights)
                 weights.set_data(weights_data)
                 
@@ -250,7 +250,7 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
 
     def __init__(self,
-        variable_group: VariableGroup,
+        parameter_group: ParameterGroup,
         dataset: Dataset,
         batch_size: int = 1,
         n_epochs: int = 100,
@@ -258,7 +258,7 @@ class AnalyticalIterativeReconstructor(IterativeReconstructor):
         *args, **kwargs
     ) -> None:
         super().__init__(
-            variable_group=variable_group,
+            parameter_group=parameter_group,
             dataset=dataset,
             batch_size=batch_size,
             n_epochs=n_epochs,
@@ -272,12 +272,12 @@ class AnalyticalIterativeReconstructor(IterativeReconstructor):
 
     def build_update_step_module(self, *args, **kwargs):
         update_step_func = self.compute_updates
-        var_group = self.variable_group
+        par_group = self.parameter_group
 
         class EncapsulatedUpdateStep(torch.nn.Module):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                self.variable_module_dict = torch.nn.ModuleDict(var_group.__dict__)
+                self.parameter_module_dict = torch.nn.ModuleDict(par_group.__dict__)
 
             def forward(self, *args, **kwargs):
                 return update_step_func(self, *args, **kwargs)
@@ -303,15 +303,15 @@ class AnalyticalIterativeReconstructor(IterativeReconstructor):
     @staticmethod
     def compute_updates(update_step_module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Tensor, ...], float]:
         """
-        Calculate the update vectors of optimizable variables that should be
+        Calculate the update vectors of optimizable parameters that should be
         applied later. 
 
         This function will be encapsulated in a torch.nn.Module so that it works with
         DataParallel and DistributedDataParallel.
 
-        Do not apply the update vectors to the optimizable variables in this function. 
+        Do not apply the update vectors to the optimizable parameters in this function. 
         When called in a DataParallel or DistributedDataParallel context, the buffers
-        of optimizable variables are copies so the updates will not persist. Instead,
+        of optimizable parameters are copies so the updates will not persist. Instead,
         collect the returned update vectors, reduce them, and apply the updates in
         `apply_updates` which is called outside DataParallel. 
 
@@ -333,17 +333,17 @@ class AnalyticalIterativeReconstructor(IterativeReconstructor):
 
 class AnalyticalIterativePtychographyReconstructor(AnalyticalIterativeReconstructor, IterativePtychographyReconstructor):
     
-    variable_group: PtychographyVariableGroup
+    parameter_group: PtychographyParameterGroup
 
     def __init__(self, 
-                variable_group: PtychographyVariableGroup,
+                parameter_group: PtychographyParameterGroup,
                 dataset: Dataset,
                 batch_size: int = 1,
                 n_epochs: int = 100,
                 metric_function: Optional[torch.nn.Module] = None,
                  *args, **kwargs) -> None:
         super().__init__(
-            variable_group=variable_group, 
+            parameter_group=parameter_group, 
             dataset=dataset, 
             batch_size=batch_size, 
             n_epochs=n_epochs, 
@@ -355,7 +355,7 @@ class AnalyticalIterativePtychographyReconstructor(AnalyticalIterativeReconstruc
         with torch.no_grad():
             super().run_post_epoch_hooks()
             
-            object_ = self.variable_group.object
+            object_ = self.parameter_group.object
             
             # Apply object L1-norm constraint.
             if object_.l1_norm_constraint_enabled(self.current_epoch):

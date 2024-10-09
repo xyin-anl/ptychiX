@@ -4,7 +4,7 @@ import torch
 import tqdm
 from torch.utils.data import Dataset
 
-from ptychointerim.ptychotorch.data_structures import VariableGroup, DummyVariable
+from ptychointerim.ptychotorch.data_structures import ParameterGroup, DummyParameter
 from ptychointerim.forward_models import ForwardModel
 from ptychointerim.ptychotorch.reconstructors.base import IterativeReconstructor, LossTracker
 
@@ -12,7 +12,7 @@ from ptychointerim.ptychotorch.reconstructors.base import IterativeReconstructor
 class AutodiffReconstructor(IterativeReconstructor):
 
     def __init__(self,
-                 variable_group: VariableGroup,
+                 parameter_group: ParameterGroup,
                  dataset: Dataset,
                  forward_model_class: Type[ForwardModel],
                  forward_model_params: Optional[dict] = None,
@@ -23,7 +23,7 @@ class AutodiffReconstructor(IterativeReconstructor):
                  *args, **kwargs
     ) -> None:
         super().__init__(
-            variable_group=variable_group,
+            parameter_group=parameter_group,
             dataset=dataset,
             batch_size=batch_size,
             n_epochs=n_epochs,
@@ -47,7 +47,7 @@ class AutodiffReconstructor(IterativeReconstructor):
         self.loss_tracker = LossTracker(metric_function=f, always_compute_loss=always_compute_loss)
 
     def build_forward_model(self):
-        self.forward_model = self.forward_model_class(self.variable_group, **self.forward_model_params)
+        self.forward_model = self.forward_model_class(self.parameter_group, **self.forward_model_params)
         if not torch.get_default_device().type == 'cpu':
             self.forward_model = torch.nn.DataParallel(self.forward_model)
             self.forward_model.to(torch.get_default_device())
@@ -75,7 +75,7 @@ class AutodiffReconstructor(IterativeReconstructor):
         self.loss_tracker.update_batch_loss(y_pred=y_pred, y_true=y_true, loss=batch_loss.item())
             
     def step_all_optimizers(self):
-        for var in self.variable_group.get_optimizable_variables():
+        for var in self.parameter_group.get_optimizable_parameters():
             if var.optimization_enabled(self.current_epoch):
                 var.optimizer.step()
 

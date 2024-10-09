@@ -154,10 +154,10 @@ class PtychographyTask(Task):
     def build_opr_mode_weights(self):
         n_opr_modes = self.probe_options.initial_guess.shape[0]
         if n_opr_modes == 1:
-            self.opr_mode_weights = DummyVariable()
+            self.opr_mode_weights = DummyParameter()
             return
         if self.opr_mode_weight_options.initial_weights is None:
-            self.opr_mode_weights = DummyVariable()
+            self.opr_mode_weights = DummyParameter()
             return
         else:
             initial_weights = to_tensor(self.opr_mode_weight_options.initial_weights)
@@ -176,7 +176,7 @@ class PtychographyTask(Task):
             )
             
     def build_reconstructor(self):
-        var_group = Ptychography2DVariableGroup(
+        par_group = Ptychography2DParameterGroup(
             object=self.object,
             probe=self.probe,
             probe_positions=self.probe_positions,
@@ -186,7 +186,7 @@ class PtychographyTask(Task):
         reconstructor_class = maps.reconstructor_dict[self.reconstructor_options.get_reconstructor_type()]
         
         reconstructor_kwargs = {
-            'variable_group': var_group,
+            'parameter_group': par_group,
             'dataset': self.dataset,
             'batch_size': self.reconstructor_options.batch_size,
             'n_epochs': self.reconstructor_options.num_epochs,
