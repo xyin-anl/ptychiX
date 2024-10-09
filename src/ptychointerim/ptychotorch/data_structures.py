@@ -418,11 +418,18 @@ class Probe(ReconstructParameter):
     # TODO: eigenmode_update_relaxation is only used for LSQML. We should create dataclasses
     # to contain additional options for ReconstructParameter classes, and subclass them for specific
     # reconstruction algorithms - for example, ProbeOptions -> LSQMLProbeOptions.
-    def __init__(self, *args, name='probe', eigenmode_update_relaxation=0.1, 
-                 probe_power=0.0, probe_power_constraint_stride=1, 
-                 orthogonalize_incoherent_modes=False, orthogonalize_incoherent_modes_stride=1, 
-                 orthogonalize_opr_modes=False, orthogonalize_opr_modes_stride=1,
-                 **kwargs):
+    def __init__(self, 
+                 name: str = 'probe', 
+                 eigenmode_update_relaxation: float = 0.1, 
+                 probe_power: float = 0.0, 
+                 probe_power_constraint_stride: int = 1, 
+                 orthogonalize_incoherent_modes: bool = False, 
+                 orthogonalize_incoherent_modes_stride: int = 1, 
+                 orthogonalize_incoherent_modes_method: api.enums.OrthogonalizationMethods = api.enums.OrthogonalizationMethods.GS,
+                 orthogonalize_opr_modes: bool = False, 
+                 orthogonalize_opr_modes_stride: int = 1,
+                 
+                 *args, **kwargs):
         """
         Represents the probe function in a tensor of shape 
             `(n_opr_modes, n_modes, h, w)`
@@ -454,6 +461,7 @@ class Probe(ReconstructParameter):
         self.probe_power_constraint_stride = probe_power_constraint_stride
         self.orthogonalize_incoherent_modes = orthogonalize_incoherent_modes
         self.orthogonalize_incoherent_modes_stride = orthogonalize_incoherent_modes_stride
+        self.orthogonalize_incoherent_modes_method = orthogonalize_incoherent_modes_method
         self.orthogonalize_opr_modes = orthogonalize_opr_modes
         self.orthogonalize_opr_modes_stride = orthogonalize_opr_modes_stride
         
@@ -575,11 +583,26 @@ class Probe(ReconstructParameter):
     def constrain_incoherent_modes_orthogonality(self):
         """Orthogonalize the incoherent probe modes for the first OPR mode.""" 
         probe = self.data
-        probe[0] = pmath.orthogonalize_gs(
+        
+        norm_first_mode_orig = pmath.norm(probe[0, 0], dim=(-2, -1))
+        
+        if self.orthogonalize_incoherent_modes_method == api.enums.OrthogonalizationMethods.GS:
+            func = pmath.orthogonalize_gs
+        elif self.orthogonalize_incoherent_modes_method == api.enums.OrthogonalizationMethods.SVD:
+            func = pmath.orthogonalize_svd
+        else:
+            raise NotImplementedError(f"Orthogonalization method {self.orthogonalize_incoherent_modes_method} "
+                                      "is not supported.")
+        probe[0] = func(
             probe[0],
             dim=(-2, -1),
             group_dim=0,
         )
+        
+        # Restore norm.
+        norm_first_mode_new = pmath.norm(probe[0, 0], dim=(-2, -1))
+        probe = probe * norm_first_mode_orig / norm_first_mode_new
+        
         self.set_data(probe)
     
     def constrain_opr_mode_orthogonality(self, weights: Union[Tensor, ReconstructParameter], eps=1e-5):
@@ -751,6 +774,7 @@ class Probe(ReconstructParameter):
             'probe_power_constraint_stride': self.probe_power_constraint_stride,
             'orthogonalize_incoherent_modes': self.orthogonalize_incoherent_modes,
             'orthogonalize_incoherent_modes_stride': self.orthogonalize_incoherent_modes_stride,
+            'orthogonalize_incoherent_modes_method': self.orthogonalize_incoherent_modes_method,
             'orthogonalize_opr_modes': self.orthogonalize_opr_modes,
             'orthogonalize_opr_modes_stride': self.orthogonalize_opr_modes_stride
         })

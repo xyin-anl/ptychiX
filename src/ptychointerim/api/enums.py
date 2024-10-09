@@ -40,6 +40,11 @@ class NoiseModels(StrEnum):
     POISSON = auto()
     
 
+class OrthogonalizationMethods(StrEnum):
+    GS = auto()
+    SVD = auto()
+    
+
 class Devices(StrEnum):
     CPU = auto()
     GPU = auto()

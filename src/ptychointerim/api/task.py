@@ -131,6 +131,7 @@ class PtychographyTask(Task):
             probe_power_constraint_stride=self.probe_options.probe_power_constraint_stride,
             orthogonalize_incoherent_modes=self.probe_options.orthogonalize_incoherent_modes,
             orthogonalize_incoherent_modes_stride=self.probe_options.orthogonalize_incoherent_modes_stride,
+            orthogonalize_incoherent_modes_method=self.probe_options.orthogonalize_incoherent_modes_method,
             orthogonalize_opr_modes=self.probe_options.orthogonalize_opr_modes,
             orthogonalize_opr_modes_stride=self.probe_options.orthogonalize_opr_modes_stride,
             **self.probe_options.uninherited_fields()
