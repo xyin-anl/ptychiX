@@ -19,8 +19,7 @@ def test_2d_ptycho_lsqml(pytestconfig, generate_gold=False, debug=False, high_to
     
     tutils.setup(name, cpu_only=False, gpu_indices=[0])
 
-    dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true')
-    data = dataset.patterns
+    data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true')
     
     options = api.LSQMLOptions()
     options.data_options.data = data
@@ -64,8 +63,7 @@ def test_2d_ptycho_lsqml_poscorr(pytestconfig, generate_gold=False, debug=False,
     
     tutils.setup(name, cpu_only=False, gpu_indices=[0])
 
-    dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='nominal')
-    data = dataset.patterns
+    data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='nominal')
     
     options = api.LSQMLOptions()
     options.data_options.data = data
@@ -114,8 +112,7 @@ def test_2d_ptycho_lsqml_opr(pytestconfig, generate_gold=False, debug=False, hig
     
     tutils.setup(name, cpu_only=False, gpu_indices=[0])
 
-    dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true', additional_opr_modes=3)
-    data = dataset.patterns
+    data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true', additional_opr_modes=3)
     
     options = api.LSQMLOptions()
     options.data_options.data = data

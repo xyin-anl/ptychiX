@@ -90,6 +90,9 @@ class WavefieldPropagator(ABC, torch.nn.Module):
     @abstractmethod
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         pass
+    
+    def forward(self, wavefield: ComplexTensor) -> ComplexTensor:
+        return self.propagate_forward(wavefield)
 
     @abstractmethod
     def to(self, device: Device) -> WavefieldPropagator:
@@ -100,12 +103,16 @@ class WavefieldPropagator(ABC, torch.nn.Module):
 
 
 class FourierPropagator(WavefieldPropagator):
+    
+    def __init__(self, norm='ortho') -> None:
+        super().__init__()
+        self.norm = norm
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fft2(wavefield)
+        return fft2(wavefield, norm=self.norm)
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return ifft2(wavefield)
+        return ifft2(wavefield, norm=self.norm)
 
     def to(self, device: Device) -> WavefieldPropagator:
         return self

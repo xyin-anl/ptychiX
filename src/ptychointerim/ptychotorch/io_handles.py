@@ -1,7 +1,8 @@
-from typing import Optional, Union, Tuple, Type
+from typing import Optional, Union
+import logging
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from torch import Tensor
 from numpy import ndarray
 
@@ -15,9 +16,13 @@ class PtychographyDataset(Dataset):
                  valid_pixel_mask: Optional[Union[Tensor, ndarray]] = None,
                  wavelength_m: float = None,
                  propagation_distance_m: float = 1.0,
+                 fft_shift: bool = True,
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.patterns = to_tensor(patterns, device='cpu')
+        if fft_shift:
+            self.patterns = torch.fft.fftshift(self.patterns, dim=(-2, -1))
+            logging.info('Diffraction data have been FFT-shifted.')
         
         if valid_pixel_mask is None:
             valid_pixel_mask = torch.ones(self.patterns.shape[-2:])

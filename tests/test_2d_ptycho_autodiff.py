@@ -16,8 +16,7 @@ def test_2d_ptycho_autodiff(generate_gold=False, debug=False):
     
     tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
-    dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
-    data = dataset.patterns
+    data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
     
     options = api.AutodiffPtychographyOptions()
     options.data_options.data = data
@@ -57,8 +56,7 @@ def test_2d_ptycho_autodiff_l1(generate_gold=False, debug=False):
     
     tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
-    dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
-    data = dataset.patterns
+    data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
     
     options = api.AutodiffPtychographyOptions()
     options.data_options.data = data
@@ -99,8 +97,7 @@ def test_2d_ptycho_autodiff_opr(generate_gold=False, debug=False):
     
     tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
-    dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=3)
-    data = dataset.patterns
+    data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=3)
     
     options = api.AutodiffPtychographyOptions()
     options.data_options.data = data

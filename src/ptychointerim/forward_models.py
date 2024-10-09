@@ -5,8 +5,7 @@ from torch.nn import ModuleList
 
 from ptychointerim.ptychotorch.data_structures import (ReconstructParameter, ParameterGroup, Ptychography2DParameterGroup,
                                                        MultisliceObject)
-import ptychointerim.ptychotorch.propagation as prop
-from ptychointerim.propagate import WavefieldPropagatorParameters, AngularSpectrumPropagator
+from ptychointerim.propagate import WavefieldPropagatorParameters, AngularSpectrumPropagator, FourierPropagator
 from ptychointerim.metrics import MSELossOfSqrt
 
 
@@ -24,6 +23,7 @@ class ForwardModel(torch.nn.Module):
         self.parameter_group = parameter_group
         self.retain_intermediates = retain_intermediates
         self.optimizable_parameters: ModuleList[ReconstructParameter] = ModuleList()
+        self.propagator = None
         self.intermediate_variables = {}
         
     def register_optimizable_parameters(self):
@@ -51,6 +51,8 @@ class Ptychography2DForwardModel(ForwardModel):
             *args, **kwargs) -> None:
         super().__init__(parameter_group, *args, **kwargs)
         self.retain_intermediates = retain_intermediates
+        
+        self.far_field_propagator = FourierPropagator()
         
         # This step is essential as it sets the variables to be attributes of
         # the forward modelobject. Only with this can these buffers be copied
@@ -95,7 +97,7 @@ class Ptychography2DForwardModel(ForwardModel):
         :param psi: a (n_patches, n_probe_modes, h, w) tensor of exit waves.
         :return: (n_patches, h, w) tensor of detected intensities.
         """
-        psi_far = prop.propagate_far_field(psi)
+        psi_far = self.far_field_propagator.propagate_forward(psi)
         self.record_intermediate_variable('psi_far', psi_far)
         return psi_far
 
@@ -185,12 +187,13 @@ class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
             retain_intermediates=retain_intermediates,
             *args, **kwargs
         )
-        assert isinstance(self.parameter_group.object, MultisliceObject)
+        if not isinstance(self.parameter_group.object, MultisliceObject):
+            raise TypeError(f"Object must be a MultisliceObject, not {type(self.parameter_group.object)}")
         
         self.wavelength_m = wavelength_m
-        self.near_field_propagator = None
         self.prop_params = None
         
+        self.near_field_propagator = None
         self.build_propagator()
         
     def build_propagator(self):
@@ -203,7 +206,7 @@ class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
                     propagation_distance_m=self.object.slice_spacings_m[0],
                 )
         self.near_field_propagator = AngularSpectrumPropagator(self.prop_params)
-        
+                
     def forward_real_space(self, indices, obj_patches):
         # Shape of obj_patches:   (batch_size, n_slices, h, w)
         if self.probe.has_multiple_opr_modes:

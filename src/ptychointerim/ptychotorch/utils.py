@@ -6,8 +6,8 @@ from torchvision.transforms import GaussianBlur
 import numpy as np
 from numpy import ndarray
 
-from ptychointerim.ptychotorch.propagation import propagate_far_field
 import ptychointerim.maths as pmath
+from ptychointerim.propagate import FourierPropagator
 
 
 default_complex_dtype = torch.complex64
@@ -32,14 +32,16 @@ def rescale_probe(
     :param weights: A (n_opr_modes,) tensor of weights for each OPR mode.
     :return: the scaled probe.
     """
+    propagator = FourierPropagator()
+    
     probe_tensor = torch.tensor(probe)
     
     if probe_tensor.ndim == 3:
-        i_probe = (torch.abs(propagate_far_field(probe_tensor)) ** 2).sum().detach().cpu().numpy()
+        i_probe = (torch.abs(propagator.propagate_forward(probe_tensor)) ** 2).sum().detach().cpu().numpy()
     else:
         weights = torch.tensor(weights)
         probe_corrected = (probe_tensor * weights[:, None, None, None]).sum(0)
-        i_probe = (torch.abs(propagate_far_field(probe_corrected)) ** 2).sum().detach().cpu().numpy()
+        i_probe = (torch.abs(propagator.propagate_forward(probe_corrected)) ** 2).sum().detach().cpu().numpy()
     
     patterns = to_numpy(patterns)
     i_data = np.sum(np.mean(patterns, axis=0))

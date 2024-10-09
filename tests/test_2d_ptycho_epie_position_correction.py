@@ -19,9 +19,8 @@ def test_2d_ptycho_epie_position_correction(pytestconfig, generate_gold=False, d
     
     tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
-    dataset, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
+    data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
     probe = probe[:, [0], :, :]
-    data = dataset.patterns
     
     options = api.EPIEOptions()
     

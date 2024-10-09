@@ -5,7 +5,6 @@ import tqdm
 from torch.utils.data import Dataset
 from torch import Tensor
 
-import ptychointerim.ptychotorch.propagation as prop
 from ptychointerim.ptychotorch.data_structures import Ptychography2DParameterGroup, Object2D
 from ptychointerim.ptychotorch.reconstructors.base import AnalyticalIterativePtychographyReconstructor
 from ptychointerim.image_proc import place_patches_fourier_shift
@@ -90,7 +89,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             * torch.sqrt(y_true + 1e-7)[:, None]
         # Do not swap magnitude for bad pixels.
         psi_prime = torch.where(valid_pixel_mask.repeat(psi_prime.shape[0], probe.n_modes, 1, 1), psi_prime, psi_far)
-        psi_prime = prop.back_propagate_far_field(psi_prime)
+        psi_prime = self.forward_model.far_field_propagator.propagate_backward(psi_prime)
 
         delta_o = None
         if object_.optimization_enabled(self.current_epoch):

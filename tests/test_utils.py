@@ -56,7 +56,6 @@ def setup(name, cpu_only=True, gpu_indices=(0,)):
         
 def load_data_ptychodus(diffraction_pattern_file, parameter_file, subtract_position_mean=False, additional_opr_modes=0):
     patterns = h5py.File(diffraction_pattern_file, 'r')['dp'][...]
-    dataset = PtychographyDataset(patterns)
 
     f_meta = h5py.File(parameter_file, 'r')
     probe = f_meta['probe'][...]
@@ -72,7 +71,7 @@ def load_data_ptychodus(diffraction_pattern_file, parameter_file, subtract_posit
     if subtract_position_mean:
         positions_px -= positions_px.mean(axis=0)
     
-    return dataset, probe, pixel_size_m, positions_px
+    return patterns, probe, pixel_size_m, positions_px
     
     
 def load_tungsten_data(additional_opr_modes=0, pos_type='true'):

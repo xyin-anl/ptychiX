@@ -87,6 +87,7 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
         batch_loss = self.loss_function(
             y_pred[:, self.dataset.valid_pixel_mask], y_true[:, self.dataset.valid_pixel_mask]
         )
+        
         batch_loss.backward()
         self.run_post_differentiation_hooks(input_data, y_true)
         self.step_all_optimizers()

@@ -14,7 +14,7 @@ import ptychointerim.image_proc as ip
 from ptychointerim.ptychotorch.utils import to_tensor, get_default_complex_dtype
 import ptychointerim.maths as pmath
 import ptychointerim.api as api
-from ptychointerim.ptychotorch.propagation import propagate_far_field
+from ptychointerim.propagate import WavefieldPropagator, FourierPropagator
 
 class ComplexTensor(Module):
     """
@@ -633,13 +633,17 @@ class Probe(ReconstructParameter):
     def constrain_probe_power(
             self, 
             object_: Object,
-            opr_mode_weights: Union[Tensor, 'OPRModeWeights']
+            opr_mode_weights: Union[Tensor, 'OPRModeWeights'],
+            propagator: Optional[WavefieldPropagator] = None
     ) -> None:
         if self.probe_power <= 0.:
             return
         
         if isinstance(opr_mode_weights, OPRModeWeights):
             opr_mode_weights = opr_mode_weights.data
+            
+        if propagator is None:
+            propagator = FourierPropagator()
         
         # Shape of probe_composed:        (n_modes, h, w)
         if self.has_multiple_opr_modes:
@@ -649,7 +653,7 @@ class Probe(ReconstructParameter):
             probe_composed = self.get_opr_mode(0)
         
         # TODO: use propagator for forward simulation
-        propagated_probe = propagate_far_field(probe_composed)
+        propagated_probe = propagator.propagate_forward(probe_composed)
         propagated_probe_power = torch.sum(propagated_probe.abs() ** 2)
         power_correction = torch.sqrt(self.probe_power / propagated_probe_power)
         
