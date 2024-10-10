@@ -1,7 +1,6 @@
 from typing import Type, Optional
 
 import torch
-import tqdm
 from torch.utils.data import Dataset
 
 from ptychointerim.ptychotorch.data_structures import PtychographyParameterGroup, MultisliceObject

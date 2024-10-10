@@ -1,10 +1,9 @@
 from typing import Type, Optional
 
 import torch
-import tqdm
 from torch.utils.data import Dataset
 
-from ptychointerim.ptychotorch.data_structures import ParameterGroup, DummyParameter
+from ptychointerim.ptychotorch.data_structures import ParameterGroup
 from ptychointerim.forward_models import ForwardModel
 from ptychointerim.ptychotorch.reconstructors.base import IterativeReconstructor, LossTracker
 

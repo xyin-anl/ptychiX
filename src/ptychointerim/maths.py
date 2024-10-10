@@ -1,8 +1,6 @@
-from typing import Union, Optional, Tuple
+from typing import Union, Tuple
 
 import torch
-from torch import Tensor
-
 
 def trim_mean(x: torch.Tensor, fraction: float = 0.1) -> torch.Tensor:
     """
@@ -16,17 +14,18 @@ def trim_mean(x: torch.Tensor, fraction: float = 0.1) -> torch.Tensor:
     lb = torch.quantile(x, fraction)
     ub = torch.quantile(x, 1 - fraction)
     mask = (x >= lb) & (x <= ub)
+
     if torch.count_nonzero(mask) > 0:
         return torch.mean(x[mask])
     else:
         return torch.mean(x)
-    
-    
+
+
 def orthogonalize_gs(
-    x: Tensor,
+    x: torch.Tensor,
     dim: Union[int, Tuple[int, ...]] = -1,
     group_dim: Union[int, None] = None,
-):
+) -> torch.Tensor:
     """
     Gram-schmidt orthogonalization for complex arrays. Adapted from
     Tike (https://github.com/AdvancedPhotonSource/tike).
@@ -69,8 +68,8 @@ def project(a, b, dim=None, eps=1e-5):
 def inner(x, y, dim=None, keepdims=False):
     """Return the complex inner product; the order of the operands matters."""
     return (x * y.conj()).sum(dim, keepdims=keepdims)
-    
-    
+
+
 def mnorm(x, dim=-1, keepdims=False):
     """Return the vector 2-norm of x but replace sum with mean."""
     return torch.sqrt(torch.mean((x * x.conj()).real, dim=dim, keepdims=keepdims))

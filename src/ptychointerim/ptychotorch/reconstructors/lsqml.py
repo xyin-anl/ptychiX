@@ -1,14 +1,12 @@
-from typing import Type, Optional, Union, Literal
+from typing import Optional, Literal
 import logging
 
 import torch
-import tqdm
 from torch.utils.data import Dataset
 
 from ptychointerim.ptychotorch.reconstructors.base import AnalyticalIterativePtychographyReconstructor, LossTracker
 from ptychointerim.ptychotorch.data_structures import Ptychography2DParameterGroup, DummyParameter, Object2D
 from ptychointerim.forward_models import Ptychography2DForwardModel, PtychographyGaussianNoiseModel, PtychographyPoissonNoiseModel
-from ptychointerim.metrics import MSELossOfSqrt
 from ptychointerim.image_proc import place_patches_fourier_shift, extract_patches_fourier_shift, gaussian_gradient
 from ptychointerim.ptychotorch.utils import chunked_processing
 import ptychointerim.maths as pmath
