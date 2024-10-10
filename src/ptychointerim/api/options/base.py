@@ -19,7 +19,7 @@ class Options:
         """
         parent_classes = [ObjectOptions, ProbeOptions, ReconstructorOptions, ProbePositionOptions, OPRModeWeightsOptions]
         parent_class = [parent_class for parent_class in parent_classes if isinstance(self, parent_class)][0]
-        if isinstance(parent_class, object):
+        if parent_class == object:
             return self.__dict__
         parent_fields = [f.name for f in dataclasses.fields(parent_class)]
         d = {}
