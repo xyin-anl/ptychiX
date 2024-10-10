@@ -16,6 +16,7 @@ import ptychointerim.maths as pmath
 import ptychointerim.api as api
 from ptychointerim.propagate import WavefieldPropagator, FourierPropagator
 
+
 class ComplexTensor(Module):
     """
     A module that stores the real and imaginary parts of a complex tensor
@@ -25,16 +26,15 @@ class ComplexTensor(Module):
     avoid the issue, complex parameters are stored as two real tensors.
     """
 
-    def __init__(self,
-                 data: Union[Tensor, ndarray],
-                 requires_grad: bool = True,
-                 *args, **kwargs) -> None:
+    def __init__(
+        self, data: Union[Tensor, ndarray], requires_grad: bool = True, *args, **kwargs
+    ) -> None:
         super().__init__(*args, **kwargs)
         data = to_tensor(data)
         data = torch.stack([data.real, data.imag], dim=-1).requires_grad_(requires_grad)
         data = data.type(torch.get_default_dtype())
 
-        self.register_parameter(name='data', param=Parameter(data))
+        self.register_parameter(name="data", param=Parameter(data))
 
     def mag(self) -> Tensor:
         return torch.sqrt(self.data[..., 0] ** 2 + self.data[..., 1] ** 2)
@@ -66,23 +66,25 @@ class ComplexTensor(Module):
 
 
 class ReconstructParameter(Module):
-
     name = None
     optimizable: bool = True
     optimization_plan: api.OptimizationPlan = None
     optimizer = None
     is_dummy = False
 
-    def __init__(self,
-                 shape: Optional[Tuple[int, ...]] = None,
-                 data: Optional[Union[Tensor, ndarray]] = None,
-                 is_complex: bool = False,
-                 name: Optional[str] = None,
-                 optimizable: bool = True,
-                 optimization_plan: Optional[api.OptimizationPlan] = None,
-                 optimizer_class: Optional[Type[torch.optim.Optimizer]] = None,
-                 optimizer_params: Optional[dict] = None,
-                 *args, **kwargs) -> None:
+    def __init__(
+        self,
+        shape: Optional[Tuple[int, ...]] = None,
+        data: Optional[Union[Tensor, ndarray]] = None,
+        is_complex: bool = False,
+        name: Optional[str] = None,
+        optimizable: bool = True,
+        optimization_plan: Optional[api.OptimizationPlan] = None,
+        optimizer_class: Optional[Type[torch.optim.Optimizer]] = None,
+        optimizer_params: Optional[dict] = None,
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         if shape is None and data is None:
             raise ValueError("Either shape or data must be specified.")
@@ -110,7 +112,7 @@ class ReconstructParameter(Module):
             # Register the tensor as a parameter. In subclasses, do the same for any
             # additional differentiable parameters. If you have a buffer that does not
             # need gradients, use register_buffer instead.
-            self.register_parameter('tensor', Parameter(tensor))
+            self.register_parameter("tensor", Parameter(tensor))
 
         self.build_optimizer()
 
@@ -127,7 +129,9 @@ class ReconstructParameter(Module):
 
     def build_optimizer(self):
         if self.optimizable and self.optimizer_class is None:
-            raise ValueError("Parameter {} is optimizable but no optimizer is specified.".format(self.name))
+            raise ValueError(
+                "Parameter {} is optimizable but no optimizer is specified.".format(self.name)
+            )
         if self.optimizable:
             if isinstance(self.tensor, ComplexTensor):
                 self.optimizer = self.optimizer_class([self.tensor.data], **self.optimizer_params)
@@ -162,10 +166,12 @@ class ReconstructParameter(Module):
         return var
 
     def get_config_dict(self):
-        return {'name': self.name,
-                'optimizer_class': str(self.optimizer_class),
-                'optimizer_params': self.optimizer_params,
-                'optimizable': self.optimizable}
+        return {
+            "name": self.name,
+            "optimizer_class": str(self.optimizer_class),
+            "optimizer_params": self.optimizer_params,
+            "optimizable": self.optimizable,
+        }
 
     def set_data(self, data):
         if isinstance(self.tensor, ComplexTensor):
@@ -207,7 +213,6 @@ class ReconstructParameter(Module):
 
 
 class DummyParameter(ReconstructParameter):
-
     is_dummy = True
 
     def __init__(self, *args, **kwargs):
@@ -218,19 +223,21 @@ class DummyParameter(ReconstructParameter):
 
 
 class Object(ReconstructParameter):
-
     pixel_size_m: float = 1.0
 
-    def __init__(self,
-                 pixel_size_m: float = 1.0,
-                 name: str = 'object',
-                 l1_norm_constraint_weight: float = 0,
-                 l1_norm_constraint_stride: int = 1,
-                 smoothness_constraint_alpha: float = 0,
-                 smoothness_constraint_stride: int = 1,
-                 total_variation_weight: float = 0,
-                 total_variation_stride: int = 1,
-                 *args, **kwargs):
+    def __init__(
+        self,
+        pixel_size_m: float = 1.0,
+        name: str = "object",
+        l1_norm_constraint_weight: float = 0,
+        l1_norm_constraint_stride: int = 1,
+        smoothness_constraint_alpha: float = 0,
+        smoothness_constraint_stride: int = 1,
+        total_variation_weight: float = 0,
+        total_variation_stride: int = 1,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, name=name, is_complex=True, **kwargs)
         self.pixel_size_m = pixel_size_m
         self.l1_norm_constraint_weight = l1_norm_constraint_weight
@@ -241,7 +248,7 @@ class Object(ReconstructParameter):
         self.total_variation_stride = total_variation_stride
         center_pixel = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
 
-        self.register_buffer('center_pixel', center_pixel)
+        self.register_buffer("center_pixel", center_pixel)
 
     def extract_patches(self, positions, patch_shape, *args, **kwargs):
         raise NotImplementedError
@@ -250,9 +257,11 @@ class Object(ReconstructParameter):
         raise NotImplementedError
 
     def l1_norm_constraint_enabled(self, current_epoch: int):
-        if self.l1_norm_constraint_weight > 0 \
-                and self.optimization_enabled(current_epoch) \
-                and (current_epoch - self.optimization_plan.start) % self.l1_norm_constraint_stride == 0:
+        if (
+            self.l1_norm_constraint_weight > 0
+            and self.optimization_enabled(current_epoch)
+            and (current_epoch - self.optimization_plan.start) % self.l1_norm_constraint_stride == 0
+        ):
             return True
         else:
             return False
@@ -265,9 +274,12 @@ class Object(ReconstructParameter):
         logging.debug("L1 norm constraint applied to object.")
 
     def smoothness_constraint_enabled(self, current_epoch: int):
-        if self.smoothness_constraint_alpha > 0 \
-                and self.optimization_enabled(current_epoch) \
-                and (current_epoch - self.optimization_plan.start) % self.smoothness_constraint_stride == 0:
+        if (
+            self.smoothness_constraint_alpha > 0
+            and self.optimization_enabled(current_epoch)
+            and (current_epoch - self.optimization_plan.start) % self.smoothness_constraint_stride
+            == 0
+        ):
             return True
         else:
             return False
@@ -276,40 +288,47 @@ class Object(ReconstructParameter):
         """
         Smooth the magnitude of the object.
         """
-        if self.smoothness_constraint_alpha > 1. / 8:
-            logging.warning(f'Alpha = {self.smoothness_constraint_alpha} in smoothness constraint should be less than 1/8.')
+        if self.smoothness_constraint_alpha > 1.0 / 8:
+            logging.warning(
+                f"Alpha = {self.smoothness_constraint_alpha} in smoothness constraint should be less than 1/8."
+            )
         psf = torch.ones(3, 3, device=self.device) * self.smoothness_constraint_alpha
         psf[2, 2] = 1 - 8 * self.smoothness_constraint_alpha
 
         data = self.data
         mag = data.abs()
-        mag = ip.convolve2d(mag, psf, 'same')
+        mag = ip.convolve2d(mag, psf, "same")
         data = data / data.abs() * mag
         self.set_data(data)
-        
+
     def total_variation_enabled(self, current_epoch: int):
-        if self.total_variation_weight > 0 \
-                and self.optimization_enabled(current_epoch) \
-                and (current_epoch - self.optimization_plan.start) % self.total_variation_stride == 0:
+        if (
+            self.total_variation_weight > 0
+            and self.optimization_enabled(current_epoch)
+            and (current_epoch - self.optimization_plan.start) % self.total_variation_stride == 0
+        ):
             return True
         else:
             return False
-        
+
     def constrain_total_variation(self) -> None:
         raise NotImplementedError
 
     def get_config_dict(self):
         d = super().get_config_dict()
-        d.update({
-            'pixel_size_m': self.pixel_size_m,
-            'l1_norm_constraint_weight': self.l1_norm_constraint_weight,
-            'l1_norm_constraint_stride': self.l1_norm_constraint_stride
-        })
+        d.update(
+            {
+                "pixel_size_m": self.pixel_size_m,
+                "l1_norm_constraint_weight": self.l1_norm_constraint_weight,
+                "l1_norm_constraint_stride": self.l1_norm_constraint_stride,
+                "total_variation_weight": self.total_variation_weight,
+                "total_variation_stride": self.total_variation_stride
+            }
+        )
         return d
 
 
 class Object2D(Object):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -345,10 +364,12 @@ class Object2D(Object):
         :return: a tensor with the same shape as the object with patches added onto it.
         """
         positions = positions + self.center_pixel
-        image = torch.zeros(self.shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device)
-        image = ip.place_patches_fourier_shift(image, positions, patches, op='add')
+        image = torch.zeros(
+            self.shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device
+        )
+        image = ip.place_patches_fourier_shift(image, positions, patches, op="add")
         return image
-    
+
     def constrain_total_variation(self) -> None:
         data = self.data
         data = ip.total_variation_2d_chambolle(data, lmbda=self.total_variation_weight, niter=2)
@@ -356,19 +377,18 @@ class Object2D(Object):
 
 
 class MultisliceObject(Object2D):
-
     def __init__(self, slice_spacings_m: Tensor = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         if len(self.shape) != 3:
-            raise ValueError('MultisliceObject should have a shape of (n_slices, h, w).')
+            raise ValueError("MultisliceObject should have a shape of (n_slices, h, w).")
         if slice_spacings_m is None or len(slice_spacings_m) != self.n_slices - 1:
-            raise ValueError('The number of slice spacings must be n_slices - 1.')
+            raise ValueError("The number of slice spacings must be n_slices - 1.")
 
-        self.register_buffer('slice_spacings_m', to_tensor(slice_spacings_m))
+        self.register_buffer("slice_spacings_m", to_tensor(slice_spacings_m))
 
         center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
-        self.register_buffer('center_pixel', center_pixel)
+        self.register_buffer("center_pixel", center_pixel)
 
     @property
     def n_slices(self):
@@ -393,7 +413,9 @@ class MultisliceObject(Object2D):
         positions = positions + self.center_pixel
         patches_all_slices = []
         for i_slice in range(self.n_slices):
-            patches = ip.extract_patches_fourier_shift(self.get_slice(i_slice), positions, patch_shape)
+            patches = ip.extract_patches_fourier_shift(
+                self.get_slice(i_slice), positions, patch_shape
+            )
             patches_all_slices.append(patches)
         patches_all_slices = torch.stack(patches_all_slices, dim=1)
         return patches_all_slices
@@ -408,7 +430,9 @@ class MultisliceObject(Object2D):
         positions = positions + self.center_pixel
         updated_slices = []
         for i_slice in range(self.n_slices):
-            image = ip.place_patches_fourier_shift(self.get_slice(i_slice), positions, patches[:, i_slice, ...])
+            image = ip.place_patches_fourier_shift(
+                self.get_slice(i_slice), positions, patches[:, i_slice, ...]
+            )
             updated_slices.append(image)
         updated_slices = torch.stack(updated_slices, dim=0)
         self.tensor.set_data(updated_slices)
@@ -421,41 +445,48 @@ class MultisliceObject(Object2D):
         :return: a tensor with the lateral shape of the object with patches added onto it.
         """
         positions = positions + self.center_pixel
-        image = torch.zeros(self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device)
-        image = ip.place_patches_fourier_shift(image, positions, patches, op='add')
+        image = torch.zeros(
+            self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device
+        )
+        image = ip.place_patches_fourier_shift(image, positions, patches, op="add")
         return image
-    
+
     def constrain_total_variation(self) -> None:
         data = self.data
         for i_slice in range(self.n_slices):
-            data[i_slice] = ip.total_variation_2d_chambolle(data[i_slice], lmbda=self.total_variation_weight, niter=2)
+            data[i_slice] = ip.total_variation_2d_chambolle(
+                data[i_slice], lmbda=self.total_variation_weight, niter=2
+            )
         self.set_data(data)
 
     def get_config_dict(self):
         d = super().get_config_dict()
-        d.update({
-            'slice_spacings_m': self.slice_spacings_m,
-        })
+        d.update(
+            {
+                "slice_spacings_m": self.slice_spacings_m,
+            }
+        )
         return d
 
 
 class Probe(ReconstructParameter):
-
     # TODO: eigenmode_update_relaxation is only used for LSQML. We should create dataclasses
     # to contain additional options for ReconstructParameter classes, and subclass them for specific
     # reconstruction algorithms - for example, ProbeOptions -> LSQMLProbeOptions.
-    def __init__(self,
-                 name: str = 'probe',
-                 eigenmode_update_relaxation: float = 0.1,
-                 probe_power: float = 0.0,
-                 probe_power_constraint_stride: int = 1,
-                 orthogonalize_incoherent_modes: bool = False,
-                 orthogonalize_incoherent_modes_stride: int = 1,
-                 orthogonalize_incoherent_modes_method: api.enums.OrthogonalizationMethods = api.enums.OrthogonalizationMethods.GS,
-                 orthogonalize_opr_modes: bool = False,
-                 orthogonalize_opr_modes_stride: int = 1,
-
-                 *args, **kwargs):
+    def __init__(
+        self,
+        name: str = "probe",
+        eigenmode_update_relaxation: float = 0.1,
+        probe_power: float = 0.0,
+        probe_power_constraint_stride: int = 1,
+        orthogonalize_incoherent_modes: bool = False,
+        orthogonalize_incoherent_modes_stride: int = 1,
+        orthogonalize_incoherent_modes_method: api.enums.OrthogonalizationMethods = api.enums.OrthogonalizationMethods.GS,
+        orthogonalize_opr_modes: bool = False,
+        orthogonalize_opr_modes_stride: int = 1,
+        *args,
+        **kwargs,
+    ):
         """
         Represents the probe function in a tensor of shape
             `(n_opr_modes, n_modes, h, w)`
@@ -480,7 +511,7 @@ class Probe(ReconstructParameter):
         """
         super().__init__(*args, name=name, is_complex=True, **kwargs)
         if len(self.shape) != 4:
-            raise ValueError('Probe tensor must be of shape (n_opr_modes, n_modes, h, w).')
+            raise ValueError("Probe tensor must be of shape (n_opr_modes, n_modes, h, w).")
 
         self.eigenmode_update_relaxation = eigenmode_update_relaxation
         self.probe_power = probe_power
@@ -501,8 +532,7 @@ class Probe(ReconstructParameter):
         if shifts.ndim == 1:
             probe_straightened = self.tensor.complex().view(-1, *self.shape[-2:])
             shifted_probe = ip.fourier_shift(
-                probe_straightened,
-                shifts[None, :].repeat([[probe_straightened.shape[0], 1, 1]])
+                probe_straightened, shifts[None, :].repeat([[probe_straightened.shape[0], 1, 1]])
             )
             shifted_probe = shifted_probe.view(*self.shape)
         else:
@@ -544,10 +574,10 @@ class Probe(ReconstructParameter):
         return self.shape[-2:]
 
     def get_all_mode_intensity(
-            self,
-            opr_mode: Optional[int] = 0,
-            weights: Optional[Union[Tensor, ReconstructParameter]] = None,
-        ) -> Tensor:
+        self,
+        opr_mode: Optional[int] = 0,
+        weights: Optional[Union[Tensor, ReconstructParameter]] = None,
+    ) -> Tensor:
         """
         Get the intensity of all probe modes.
 
@@ -565,7 +595,9 @@ class Probe(ReconstructParameter):
             p = (self.data * weights[None, :, :, :]).sum(0)
         return torch.sum((p.abs()) ** 2, dim=0)
 
-    def get_unique_probes(self, weights: Union[Tensor, ReconstructParameter], mode_to_apply: Optional[int] = None) -> Tensor:
+    def get_unique_probes(
+        self, weights: Union[Tensor, ReconstructParameter], mode_to_apply: Optional[int] = None
+    ) -> Tensor:
         """
         Creates the unique probe for one or more scan points given the weights of eigenmodes.
 
@@ -617,8 +649,10 @@ class Probe(ReconstructParameter):
         elif self.orthogonalize_incoherent_modes_method == api.enums.OrthogonalizationMethods.SVD:
             func = pmath.orthogonalize_svd
         else:
-            raise NotImplementedError(f"Orthogonalization method {self.orthogonalize_incoherent_modes_method} "
-                                      "is not supported.")
+            raise NotImplementedError(
+                f"Orthogonalization method {self.orthogonalize_incoherent_modes_method} "
+                "is not supported."
+            )
         probe[0] = func(
             probe[0],
             dim=(-2, -1),
@@ -631,7 +665,9 @@ class Probe(ReconstructParameter):
 
         self.set_data(probe)
 
-    def constrain_opr_mode_orthogonality(self, weights: Union[Tensor, ReconstructParameter], eps=1e-5):
+    def constrain_opr_mode_orthogonality(
+        self, weights: Union[Tensor, ReconstructParameter], eps=1e-5
+    ):
         """Add the following constraints to variable probe weights
 
         1. Remove outliars from weights
@@ -664,7 +700,7 @@ class Probe(ReconstructParameter):
         # Normalize eigenmodes and adjust weights.
         eigenmodes = probe[1:, ...]
         vnorm = pmath.mnorm(eigenmodes, dim=(-2, -1), keepdims=True)
-        eigenmodes /= (vnorm + eps)
+        eigenmodes /= vnorm + eps
         # Shape of weights:      (n_points, n_opr_modes).
         # Currently, only the first incoherent mode has OPR modes, and the
         # stored weights are for that mode.
@@ -694,7 +730,8 @@ class Probe(ReconstructParameter):
         aevol = torch.abs(weights)
         weights = torch.minimum(
             aevol,
-            1.5 * torch.quantile(
+            1.5
+            * torch.quantile(
                 aevol,
                 0.95,
                 dim=0,
@@ -707,12 +744,12 @@ class Probe(ReconstructParameter):
         return weights
 
     def constrain_probe_power(
-            self,
-            object_: Object,
-            opr_mode_weights: Union[Tensor, 'OPRModeWeights'],
-            propagator: Optional[WavefieldPropagator] = None
+        self,
+        object_: Object,
+        opr_mode_weights: Union[Tensor, "OPRModeWeights"],
+        propagator: Optional[WavefieldPropagator] = None,
     ) -> None:
-        if self.probe_power <= 0.:
+        if self.probe_power <= 0.0:
             return
 
         if isinstance(opr_mode_weights, OPRModeWeights):
@@ -736,8 +773,7 @@ class Probe(ReconstructParameter):
         self.set_data(self.data * power_correction)
         object_.set_data(object_.data / power_correction)
 
-
-        logging.info('Probe and object scaled by {}.'.format(power_correction))
+        logging.info("Probe and object scaled by {}.".format(power_correction))
 
     def post_update_hook(self) -> None:
         super().post_update_hook()
@@ -762,10 +798,13 @@ class Probe(ReconstructParameter):
 
     def opr_mode_orthogonalization_enabled(self, current_epoch: int) -> bool:
         enabled = self.optimization_enabled(current_epoch)
-        return enabled \
-            and self.has_multiple_opr_modes \
-            and self.orthogonalize_opr_modes \
-            and (current_epoch - self.optimization_plan.start) % self.orthogonalize_opr_modes_stride == 0
+        return (
+            enabled
+            and self.has_multiple_opr_modes
+            and self.orthogonalize_opr_modes
+            and (current_epoch - self.optimization_plan.start) % self.orthogonalize_opr_modes_stride
+            == 0
+        )
 
     def save_tiff(self, path: str):
         """
@@ -782,39 +821,46 @@ class Probe(ReconstructParameter):
         for i_mode in range(self.shape[1]):
             for i_opr_mode in range(self.shape[0]):
                 mag_img[
-                    i_mode * self.shape[3]:(i_mode + 1) * self.shape[3],
-                    i_opr_mode * self.shape[2]:(i_opr_mode + 1) * self.shape[2]
-                    ] = data[i_opr_mode, i_mode, :, :].abs().detach().cpu().numpy()
+                    i_mode * self.shape[3] : (i_mode + 1) * self.shape[3],
+                    i_opr_mode * self.shape[2] : (i_opr_mode + 1) * self.shape[2],
+                ] = data[i_opr_mode, i_mode, :, :].abs().detach().cpu().numpy()
                 phase_img[
-                    i_mode * self.shape[3]:(i_mode + 1) * self.shape[3],
-                    i_opr_mode * self.shape[2]:(i_opr_mode + 1) * self.shape[2]
-                    ] = torch.angle(data[i_opr_mode, i_mode, :, :]).detach().cpu().numpy()
-        tifffile.imsave(fname + '_mag.tif', mag_img)
-        tifffile.imsave(fname + '_phase.tif', phase_img)
+                    i_mode * self.shape[3] : (i_mode + 1) * self.shape[3],
+                    i_opr_mode * self.shape[2] : (i_opr_mode + 1) * self.shape[2],
+                ] = torch.angle(data[i_opr_mode, i_mode, :, :]).detach().cpu().numpy()
+        tifffile.imsave(fname + "_mag.tif", mag_img)
+        tifffile.imsave(fname + "_phase.tif", phase_img)
 
     def get_config_dict(self):
         d = super().get_config_dict()
-        d.update({
-            'eigenmode_update_relaxation': self.eigenmode_update_relaxation,
-            'probe_power': self.probe_power,
-            'probe_power_constraint_stride': self.probe_power_constraint_stride,
-            'orthogonalize_incoherent_modes': self.orthogonalize_incoherent_modes,
-            'orthogonalize_incoherent_modes_stride': self.orthogonalize_incoherent_modes_stride,
-            'orthogonalize_incoherent_modes_method': self.orthogonalize_incoherent_modes_method,
-            'orthogonalize_opr_modes': self.orthogonalize_opr_modes,
-            'orthogonalize_opr_modes_stride': self.orthogonalize_opr_modes_stride
-        })
+        d.update(
+            {
+                "eigenmode_update_relaxation": self.eigenmode_update_relaxation,
+                "probe_power": self.probe_power,
+                "probe_power_constraint_stride": self.probe_power_constraint_stride,
+                "orthogonalize_incoherent_modes": self.orthogonalize_incoherent_modes,
+                "orthogonalize_incoherent_modes_stride": self.orthogonalize_incoherent_modes_stride,
+                "orthogonalize_incoherent_modes_method": self.orthogonalize_incoherent_modes_method,
+                "orthogonalize_opr_modes": self.orthogonalize_opr_modes,
+                "orthogonalize_opr_modes_stride": self.orthogonalize_opr_modes_stride,
+            }
+        )
         return d
 
 
-
 class OPRModeWeights(ReconstructParameter):
-
     # TODO: update_relaxation is only used for LSQML. We should create dataclasses
     # to contain additional options for ReconstructParameter classes, and subclass them for specific
     # reconstruction algorithms - for example, OPRModeWeightsOptions -> LSQMLOPRModeWeightsOptions.
-    def __init__(self, *args, name='opr_weights', update_relaxation=0.1, optimize_eigenmode_weights=True,
-                 optimize_intensity_variation=False, **kwargs):
+    def __init__(
+        self,
+        *args,
+        name="opr_weights",
+        update_relaxation=0.1,
+        optimize_eigenmode_weights=True,
+        optimize_intensity_variation=False,
+        **kwargs,
+    ):
         """
         Weights of OPR modes for each scan point.
 
@@ -824,12 +870,14 @@ class OPRModeWeights(ReconstructParameter):
         """
         super().__init__(*args, name=name, is_complex=False, **kwargs)
         if len(self.shape) != 2:
-            raise ValueError('OPR weights must be of shape (n_scan_points, n_opr_modes).')
+            raise ValueError("OPR weights must be of shape (n_scan_points, n_opr_modes).")
         if self.optimizable:
             if not (optimize_eigenmode_weights or optimize_intensity_variation):
-                raise ValueError('When OPRModeWeights is optimizable, at least 1 of '
-                                 'optimize_eigenmode_weights and optimize_intensity_variation '
-                                 'should be set to True.')
+                raise ValueError(
+                    "When OPRModeWeights is optimizable, at least 1 of "
+                    "optimize_eigenmode_weights and optimize_intensity_variation "
+                    "should be set to True."
+                )
 
         self.update_relaxation = update_relaxation
         # TODO: AD optimizes both eigenmode weights and intensity variation when self.optimizable is True.
@@ -865,21 +913,28 @@ class OPRModeWeights(ReconstructParameter):
 
     def get_config_dict(self):
         d = super().get_config_dict()
-        d.update({
-            'update_relaxation': self.update_relaxation,
-            'optimize_eigenmode_weights': self.optimize_eigenmode_weights,
-            'optimize_intensity_variation': self.optimize_intensity_variation
-        })
+        d.update(
+            {
+                "update_relaxation": self.update_relaxation,
+                "optimize_eigenmode_weights": self.optimize_eigenmode_weights,
+                "optimize_intensity_variation": self.optimize_intensity_variation,
+            }
+        )
         return d
 
 
 class ProbePositions(ReconstructParameter):
-
     pixel_size_m: float = 1.0
-    conversion_factor_dict = {'nm': 1e9, 'um': 1e6, 'm': 1.0}
+    conversion_factor_dict = {"nm": 1e9, "um": 1e6, "m": 1.0}
 
-    def __init__(self, *args, pixel_size_m: float = 1.0, name: str = 'probe_positions',
-                 update_magnitude_limit=0, **kwargs):
+    def __init__(
+        self,
+        *args,
+        pixel_size_m: float = 1.0,
+        name: str = "probe_positions",
+        update_magnitude_limit=0,
+        **kwargs,
+    ):
         """Probe positions.
 
         :param data: a tensor of shape (N, 2) giving the probe positions in pixels.
@@ -889,21 +944,22 @@ class ProbePositions(ReconstructParameter):
         self.pixel_size_m = pixel_size_m
         self.update_magnitude_limit = update_magnitude_limit
 
-    def get_positions_in_physical_unit(self, unit: str = 'm'):
+    def get_positions_in_physical_unit(self, unit: str = "m"):
         return self.tensor * self.pixel_size_m * self.conversion_factor_dict[unit]
 
     def get_config_dict(self):
         d = super().get_config_dict()
-        d.update({
-            'pixel_size_m': self.pixel_size_m,
-            'update_magnitude_limit': self.update_magnitude_limit,
-        })
+        d.update(
+            {
+                "pixel_size_m": self.pixel_size_m,
+                "update_magnitude_limit": self.update_magnitude_limit,
+            }
+        )
         return d
 
 
 @dataclasses.dataclass
 class ParameterGroup:
-
     def get_all_parameters(self) -> list[ReconstructParameter]:
         return list(self.__dict__.values())
 
@@ -920,7 +976,6 @@ class ParameterGroup:
 
 @dataclasses.dataclass
 class PtychographyParameterGroup(ParameterGroup):
-
     object: Object
 
     probe: Probe
@@ -931,10 +986,11 @@ class PtychographyParameterGroup(ParameterGroup):
 
     def __post_init__(self):
         if self.probe.has_multiple_opr_modes and self.opr_mode_weights is None:
-            raise ValueError('OPRModeWeights must be provided when the probe has multiple OPR modes.')
+            raise ValueError(
+                "OPRModeWeights must be provided when the probe has multiple OPR modes."
+            )
 
 
 @dataclasses.dataclass
 class Ptychography2DParameterGroup(PtychographyParameterGroup):
-
     object: Object2D

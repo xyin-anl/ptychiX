@@ -11,11 +11,13 @@ from ptychointerim.ptychotorch.utils import to_numpy
 
 
 class LossTracker:
-
-    def __init__(self, 
-                 metric_function: Optional[torch.nn.Module] = None, 
-                 always_compute_loss: bool = False, 
-                 *args, **kwargs) -> None:
+    def __init__(
+        self,
+        metric_function: Optional[torch.nn.Module] = None,
+        always_compute_loss: bool = False,
+        *args,
+        **kwargs,
+    ) -> None:
         """
         The loss tracker is used to track the loss during reconstruction.
 
@@ -26,8 +28,8 @@ class LossTracker:
             only computing the loss when it is not.
         """
         super().__init__(*args, **kwargs)
-        self.table = pd.DataFrame(columns=['epoch', 'loss'])
-        self.table['epoch'] = self.table['epoch'].astype(int)
+        self.table = pd.DataFrame(columns=["epoch", "loss"])
+        self.table["epoch"] = self.table["epoch"].astype(int)
         self.metric_function = metric_function
         self.epoch_loss = 0.0
         self.accumulated_num_batches = 0
@@ -44,11 +46,12 @@ class LossTracker:
         self.table.loc[len(self.table)] = [epoch, self.epoch_loss]
         self.epoch_loss = 0.0
         self.accumulated_num_batches = 0
-        
-    def update_batch_loss(self, 
-                          y_pred: Optional[torch.Tensor] = None, 
-                          y_true: Optional[torch.Tensor] = None, 
-                          loss: Optional[float] = None,
+
+    def update_batch_loss(
+        self,
+        y_pred: Optional[torch.Tensor] = None,
+        y_true: Optional[torch.Tensor] = None,
+        loss: Optional[float] = None,
     ) -> None:
         data_provided = y_pred is not None and y_true is not None
         loss_provided = loss is not None
@@ -57,20 +60,22 @@ class LossTracker:
                 raise ValueError("Always_compute_loss requires (y_pred, y_true) to be provided.")
         if not (data_provided or loss_provided):
             raise ValueError("One of (y_pred, y_true) and (loss,) must be provided.")
-            
+
         if loss_provided and not self.always_compute_loss:
             self.update_batch_loss_with_value(loss)
         else:
             self.update_batch_loss_with_metric_function(y_pred, y_true)
-        
-    def update_batch_loss_with_metric_function(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> None:
+
+    def update_batch_loss_with_metric_function(
+        self, y_pred: torch.Tensor, y_true: torch.Tensor
+    ) -> None:
         if self.metric_function is None:
             raise ValueError("update_batch_loss_with_metric_function requires a metric function.")
         batch_loss = self.metric_function(y_pred, y_true)
         batch_loss = to_numpy(batch_loss)
         self.epoch_loss = self.epoch_loss + batch_loss
         self.accumulated_num_batches = self.accumulated_num_batches + 1
-        
+
     def update_batch_loss_with_value(self, loss: float) -> None:
         loss = to_numpy(loss)
         self.epoch_loss = self.epoch_loss + loss
@@ -80,9 +85,8 @@ class LossTracker:
         print(self.table)
 
     def print_latest(self) -> None:
-        print('Epoch: {}, Loss: {}'.format(
-            int(self.table.iloc[-1].epoch),
-            self.table.iloc[-1].loss)
+        print(
+            "Epoch: {}, Loss: {}".format(int(self.table.iloc[-1].epoch), self.table.iloc[-1].loss)
         )
 
     def to_csv(self, path: str) -> None:
@@ -90,26 +94,23 @@ class LossTracker:
 
 
 class Reconstructor:
-
     def __init__(self, parameter_group: ParameterGroup):
         self.loss_tracker = LossTracker()
         self.parameter_group = parameter_group
-                
+
     def check_inputs(self, *args, **kwargs):
         pass
 
     def build(self) -> None:
         self.check_inputs()
 
-
     def get_config_dict(self) -> dict:
         d = self.parameter_group.get_config_dict()
-        d.update({'reconstructor': self.__class__.__name__})
+        d.update({"reconstructor": self.__class__.__name__})
         return d
-    
+
 
 class PtychographyReconstructor(Reconstructor):
-    
     parameter_group: PtychographyParameterGroup
 
     def __init__(self, parameter_group: PtychographyParameterGroup, *args, **kwargs) -> None:
@@ -117,18 +118,19 @@ class PtychographyReconstructor(Reconstructor):
 
 
 class IterativeReconstructor(Reconstructor):
-
-    def __init__(self,
-                 parameter_group: ParameterGroup,
-                 dataset: Dataset,
-                 batch_size: int = 1,
-                 n_epochs: int = 100,
-                 metric_function: Optional[torch.nn.Module] = None,
-                 *args, **kwargs
+    def __init__(
+        self,
+        parameter_group: ParameterGroup,
+        dataset: Dataset,
+        batch_size: int = 1,
+        n_epochs: int = 100,
+        metric_function: Optional[torch.nn.Module] = None,
+        *args,
+        **kwargs,
     ) -> None:
         """
         Iterative reconstructor base class.
-        
+
         :param parameter_group: The ParameterGroup containing optimizable and non-optimizable parameters.
         :param dataset: The dataset containing diffraction patterns.
         :param batch_size: The batch size.
@@ -152,48 +154,49 @@ class IterativeReconstructor(Reconstructor):
         self.build_counter()
 
     def build_dataloader(self):
-        self.dataloader = DataLoader(self.dataset,
-                                     batch_size=self.batch_size,
-                                     generator=torch.Generator(device=torch.get_default_device()),
-                                     shuffle=True)
+        self.dataloader = DataLoader(
+            self.dataset,
+            batch_size=self.batch_size,
+            generator=torch.Generator(device=torch.get_default_device()),
+            shuffle=True,
+        )
         self.dataset.move_attributes_to_device(torch.get_default_device())
 
     def build_loss_tracker(self):
         self.loss_tracker = LossTracker(metric_function=self.metric_function)
-        
+
     def build_counter(self):
         self.current_epoch = 0
 
     def get_config_dict(self) -> dict:
         d = super().get_config_dict()
-        d.update({'batch_size': self.batch_size, 
-                  'n_epochs': self.n_epochs})
+        d.update({"batch_size": self.batch_size, "n_epochs": self.n_epochs})
         return d
-                
+
     def run_minibatch(self, input_data: Sequence[Tensor], y_true: Tensor, *args, **kwargs) -> None:
         """
         Process batch, update parameters, calculate loss, and update loss tracker.
-        
+
         :param input_data: a list of input data. In many cases it is [indices].
         :param y_true: the measured data.
         """
         raise NotImplementedError
-    
+
     def run_pre_run_hooks(self) -> None:
         pass
-    
+
     def run_pre_update_hooks(self) -> None:
         pass
-    
+
     def run_pre_epoch_hooks(self) -> None:
         pass
-    
+
     def run_post_update_hooks(self) -> None:
         pass
-    
+
     def run_post_epoch_hooks(self) -> None:
         pass
-                
+
     def run(self, n_epochs: Optional[int] = None, *args, **kwargs):
         self.run_pre_run_hooks()
         n_epochs = n_epochs if n_epochs is not None else self.n_epochs
@@ -202,69 +205,76 @@ class IterativeReconstructor(Reconstructor):
             for batch_data in self.dataloader:
                 input_data = [x.to(torch.get_default_device()) for x in batch_data[:-1]]
                 y_true = batch_data[-1].to(torch.get_default_device())
-                
+
                 self.run_pre_update_hooks()
                 self.run_minibatch(input_data, y_true)
                 self.run_post_update_hooks()
             self.run_post_epoch_hooks()
             self.loss_tracker.conclude_epoch(epoch=self.current_epoch)
             self.loss_tracker.print_latest()
-            
+
             self.current_epoch += 1
-            
-            
+
+
 class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyReconstructor):
-    
     parameter_group: PtychographyParameterGroup
 
     def __init__(self, parameter_group: PtychographyParameterGroup, *args, **kwargs) -> None:
         super().__init__(parameter_group, *args, **kwargs)
-        
+
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
             probe = self.parameter_group.probe
             object_ = self.parameter_group.object
-            
+
             # Apply probe power constraint.
-            if probe.probe_power > 0. \
-                    and self.current_epoch >= probe.optimization_plan.start \
-                    and (self.current_epoch - probe.optimization_plan.start) % probe.probe_power_constraint_stride == 0:
+            if (
+                probe.probe_power > 0.0
+                and self.current_epoch >= probe.optimization_plan.start
+                and (self.current_epoch - probe.optimization_plan.start)
+                % probe.probe_power_constraint_stride
+                == 0
+            ):
                 probe.constrain_probe_power(
-                    self.parameter_group.object,
-                    self.parameter_group.opr_mode_weights
+                    self.parameter_group.object, self.parameter_group.opr_mode_weights
                 )
-            
+
             # Apply incoherent mode orthogonality constraint.
-            if probe.has_multiple_incoherent_modes \
-                    and probe.orthogonalize_incoherent_modes \
-                    and self.current_epoch >= probe.optimization_plan.start \
-                    and (self.current_epoch - probe.optimization_plan.start) % probe.orthogonalize_incoherent_modes_stride == 0:
+            if (
+                probe.has_multiple_incoherent_modes
+                and probe.orthogonalize_incoherent_modes
+                and self.current_epoch >= probe.optimization_plan.start
+                and (self.current_epoch - probe.optimization_plan.start)
+                % probe.orthogonalize_incoherent_modes_stride
+                == 0
+            ):
                 probe.constrain_incoherent_modes_orthogonality()
-                
+
             # Apply OPR orthogonality constraint.
             if probe.opr_mode_orthogonalization_enabled(self.current_epoch):
                 weights = self.parameter_group.opr_mode_weights
                 weights_data = probe.constrain_opr_mode_orthogonality(weights)
                 weights.set_data(weights_data)
-                
+
             # Apply smoothness constraint.
             if object_.smoothness_constraint_enabled(self.current_epoch):
                 object_.constrain_smoothness()
-                
+
             # Apply total variation constraint.
             if object_.total_variation_enabled(self.current_epoch):
                 object_.constrain_total_variation()
-                
-    
-class AnalyticalIterativeReconstructor(IterativeReconstructor):
 
-    def __init__(self,
+
+class AnalyticalIterativeReconstructor(IterativeReconstructor):
+    def __init__(
+        self,
         parameter_group: ParameterGroup,
         dataset: Dataset,
         batch_size: int = 1,
         n_epochs: int = 100,
         metric_function: Optional[torch.nn.Module] = None,
-        *args, **kwargs
+        *args,
+        **kwargs,
     ) -> None:
         super().__init__(
             parameter_group=parameter_group,
@@ -272,7 +282,9 @@ class AnalyticalIterativeReconstructor(IterativeReconstructor):
             batch_size=batch_size,
             n_epochs=n_epochs,
             metric_function=metric_function,
-            *args, **kwargs)
+            *args,
+            **kwargs,
+        )
         self.update_step_module: torch.nn.Module = None
 
     def build(self) -> None:
@@ -290,7 +302,7 @@ class AnalyticalIterativeReconstructor(IterativeReconstructor):
 
             def forward(self, *args, **kwargs):
                 return update_step_func(self, *args, **kwargs)
-            
+
             def process_updates(self, *args):
                 ret = []
                 for v in args:
@@ -300,29 +312,30 @@ class AnalyticalIterativeReconstructor(IterativeReconstructor):
                             v = torch.stack([v.real, v.imag], dim=-1)
                     ret.append(v)
                 return tuple(ret)
-    
 
         self.update_step_module = EncapsulatedUpdateStep()
-        if not torch.get_default_device().type == 'cpu':
-            # TODO: use CUDA stream instead of DataParallel for non-AD reconstructor. 
+        if not torch.get_default_device().type == "cpu":
+            # TODO: use CUDA stream instead of DataParallel for non-AD reconstructor.
             # https://poe.com/s/NZUVScEEGLxBE5ZDmKc0
             self.update_step_module = torch.nn.DataParallel(self.update_step_module)
             self.update_step_module.to(torch.get_default_device())
 
     @staticmethod
-    def compute_updates(update_step_module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Tensor, ...], float]:
+    def compute_updates(
+        update_step_module: torch.nn.Module, *args, **kwargs
+    ) -> Tuple[Tuple[Tensor, ...], float]:
         """
         Calculate the update vectors of optimizable parameters that should be
-        applied later. 
+        applied later.
 
         This function will be encapsulated in a torch.nn.Module so that it works with
         DataParallel and DistributedDataParallel.
 
-        Do not apply the update vectors to the optimizable parameters in this function. 
+        Do not apply the update vectors to the optimizable parameters in this function.
         When called in a DataParallel or DistributedDataParallel context, the buffers
         of optimizable parameters are copies so the updates will not persist. Instead,
         collect the returned update vectors, reduce them, and apply the updates in
-        `apply_updates` which is called outside DataParallel. 
+        `apply_updates` which is called outside DataParallel.
 
         :return: the update vectors and the batch loss. The shape of each update vector
             is [n_replica, ..., (2 if complex else none)]. `n_replica` is 1 if only
@@ -334,38 +347,43 @@ class AnalyticalIterativeReconstructor(IterativeReconstructor):
 
     def apply_updates(self, *args, **kwargs):
         raise NotImplementedError
-    
+
     def run(self, n_epochs: Optional[int] = None, *args, **kwargs):
         with torch.no_grad():
             return super().run(n_epochs=n_epochs, *args, **kwargs)
 
 
-class AnalyticalIterativePtychographyReconstructor(AnalyticalIterativeReconstructor, IterativePtychographyReconstructor):
-    
+class AnalyticalIterativePtychographyReconstructor(
+    AnalyticalIterativeReconstructor, IterativePtychographyReconstructor
+):
     parameter_group: PtychographyParameterGroup
 
-    def __init__(self, 
-                parameter_group: PtychographyParameterGroup,
-                dataset: Dataset,
-                batch_size: int = 1,
-                n_epochs: int = 100,
-                metric_function: Optional[torch.nn.Module] = None,
-                 *args, **kwargs) -> None:
+    def __init__(
+        self,
+        parameter_group: PtychographyParameterGroup,
+        dataset: Dataset,
+        batch_size: int = 1,
+        n_epochs: int = 100,
+        metric_function: Optional[torch.nn.Module] = None,
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__(
-            parameter_group=parameter_group, 
-            dataset=dataset, 
-            batch_size=batch_size, 
-            n_epochs=n_epochs, 
-            metric_function=metric_function, 
-            *args, **kwargs
+            parameter_group=parameter_group,
+            dataset=dataset,
+            batch_size=batch_size,
+            n_epochs=n_epochs,
+            metric_function=metric_function,
+            *args,
+            **kwargs,
         )
 
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
             super().run_post_epoch_hooks()
-            
+
             object_ = self.parameter_group.object
-            
+
             # Apply object L1-norm constraint.
             if object_.l1_norm_constraint_enabled(self.current_epoch):
                 object_.constrain_l1_norm()
