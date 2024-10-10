@@ -60,28 +60,42 @@ def orthogonalize_svd(
         vectors is the length of the last dimension not included in axis. The
         other dimensions are broadcast.
     :param group_dim: The axis along which to orthogonalize. Other dimensions are broadcast.
-    """
-    orig_shape = x.shape
-    
+    """    
     x, dim, group_dim = _prepare_data_for_orthogonalization(x, dim, group_dim, move_group_dim_to=None)
     if preserve_norm:
         orig_norm = norm(x, dim=list(dim) + [group_dim], keepdims=True)
     
     # Move group_dim to the end, and move dim right before group_dim.
     x = torch.moveaxis(x, list(sorted(dim)) + [group_dim], list(range(-len(dim) - 1, 0)))
+    group_dim_shape = [x.shape[-1]]
+    dim_shape = list(x.shape[-(len(dim) + 1):-1])
+    batch_dim_shape = list(x.shape[:-(len(dim) + 1)])
     
     # Now the axes of x is rearranged to (bcast_dims, *dim, group_dim).
     # Straighten dimensions given by `dim`.`
-    x = x.reshape(list(orig_shape[:-(len(dim) + 1)]) + [-1] + [orig_shape[group_dim]])
+    # Shape of x:        (bcast_dims_shape, prod(dim_shape), group_dim_shape)
+    x = x.reshape(batch_dim_shape + [-1] + group_dim_shape)
     
-    # Shape of x:        (shape of bcast_dims, prod(shape of dim), shape of group_dim)
-    u, _, _ = torch.linalg.svd(x, full_matrices=False)
-    k = orig_shape[group_dim]
-    u = u[..., :k]
+    # Creat an shape(group_dim) x shape(group_dim) covariance matrix and eigendecompose it.
+    if x.ndim == 2:
+        covmat = x.transpose(-1, -2) @ x.conj()
+    else:
+        covmat = torch.bmm(x.transpose(-1, -2), x.conj())
         
+    evals, evecs = torch.linalg.eig(covmat)
+    
+    sorted_inds = torch.argsort(evals.abs(), dim=-1, descending=True)
+    # Shape of evecs:    (bcast_dims_shape, group_dim_shape, group_dim_shape)
+    evecs = torch.gather(evecs, dim=-1, index=sorted_inds[..., None, :].repeat(*([1] * (evecs.ndim - 2)), evecs.shape[-2], 1))
+    
+    if x.ndim == 2:
+        x = x @ evecs.conj()
+    else:
+        x = torch.bmm(x, evecs.conj())
+
     # Restore u to the original shape.
     # Unflatten `dim`.
-    x = u.reshape(list(orig_shape[:-(len(dim) + 1)]) + [orig_shape[i] for i in dim] + [orig_shape[group_dim]])
+    x = x.reshape(batch_dim_shape + dim_shape + group_dim_shape)
     # Then, Move `group_dim` and `dim` back. 
     x = torch.moveaxis(x, list(range(-len(dim) - 1, 0)), list(sorted(dim)) + [group_dim])
     
