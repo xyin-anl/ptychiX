@@ -1,4 +1,4 @@
-from typing import Optional, Literal, Union, overload
+from typing import Literal, Union, overload
 from types import TracebackType
 import random
 import logging

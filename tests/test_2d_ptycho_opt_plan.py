@@ -1,5 +1,4 @@
 import argparse
-import os
 import logging
 
 import torch
@@ -7,7 +6,7 @@ import numpy as np
 
 import ptychointerim.api as api
 from ptychointerim.api.task import PtychographyTask
-from ptychointerim.api import LSQMLOptions, AutodiffPtychographyOptions
+from ptychointerim.api import LSQMLOptions
 import ptychointerim.ptychotorch.utils as utils
 
 import test_utils as tutils
