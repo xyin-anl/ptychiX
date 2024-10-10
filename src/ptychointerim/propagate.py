@@ -1,13 +1,15 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TypeAlias
 import cmath
 
 import torch
-from torch.fft import fft2, fftfreq, fftshift, ifft2, ifftshift
+from torch.fft import fft2, fftfreq, ifft2
 
-from .ptychopack.device import Device
-from .ptychopack.support import ComplexTensor, RealTensor
+BooleanTensor: TypeAlias = torch.Tensor
+ComplexTensor: TypeAlias = torch.Tensor
+RealTensor: TypeAlias = torch.Tensor
 
 
 @dataclass(frozen=True)
@@ -82,7 +84,6 @@ class WavefieldPropagatorParameters:
 
 
 class WavefieldPropagator(ABC, torch.nn.Module):
-
     @abstractmethod
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         pass
@@ -90,20 +91,12 @@ class WavefieldPropagator(ABC, torch.nn.Module):
     @abstractmethod
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         pass
-    
+
     def forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         return self.propagate_forward(wavefield)
 
-    @abstractmethod
-    def to(self, device: Device) -> WavefieldPropagator:
-        pass
-
-    def cpu(self) -> WavefieldPropagator:
-        return self.to(Device.CPU())
-
 
 class FourierPropagator(WavefieldPropagator):
-    
     def __init__(self, norm='ortho') -> None:
         super().__init__()
         self.norm = norm
@@ -114,23 +107,19 @@ class FourierPropagator(WavefieldPropagator):
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         return ifft2(wavefield, norm=self.norm)
 
-    def to(self, device: Device) -> WavefieldPropagator:
-        return self
-
 
 class AngularSpectrumPropagator(WavefieldPropagator):
-
     def __init__(self, parameters: WavefieldPropagatorParameters) -> None:
         super().__init__()
-        
+
         ar = parameters.pixel_aspect_ratio
 
         i2piz = 2j * torch.pi * parameters.propagation_distance_wlu
-        
+
         FY, FX = parameters.get_frequency_coordinates()
         F2 = torch.square(FX) + torch.square(ar * FY)
         self.register_buffer('F2', F2)
-        
+
         ratio = self.F2 / (parameters.pixel_width_wlu**2)
         tf = torch.exp(i2piz * torch.sqrt(1 - ratio))
 
@@ -139,13 +128,13 @@ class AngularSpectrumPropagator(WavefieldPropagator):
         # from breaking in DataParallel.
         self.register_buffer('_transfer_function_real', _transfer_function.real)
         self.register_buffer('_transfer_function_imag', _transfer_function.imag)
-        
+
     def update(self, parameters: WavefieldPropagatorParameters) -> None:
         i2piz = 2j * torch.pi * parameters.propagation_distance_wlu
-        
+
         ratio = self.F2 / (parameters.pixel_width_wlu**2)
         tf = torch.exp(i2piz * torch.sqrt(1 - ratio))
-        
+
         _transfer_function = torch.where(ratio < 1, tf, 0)
         self._transfer_function_real[...] = _transfer_function.real
         self._transfer_function_imag[...] = _transfer_function.imag
@@ -157,13 +146,9 @@ class AngularSpectrumPropagator(WavefieldPropagator):
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         tf = self._transfer_function_real + 1j * self._transfer_function_imag
         return ifft2(fft2(wavefield) / tf)
-    
-    def to(self, device: Device) -> WavefieldPropagator:
-        return self
 
 
 class FresnelTransformPropagator(WavefieldPropagator):
-
     def __init__(self, parameters: WavefieldPropagatorParameters) -> None:
         ipi = 1j * torch.pi
 
@@ -189,7 +174,6 @@ class FresnelTransformPropagator(WavefieldPropagator):
 
 
 class FraunhoferPropagator(WavefieldPropagator):
-
     def __init__(self, parameters: WavefieldPropagatorParameters) -> None:
         ipi = 1j * torch.pi
 

@@ -1,7 +1,5 @@
-from typing import Optional
 
 import torch
-import tqdm
 from torch.utils.data import Dataset
 from torch import Tensor
 

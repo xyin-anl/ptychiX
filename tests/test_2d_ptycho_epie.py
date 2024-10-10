@@ -1,8 +1,6 @@
 import argparse
-import os
 
 import torch
-import numpy as np
 
 import ptychointerim.api as api
 from ptychointerim.api.task import PtychographyTask
