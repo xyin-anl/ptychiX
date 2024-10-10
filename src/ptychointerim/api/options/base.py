@@ -133,6 +133,9 @@ class ProbeOptions(ParameterOptions):
     orthogonalize_incoherent_modes_stride: int = 1
     """The number of epochs between orthogonalizing the incoherent probe modes."""
 
+    orthogonalize_incoherent_modes_method: enums.OrthogonalizationMethods = enums.OrthogonalizationMethods.GS
+    """The method to use for incoherent_mode orthogonalization."""
+
     orthogonalize_opr_modes: bool = False
     """Whether to orthogonalize OPR modes. If True, the OPR modes are orthogonalized
     every `orthogonalize_opr_modes_stride` epochs.
