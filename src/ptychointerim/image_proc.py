@@ -122,6 +122,35 @@ def fourier_shift(images: Tensor, shifts: Tensor) -> Tensor:
     return shifted_images
 
 
+def nearest_neighbor_gradient(
+    image: Tensor, direction: Literal['forward', 'backward'], dim: Tuple[int, ...] = (0, 1)
+) -> Tensor:
+    """
+    Calculate the nearest neighbor gradient of a 2D image.
+
+    :param image: a (... H, W) tensor of images.
+    :param sigma: sigma of the Gaaussian.
+    :return: a tuple of 2 images with the gradient in y and x directions.
+    """
+    if not hasattr(dim, "__len__"):
+        dim = (dim,)
+    grad_x = None
+    grad_y = None
+    if direction == "forward":
+        if 1 in dim:
+            grad_x = torch.concat([image[:, 1:], image[:, -1:]], dim=1) - image
+        if 0 in dim:
+            grad_y = torch.concat([image[1:, :], image[-1:, :]], dim=0) - image
+    elif direction == "backward":
+        if 1 in dim:
+            grad_x = image - torch.concat([image[:, :1], image[:, :-1]], dim=1)
+        if 0 in dim:
+            grad_y = image - torch.concat([image[:1, :], image[:-1, :]], dim=0)
+    else:
+        raise ValueError("direction must be 'forward' or 'backward'")
+    return grad_y, grad_x
+
+
 def gaussian_gradient(image: Tensor, sigma: float = 1.0, kernel_size=5) -> Tensor:
     """
     Calculate the gradient of a 2D image with a Gaussian-derivative kernel.
@@ -246,16 +275,50 @@ def find_cross_corr_peak(f: Tensor,
     est_shift = torch.tensor([x[max_idx[0]] , y[max_idx[1]]])
 
     return est_shift
+
+
+def total_variation_2d_chambolle(image: Tensor, lmbda: float = 0.01, niter: int = 2, tau: float = 0.125) -> Tensor:
+    """
+    Apply total variation constraint to an image using Chambolle's total variation projection method
+    (https://doi.org/10.5201/ipol.2013.61).
+
+    Adapted from fold_slice (local_TV2D_chambolle.m).
     
+    :param image: a (H, W) tensor.
+    :param lmbda: the trade-off parameter (1 / lambda in the paper). 
+        Larger lmbda means stronger smoothing.
+    :param niter: an integer specifying the number of iterations.
+    :param tau: the time-step parameter.
+    :return: a (H, W) tensor.
+    """
+    def div(p):
+        py = p[..., 0]
+        px = p[..., 1]
+        fy = nearest_neighbor_gradient(py, 'backward', dim=0)[0]
+        fx = nearest_neighbor_gradient(px, 'backward', dim=1)[1]
+        fd = fx + fy
+        return fd
     
-if __name__ == '__main__':
-    img = torch.zeros(10, 10)
-    img[5:, 5:] = 1
-    gy, gx = gaussian_gradient(img, sigma=0.33)
-    print(gx)
-    
-    import scipy.ndimage as ndi
-    img = img.detach().numpy()
-    gx = ndi.gaussian_filter1d(-img, sigma=0.3, order=1, axis=-1, mode='nearest')
-    print(gx)
+    if image.ndim != 2:
+        raise ValueError("Input tensor must be two dimensional")
+
+    x0 = image
+    xi = torch.zeros(list(image.shape) + [2], dtype=image.dtype, device=image.device)
+
+    for _ in range(niter):
+        # Chambolle step
+        grad_y, grad_x = nearest_neighbor_gradient(div(xi) - image / lmbda, 'forward')
+        gdv = torch.stack([grad_y, grad_x], dim=-1)
+        
+        # Isotropic
+        d = torch.sqrt(torch.sum(gdv ** 2, dim=-1, keepdim=True))
+        
+        xi = (xi + tau * gdv) / (1 + tau * d)
+        
+        # Reconstruct
+        image = image - lmbda * div(xi)
+        
+    # Prevent pushing values to 0
+    image = torch.sum(x0 * image) / torch.sum(image ** 2) * image
+    return image
     

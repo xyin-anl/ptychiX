@@ -98,6 +98,12 @@ class ObjectOptions(ParameterOptions):
 
     smoothness_constraint_stride: int = 1
     """The number of epochs between smoothness constraint updates."""
+    
+    total_variation_weight: float = 0
+    """The weight of the total variation constraint. Disabled if equal or less than 0."""
+
+    total_variation_stride: int = 1
+    """The number of epochs between total variation constraint updates."""
 
 
 @dataclasses.dataclass

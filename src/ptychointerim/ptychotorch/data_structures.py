@@ -228,6 +228,8 @@ class Object(ReconstructParameter):
                  l1_norm_constraint_stride: int = 1,
                  smoothness_constraint_alpha: float = 0,
                  smoothness_constraint_stride: int = 1,
+                 total_variation_weight: float = 0,
+                 total_variation_stride: int = 1,
                  *args, **kwargs):
         super().__init__(*args, name=name, is_complex=True, **kwargs)
         self.pixel_size_m = pixel_size_m
@@ -235,6 +237,8 @@ class Object(ReconstructParameter):
         self.l1_norm_constraint_stride = l1_norm_constraint_stride
         self.smoothness_constraint_alpha = smoothness_constraint_alpha
         self.smoothness_constraint_stride = smoothness_constraint_stride
+        self.total_variation_weight = total_variation_weight
+        self.total_variation_stride = total_variation_stride
         center_pixel = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
 
         self.register_buffer('center_pixel', center_pixel)
@@ -282,6 +286,17 @@ class Object(ReconstructParameter):
         mag = ip.convolve2d(mag, psf, 'same')
         data = data / data.abs() * mag
         self.set_data(data)
+        
+    def total_variation_enabled(self, current_epoch: int):
+        if self.total_variation_weight > 0 \
+                and self.optimization_enabled(current_epoch) \
+                and (current_epoch - self.optimization_plan.start) % self.total_variation_stride == 0:
+            return True
+        else:
+            return False
+        
+    def constrain_total_variation(self) -> None:
+        raise NotImplementedError
 
     def get_config_dict(self):
         d = super().get_config_dict()
@@ -333,6 +348,11 @@ class Object2D(Object):
         image = torch.zeros(self.shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device)
         image = ip.place_patches_fourier_shift(image, positions, patches, op='add')
         return image
+    
+    def constrain_total_variation(self) -> None:
+        data = self.data
+        data = ip.total_variation_2d_chambolle(data, lmbda=self.total_variation_weight, niter=2)
+        self.set_data(data)
 
 
 class MultisliceObject(Object2D):
@@ -404,6 +424,12 @@ class MultisliceObject(Object2D):
         image = torch.zeros(self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device)
         image = ip.place_patches_fourier_shift(image, positions, patches, op='add')
         return image
+    
+    def constrain_total_variation(self) -> None:
+        data = self.data
+        for i_slice in range(self.n_slices):
+            data[i_slice] = ip.total_variation_2d_chambolle(data[i_slice], lmbda=self.total_variation_weight, niter=2)
+        self.set_data(data)
 
     def get_config_dict(self):
         d = super().get_config_dict()

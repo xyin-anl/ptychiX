@@ -11,12 +11,13 @@ from numpy import ndarray
 
 import ptychointerim.api as api
 import ptychointerim.maps as maps
-from ptychointerim.ptychotorch.data_structures import *
+from ptychointerim.ptychotorch.data_structures import (Object2D, MultisliceObject, Probe, ProbePositions, OPRModeWeights,
+                                                       DummyParameter, Ptychography2DParameterGroup)
 from ptychointerim.ptychotorch.io_handles import PtychographyDataset
 from ptychointerim.forward_models import Ptychography2DForwardModel, MultislicePtychographyForwardModel
 from ptychointerim.ptychotorch.utils import to_tensor
 import ptychointerim.ptychotorch.utils as utils
-from ptychointerim.ptychotorch.reconstructors import *
+from ptychointerim.ptychotorch.reconstructors import AutodiffPtychographyReconstructor
 
 
 class Task:
@@ -109,7 +110,9 @@ class PtychographyTask(Task):
             'l1_norm_constraint_weight': self.object_options.l1_norm_constraint_weight,
             'l1_norm_constraint_stride': self.object_options.l1_norm_constraint_stride,
             'smoothness_constraint_alpha': self.object_options.smoothness_constraint_alpha,
-            'smoothness_constraint_stride': self.object_options.smoothness_constraint_stride
+            'smoothness_constraint_stride': self.object_options.smoothness_constraint_stride,
+            'total_variation_weight': self.object_options.total_variation_weight,
+            'total_variation_stride': self.object_options.total_variation_stride
         }
         kwargs.update(self.object_options.uninherited_fields())
         if self.object_options.type == api.ObjectTypes.MULTISLICE:

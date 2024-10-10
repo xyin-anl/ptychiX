@@ -251,6 +251,10 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             if object_.smoothness_constraint_enabled(self.current_epoch):
                 object_.constrain_smoothness()
                 
+            # Apply total variation constraint.
+            if object_.total_variation_enabled(self.current_epoch):
+                object_.constrain_total_variation()
+                
     
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
 
