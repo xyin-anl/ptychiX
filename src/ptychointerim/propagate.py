@@ -1,12 +1,15 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TypeAlias
 import cmath
 
 import torch
 from torch.fft import fft2, fftfreq, ifft2
 
-from .ptychopack.support import ComplexTensor, RealTensor
+BooleanTensor: TypeAlias = torch.Tensor
+ComplexTensor: TypeAlias = torch.Tensor
+RealTensor: TypeAlias = torch.Tensor
 
 
 @dataclass(frozen=True)

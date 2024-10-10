@@ -9,12 +9,15 @@ import numpy.typing
 import torch
 
 from ptychointerim.propagate import FourierPropagator, WavefieldPropagator
-from .support import BooleanTensor, ComplexTensor, RealTensor
 
 BooleanArray: TypeAlias = numpy.typing.NDArray[numpy.bool_]
 IntegerArray: TypeAlias = numpy.typing.NDArray[numpy.integer[Any]]
 RealArray: TypeAlias = numpy.typing.NDArray[numpy.floating[Any]]
 ComplexArray: TypeAlias = numpy.typing.NDArray[numpy.complexfloating[Any, Any]]
+
+BooleanTensor: TypeAlias = torch.Tensor
+ComplexTensor: TypeAlias = torch.Tensor
+RealTensor: TypeAlias = torch.Tensor
 
 
 @dataclass(frozen=True)

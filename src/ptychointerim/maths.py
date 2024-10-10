@@ -1,4 +1,4 @@
-from typing import Union, Optional, Tuple
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 
@@ -45,11 +45,11 @@ def orthogonalize_gs(
 
 
 def orthogonalize_svd(
-    x: Tensor,
+    x: torch.Tensor,
     dim: Union[int, Tuple[int, ...]] = -1,
     group_dim: Union[int, None] = None,
     preserve_norm: bool = False
-) -> Tensor:
+) -> torch.Tensor:
     """
     SVD orthogonalization for complex arrays. Adapted from PtychoShelves (probe_modes_ortho.m).
 
@@ -112,11 +112,11 @@ def norm(x, dim=-1, keepdims=False):
 
 
 def _prepare_data_for_orthogonalization(
-    x: Tensor,
+    x: torch.Tensor,
     dim: Union[int, Tuple[int, ...]] = -1,
     group_dim: Union[int, None] = None,
     move_group_dim_to: Optional[Union[int, Literal['before_dim']]] = None,
-) -> Tuple[Tensor, Tuple[int, ...], int]:
+) -> Tuple[torch.Tensor, Tuple[int, ...], int]:
     """
     Find `dim` and `group_dim`.
     Permute the axes of x, such that group_dim is at the front.
