@@ -1,6 +1,13 @@
 import torch
 
-from ptychointerim.api.enums import *
+from ptychointerim.api.enums import (
+    Dtypes,
+    Optimizers,
+    LossFunctions,
+    Reconstructors,
+    Devices,
+    NoiseModels,
+)
 from ptychointerim.metrics import MSELossOfSqrt
 from ptychointerim.ptychotorch.reconstructors import (
     AutodiffPtychographyReconstructor,
@@ -12,10 +19,7 @@ from ptychointerim.ptychotorch.reconstructors import (
 from ptychointerim.ptychotorch.reconstructors.base import Reconstructor
 
 
-complex_dtype_dict = {
-    Dtypes.FLOAT32: torch.complex64,
-    Dtypes.FLOAT64: torch.complex128
-}
+complex_dtype_dict = {Dtypes.FLOAT32: torch.complex64, Dtypes.FLOAT64: torch.complex128}
 
 optimizer_dict = {
     Optimizers.SGD: torch.optim.SGD,
@@ -43,20 +47,11 @@ reconstructor_dict = {
     Reconstructors.AD_PTYCHO: AutodiffPtychographyReconstructor,
     Reconstructors.PIE: PIEReconstructor,
     Reconstructors.EPIE: EPIEReconstructor,
-    Reconstructors.RPIE: RPIEReconstructor
+    Reconstructors.RPIE: RPIEReconstructor,
 }
 
-noise_model_dict = {
-    NoiseModels.GAUSSIAN: 'gaussian',
-    NoiseModels.POISSON: 'poisson'
-}
+noise_model_dict = {NoiseModels.GAUSSIAN: "gaussian", NoiseModels.POISSON: "poisson"}
 
-device_dict = {
-    Devices.CPU: 'cpu',
-    Devices.GPU: 'cuda'
-}
+device_dict = {Devices.CPU: "cpu", Devices.GPU: "cuda"}
 
-dtype_dict = {
-    Dtypes.FLOAT32: torch.float32,
-    Dtypes.FLOAT64: torch.float64
-}
+dtype_dict = {Dtypes.FLOAT32: torch.float32, Dtypes.FLOAT64: torch.float64}

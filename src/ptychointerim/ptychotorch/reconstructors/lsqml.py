@@ -459,9 +459,9 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         # FIXME: reduced relax_u/v by a factor of 10 for stability, but PtychoShelves works without this.
         relax_u = (
             min(0.1, batch_size / n_points_total)
-            * self.parameter_group.probe.eigenmode_update_relaxation
+            * self.parameter_group.probe.options.eigenmode_update_relaxation
         )
-        relax_v = self.parameter_group.opr_mode_weights.update_relaxation
+        relax_v = self.parameter_group.opr_mode_weights.options.update_relaxation
         # Shape of delta_p_i:       (batch_size, n_probe_modes, h, w)
         # Shape of delta_p_hat:     (n_probe_modes, h, w)
         # Just use the first incoherent mode.

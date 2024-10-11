@@ -31,8 +31,6 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         dataset: Dataset,
         batch_size: int = 1,
         n_epochs: int = 100,
-        object_alpha: float = 0.1,
-        probe_alpha: float = 0.1,
         *args,
         **kwargs,
     ) -> None:
@@ -44,8 +42,6 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             *args,
             **kwargs,
         )
-        self.object_alpha = object_alpha
-        self.probe_alpha = probe_alpha
         self.forward_model = Ptychography2DForwardModel(parameter_group, retain_intermediates=True)
 
     def check_inputs(self, *args, **kwargs):
@@ -133,7 +129,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         """Calculate the weight for the object update step."""
         numerator = p.abs() * p.conj()
         denominator = p.abs().sum(0).max() * (
-            p.abs() ** 2 + self.object_alpha * (p.abs() ** 2).sum(0).max()
+            p.abs() ** 2 + self.parameter_group.object.options.alpha * (p.abs() ** 2).sum(0).max()
         )
         step_weight = numerator / denominator
         return step_weight
@@ -142,7 +138,9 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         """Calculate the weight for the probe update step."""
         obj_max = (torch.abs(obj_patches) ** 2).max(-1).values.max(-1).values.view(-1, 1, 1)
         numerator = obj_patches.abs() * obj_patches.conj()
-        denominator = obj_max * (obj_patches.abs() ** 2 + self.probe_alpha * obj_max)
+        denominator = obj_max * (
+            obj_patches.abs() ** 2 + self.parameter_group.probe.options.alpha * obj_max
+        )
         step_weight = numerator / denominator
         return step_weight[:, None]
 
@@ -190,12 +188,12 @@ class EPIEReconstructor(PIEReconstructor):
 
     def calculate_object_step_weight(self, p: Tensor):
         p_max = (torch.abs(p) ** 2).sum(0).max()
-        step_weight = self.object_alpha * p.conj() / p_max
+        step_weight = self.parameter_group.object.options.alpha * p.conj() / p_max
         return step_weight
 
     def calculate_probe_step_weight(self, obj_patches: Tensor):
         obj_max = (torch.abs(obj_patches) ** 2).max(-1).values.max(-1).values.view(-1, 1, 1)
-        step_weight = self.probe_alpha * obj_patches.conj() / obj_max
+        step_weight = self.parameter_group.probe.options.alpha * obj_patches.conj() / obj_max
         step_weight = step_weight[:, None]
         return step_weight
 
@@ -224,14 +222,16 @@ class RPIEReconstructor(PIEReconstructor):
     def calculate_object_step_weight(self, p: Tensor):
         p_max = (torch.abs(p) ** 2).sum(0).max()
         step_weight = p.conj() / (
-            (1 - self.object_alpha) * (torch.abs(p) ** 2) + self.object_alpha * p_max
+            (1 - self.parameter_group.object.options.alpha) * (torch.abs(p) ** 2)
+            + self.parameter_group.object.options.alpha * p_max
         )
         return step_weight
 
     def calculate_probe_step_weight(self, obj_patches: Tensor):
         obj_max = (torch.abs(obj_patches) ** 2).max(-1).values.max(-1).values.view(-1, 1, 1)
         step_weight = obj_patches.conj() / (
-            (1 - self.probe_alpha) * (torch.abs(obj_patches) ** 2) + self.probe_alpha * obj_max
+            (1 - self.parameter_group.probe.options.alpha) * (torch.abs(obj_patches) ** 2)
+            + self.parameter_group.probe.options.alpha * obj_max
         )
         step_weight = step_weight[:, None]
         return step_weight
