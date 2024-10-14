@@ -93,19 +93,35 @@ class Ptychography2DForwardModel(ForwardModel):
         """
         Propagate exit waves to far field.
 
-        :param psi: a (n_patches, n_probe_modes, h, w) tensor of exit waves.
-        :return: (n_patches, h, w) tensor of detected intensities.
+        Parameters
+        ----------
+        psi: Tensor
+            A (batch_size, n_probe_modes, h, w) tensor of exit waves.
+            
+        Returns
+        -------
+        Tensor
+            A (batch_size, n_probe_modes, h, w) tensor of far field waves.
         """
         psi_far = self.far_field_propagator.propagate_forward(psi)
         self.record_intermediate_variable('psi_far', psi_far)
         return psi_far
 
     def forward(self, indices: Tensor, return_object_patches: bool = False) -> Tensor:
-        """Run ptychographic forward simulation and calculate the measured intensities.
+        """
+        Run ptychographic forward simulation and calculate the measured intensities.
 
-        :param indices: A (N,) tensor of diffraction pattern indices in the batch.
-        :param positions: A (N, 2) tensor of probe positions in pixels.
-        :return: measured intensities (squared magnitudes).
+        Parameters
+        ----------
+        indices : Tensor
+            A (N,) tensor of diffraction pattern indices in the batch.
+        positions : Tensor
+            A (N, 2) tensor of probe positions in pixels.
+
+        Returns
+        -------
+        Tensor
+            Measured intensities (squared magnitudes).
         """
         positions = self.probe_positions.tensor[indices]
         obj_patches = self.object.extract_patches(positions, self.probe.get_spatial_shape())
@@ -249,11 +265,20 @@ class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
         return slice_psi
 
     def forward(self, indices: Tensor, return_object_patches: bool = False) -> Tensor:
-        """Run ptychographic forward simulation and calculate the measured intensities.
+        """
+        Run ptychographic forward simulation and calculate the measured intensities.
 
-        :param indices: A (N,) tensor of diffraction pattern indices in the batch.
-        :param positions: A (N, 2) tensor of probe positions in pixels.
-        :return: measured intensities (squared magnitudes).
+        Parameters
+        ----------
+        indices : Tensor
+            A (N,) tensor of diffraction pattern indices in the batch.
+        positions : Tensor
+            A (N, 2) tensor of probe positions in pixels.
+
+        Returns
+        -------
+        Tensor
+            Measured intensities (squared magnitudes).
         """
         return super().forward(indices, return_object_patches=return_object_patches)
 
@@ -268,11 +293,6 @@ class NoiseModel(torch.nn.Module):
     def nll(self, y_pred: Tensor, y_true: Tensor) -> Tensor:
         """
         Calculate the negative log-likelihood.
-
-        :param y_true: _description_
-        :param y_pred: _description_
-        :raises NotImplementedError: _description_
-        :return: _description_
         """
         raise NotImplementedError
 
