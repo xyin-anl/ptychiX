@@ -98,16 +98,16 @@ class PtychographyTask(Task):
         logging.basicConfig(level=self.reconstructor_options.log_level)
 
     def build_default_device(self):
-        torch.set_default_device(maps.device_dict[self.reconstructor_options.default_device])
+        torch.set_default_device(maps.get_device_by_enum(self.reconstructor_options.default_device))
         if len(self.reconstructor_options.gpu_indices) > 0:
             os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
                 map(str, self.reconstructor_options.gpu_indices)
             )
 
     def build_default_dtype(self):
-        torch.set_default_dtype(maps.dtype_dict[self.reconstructor_options.default_dtype])
+        torch.set_default_dtype(maps.get_dtype_by_enum(self.reconstructor_options.default_dtype))
         utils.set_default_complex_dtype(
-            maps.complex_dtype_dict[self.reconstructor_options.default_dtype]
+            maps.get_complex_dtype_by_enum(self.reconstructor_options.default_dtype)
         )
 
     def build_data(self):
@@ -164,36 +164,15 @@ class PtychographyTask(Task):
             opr_mode_weights=self.opr_mode_weights,
         )
 
-        reconstructor_class = maps.reconstructor_dict[
+        reconstructor_class = maps.get_reconstructor_by_enum(
             self.reconstructor_options.get_reconstructor_type()
-        ]
+        )
 
         reconstructor_kwargs = {
             "parameter_group": par_group,
             "dataset": self.dataset,
-            "batch_size": self.reconstructor_options.batch_size,
-            "n_epochs": self.reconstructor_options.num_epochs,
-            "metric_function": (
-                None
-                if self.reconstructor_options.metric_function is None
-                else maps.loss_function_dict[self.reconstructor_options.metric_function]()
-            ),
-            **self.reconstructor_options.uninherited_fields(),
+            "options": self.reconstructor_options,
         }
-        # Special handling. We should change the expected input type of the reconstructor so that no conversion
-        # needs to be done here.
-        if reconstructor_class == AutodiffPtychographyReconstructor:
-            if self.object_options.type == api.ObjectTypes.TWO_D:
-                reconstructor_kwargs["forward_model_class"] = Ptychography2DForwardModel
-            elif self.object_options.type == api.ObjectTypes.MULTISLICE:
-                reconstructor_kwargs["forward_model_class"] = MultislicePtychographyForwardModel
-                reconstructor_kwargs["forward_model_params"] = {
-                    "wavelength_m": self.data_options.wavelength_m,
-                    "propagation_distance_m": self.data_options.propagation_distance_m,
-                }
-            reconstructor_kwargs["loss_function"] = maps.loss_function_dict[
-                self.reconstructor_options.loss_function
-            ]()
 
         self.reconstructor = reconstructor_class(**reconstructor_kwargs)
         self.reconstructor.build()

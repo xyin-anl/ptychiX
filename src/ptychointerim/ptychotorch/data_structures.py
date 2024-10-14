@@ -69,7 +69,7 @@ class ComplexTensor(Module):
 class ReconstructParameter(Module):
     name = None
     optimizable: bool = True
-    optimization_plan: api.OptimizationPlan = None
+    optimization_plan: "api.OptimizationPlan" = None
     optimizer = None
     is_dummy = False
 
@@ -79,7 +79,7 @@ class ReconstructParameter(Module):
         data: Optional[Union[Tensor, ndarray]] = None,
         is_complex: bool = False,
         name: Optional[str] = None,
-        options: api.options.base.ParameterOptions = None,
+        options: "api.options.base.ParameterOptions" = None,
         *args,
         **kwargs,
     ) -> None:
@@ -95,7 +95,7 @@ class ReconstructParameter(Module):
         self.optimization_plan = self.options.optimization_plan
         if self.optimization_plan is None:
             self.optimization_plan = api.OptimizationPlan()
-        self.optimizer_class = maps.optimizer_dict[self.options.optimizer]
+        self.optimizer_class = maps.get_optimizer_by_enum(self.options.optimizer)
         
         self.optimizer_params = (
             {} if self.options.optimizer_params is None else self.options.optimizer_params
@@ -180,7 +180,10 @@ class ReconstructParameter(Module):
     def get_option_class(self):
         if isinstance(self, DummyParameter):
             return api.options.base.ParameterOptions
-        return self.__class__.__init__.__annotations__["options"]
+        try:
+            return self.__class__.__init__.__annotations__["options"]
+        except KeyError:
+            return api.options.base.ParameterOptions
 
     def set_data(self, data):
         if isinstance(self.tensor, ComplexTensor):
@@ -240,7 +243,7 @@ class Object(ReconstructParameter):
     def __init__(
         self,
         name: str = "object",
-        options: api.options.base.ObjectOptions = None,
+        options: "api.options.base.ObjectOptions" = None,
         *args,
         **kwargs,
     ):
@@ -460,7 +463,7 @@ class Probe(ReconstructParameter):
     def __init__(
         self,
         name: str = "probe",
-        options: api.options.base.ProbeOptions = None,
+        options: "api.options.base.ProbeOptions" = None,
         *args,
         **kwargs,
     ):
@@ -816,7 +819,7 @@ class OPRModeWeights(ReconstructParameter):
         self,
         *args,
         name="opr_weights",
-        options: api.options.base.OPRModeWeightsOptions = None,
+        options: "api.options.base.OPRModeWeightsOptions" = None,
         **kwargs,
     ):
         """
@@ -876,7 +879,7 @@ class ProbePositions(ReconstructParameter):
         self,
         *args,
         name: str = "probe_positions",
-        options: api.options.base.ProbePositionOptions = None,
+        options: "api.options.base.ProbePositionOptions" = None,
         **kwargs,
     ):
         """Probe positions.

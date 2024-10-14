@@ -1,14 +1,16 @@
+from typing import Optional
+
 import torch
 from torch.utils.data import Dataset
 from torch import Tensor
 
-from ptychointerim.ptychotorch.data_structures import Ptychography2DParameterGroup, Object2D
+import ptychointerim.ptychotorch.data_structures as ds
 from ptychointerim.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
 from ptychointerim.image_proc import place_patches_fourier_shift
 from ptychointerim.position_correction import compute_positions_cross_correlation_update
-from ptychointerim.forward_models import Ptychography2DForwardModel
+import ptychointerim.api as api
 
 
 class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
@@ -27,25 +29,22 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
 
     def __init__(
         self,
-        parameter_group: Ptychography2DParameterGroup,
+        parameter_group: "ds.Ptychography2DParameterGroup",
         dataset: Dataset,
-        batch_size: int = 1,
-        n_epochs: int = 100,
+        options: Optional["api.options.pie.PIEReconstructorOptions"] = None,
         *args,
         **kwargs,
     ) -> None:
         super().__init__(
             parameter_group=parameter_group,
             dataset=dataset,
-            batch_size=batch_size,
-            n_epochs=n_epochs,
+            options=options,
             *args,
             **kwargs,
         )
-        self.forward_model = Ptychography2DForwardModel(parameter_group, retain_intermediates=True)
 
     def check_inputs(self, *args, **kwargs):
-        if not isinstance(self.parameter_group.object, Object2D):
+        if not isinstance(self.parameter_group.object, ds.Object2D):
             raise NotImplementedError("EPIEReconstructor only supports 2D objects.")
         for var in self.parameter_group.get_optimizable_parameters():
             if "lr" not in var.optimizer_params.keys():
