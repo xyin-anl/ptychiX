@@ -292,6 +292,10 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             # Apply total variation constraint.
             if object_.total_variation_enabled(self.current_epoch):
                 object_.constrain_total_variation()
+                
+            # Remove grid artifacts.
+            if object_.remove_grid_artifacts_enabled(self.current_epoch):
+                object_.remove_grid_artifacts()
 
 
 class AnalyticalIterativeReconstructor(IterativeReconstructor):

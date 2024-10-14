@@ -343,3 +343,69 @@ def total_variation_2d_chambolle(
     # Prevent pushing values to 0
     image = torch.sum(x0 * image) / torch.sum(image**2) * image
     return image
+
+
+def remove_grid_artifacts(
+    img: Tensor,
+    pixel_size_m: float,
+    period_x_m: float,
+    period_y_m: float,
+    window_size: int,
+    direction: Literal["x", "y", "xy"] = "xy",
+):
+    """
+    Remove grid artifacts by setting the region near each harmonic peak
+    corresponding to the set periodicity of the artifacts to 0 in the input
+    image's Fourier domain.
+    
+    Adapted from fold_slice (remove_grid_artifact.m).
+
+    :param img: the input image.
+    :param pixel_size_m: the pixel size in meter.
+    :param step_size_x: the period of the artifacts in the x direction in meter.
+    :param step_size_y: the period of the artifacts in the y direction in meter.
+    :param window_size: the radius of the region around each harmonic peak in
+        which the values are to be set to 0, given in pixels.
+    :param direction: the direction of the artifacts to be removed.
+    """
+    if img.ndim != 2:
+        raise ValueError("Input tensor must be two dimensional.")
+
+    ny, nx = img.shape
+    dk_y, dk_x = 1 / pixel_size_m / ny, 1 / pixel_size_m / nx
+    center_y, center_x = math.floor(ny / 2) + 1, math.floor(nx / 2) + 1
+
+    k_max = 0.5 / pixel_size_m
+    f_img = torch.fft.fftshift(torch.fft.fft2(img))
+    # Frequencies of the artifacts.
+    dk_s_y, dk_s_x = 1 / period_y_m, 1 / period_x_m
+
+    x_range, y_range = 0, 0
+    # Get the frequencies of all harmonic peaks.
+    if "x" in direction:
+        x_range = torch.arange(math.ceil(-k_max / dk_s_x), math.floor(k_max / dk_s_x))
+    if "y" in direction:
+        y_range = torch.arange(math.ceil(-k_max / dk_s_y), math.floor(k_max / dk_s_y))
+
+    for i in range(len(y_range)):
+        for j in range(len(x_range)):
+            # Avoid DC.
+            if not (x_range[j] == 0 and y_range[i] == 0):
+                window_y_lb = int(
+                    max(torch.round(y_range[i] * dk_s_y / dk_y) + center_y - window_size, 0)
+                )
+                window_y_ub = int(
+                    min(torch.round(y_range[i] * dk_s_y / dk_y) + center_y + window_size, ny)
+                )
+
+                window_x_lb = int(
+                    max(torch.round(x_range[j] * dk_s_x / dk_x) + center_x - window_size, 0)
+                )
+                window_x_ub = int(
+                    min(torch.round(x_range[j] * dk_s_x / dk_x) + center_x + window_size, nx)
+                )
+
+                f_img[window_y_lb:window_y_ub, window_x_lb:window_x_ub] = 0
+
+    img_new = torch.real(torch.fft.ifft2(torch.fft.ifftshift(f_img)))
+    return img_new

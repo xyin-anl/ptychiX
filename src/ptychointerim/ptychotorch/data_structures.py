@@ -96,14 +96,16 @@ class ReconstructParameter(Module):
         if self.optimization_plan is None:
             self.optimization_plan = api.OptimizationPlan()
         self.optimizer_class = maps.get_optimizer_by_enum(self.options.optimizer)
-        
+
         self.optimizer_params = (
             {} if self.options.optimizer_params is None else self.options.optimizer_params
         )
         # If optimizer_params has 'lr', it will overwrite the step_size.
-        self.optimizer_params = dict({'lr': self.options.step_size}, **self.options.optimizer_params)
+        self.optimizer_params = dict(
+            {"lr": self.options.step_size}, **self.options.optimizer_params
+        )
         self.optimizer = None
-        
+
         self.is_complex = is_complex
         self.preconditioner = None
 
@@ -142,13 +144,9 @@ class ReconstructParameter(Module):
             )
         if self.optimizable:
             if isinstance(self.tensor, ComplexTensor):
-                self.optimizer = self.optimizer_class(
-                    [self.tensor.data], **self.optimizer_params
-                )
+                self.optimizer = self.optimizer_class([self.tensor.data], **self.optimizer_params)
             else:
-                self.optimizer = self.optimizer_class(
-                    [self.tensor], **self.optimizer_params
-                )
+                self.optimizer = self.optimizer_class([self.tensor], **self.optimizer_params)
 
     def set_optimizable(self, optimizable):
         self.optimizable = optimizable
@@ -238,6 +236,8 @@ class DummyParameter(ReconstructParameter):
 
 
 class Object(ReconstructParameter):
+    options: "api.options.base.ObjectOptions"
+
     pixel_size_m: float = 1.0
 
     def __init__(
@@ -323,6 +323,21 @@ class Object(ReconstructParameter):
     def constrain_total_variation(self) -> None:
         raise NotImplementedError
 
+    def remove_grid_artifacts_enabled(self, current_epoch: int):
+        if (
+            self.options.remove_grid_artifacts
+            and self.optimization_enabled(current_epoch)
+            and (current_epoch - self.optimization_plan.start)
+            % self.options.remove_grid_artifacts_stride
+            == 0
+        ):
+            return True
+        else:
+            return False
+
+    def remove_grid_artifacts(self, *args, **kwargs):
+        raise NotImplementedError
+
 
 class Object2D(Object):
     def __init__(self, *args, **kwargs):
@@ -371,6 +386,20 @@ class Object2D(Object):
         data = ip.total_variation_2d_chambolle(data, lmbda=self.total_variation_weight, niter=2)
         self.set_data(data)
 
+    def remove_grid_artifacts(self):
+        data = self.data
+        phase = torch.angle(data)
+        phase = ip.remove_grid_artifacts(
+            phase,
+            pixel_size_m=self.pixel_size_m,
+            period_x_m=self.options.remove_grid_artifacts_period_x_m,
+            period_y_m=self.options.remove_grid_artifacts_period_y_m,
+            window_size=self.options.remove_grid_artifacts_window_size,
+            direction=self.options.remove_grid_artifacts_direction,
+        )
+        data = data.abs() * torch.exp(1j * phase)
+        self.set_data(data)
+
 
 class MultisliceObject(Object2D):
     def __init__(self, *args, **kwargs):
@@ -378,7 +407,10 @@ class MultisliceObject(Object2D):
 
         if len(self.shape) != 3:
             raise ValueError("MultisliceObject should have a shape of (n_slices, h, w).")
-        if self.options.slice_spacings_m is None or len(self.options.slice_spacings_m) != self.n_slices - 1:
+        if (
+            self.options.slice_spacings_m is None
+            or len(self.options.slice_spacings_m) != self.n_slices - 1
+        ):
             raise ValueError("The number of slice spacings must be n_slices - 1.")
 
         self.register_buffer("slice_spacings_m", to_tensor(self.options.slice_spacings_m))
@@ -453,6 +485,21 @@ class MultisliceObject(Object2D):
             data[i_slice] = ip.total_variation_2d_chambolle(
                 data[i_slice], lmbda=self.total_variation_weight, niter=2
             )
+        self.set_data(data)
+        
+    def remove_grid_artifacts(self):
+        data = self.data
+        phase = torch.angle(data)
+        for i_slice in range(self.n_slices):
+            slice_phase = ip.remove_grid_artifacts(
+                phase[i_slice],
+                pixel_size_m=self.pixel_size_m,
+                period_x_m=self.options.remove_grid_artifacts_period_x_m,
+                period_y_m=self.options.remove_grid_artifacts_period_y_m,
+                window_size=self.options.remove_grid_artifacts_window_size,
+                direction=self.options.remove_grid_artifacts_direction,
+            )
+            data[i_slice] = data[i_slice].abs() * torch.exp(1j * slice_phase)
         self.set_data(data)
 
 
