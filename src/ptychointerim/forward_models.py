@@ -11,7 +11,7 @@ from ptychointerim.metrics import MSELossOfSqrt
 class ForwardModel(torch.nn.Module):
 
     def __init__(self,
-                 parameter_group: ds.ParameterGroup,
+                 parameter_group: "ds.ParameterGroup",
                  retain_intermediates: bool = False,
                  *args, **kwargs) -> None:
         super().__init__()
@@ -45,7 +45,7 @@ class Ptychography2DForwardModel(ForwardModel):
 
     def __init__(
             self,
-            parameter_group: ds.Ptychography2DParameterGroup,
+            parameter_group: "ds.Ptychography2DParameterGroup",
             retain_intermediates: bool = False,
             *args, **kwargs) -> None:
         super().__init__(parameter_group, *args, **kwargs)
@@ -176,7 +176,7 @@ class Ptychography2DForwardModel(ForwardModel):
 class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
     def __init__(
         self,
-        parameter_group: ds.Ptychography2DParameterGroup,
+        parameter_group: "ds.Ptychography2DParameterGroup",
         retain_intermediates: bool = False,
         wavelength_m: float = 1e-9,
         *args, **kwargs
