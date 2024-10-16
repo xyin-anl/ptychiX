@@ -36,6 +36,11 @@ class ObjectTypes(StrEnum):
     MULTISLICE = auto()
 
 
+class PositionCorrectionTypes(StrEnum):
+    GRADIENT = auto()
+    CROSS_CORRELATION = auto()
+
+
 class NoiseModels(StrEnum):
     GAUSSIAN = auto()
     POISSON = auto()

@@ -9,7 +9,6 @@ from ptychointerim.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
 from ptychointerim.image_proc import place_patches_fourier_shift
-from ptychointerim.position_correction import compute_positions_cross_correlation_update
 import ptychointerim.api as api
 
 
@@ -109,9 +108,15 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         delta_pos = None
         if probe_positions.optimization_enabled(self.current_epoch) and object_.optimizable:
-            updated_obj_patches = obj_patches + delta_o_patches * object_.optimizer_params["lr"]
-            delta_pos = compute_positions_cross_correlation_update(
-                obj_patches, updated_obj_patches, indices, probe_positions.data, probe.data[0, 0]
+            delta_pos = torch.zeros_like(probe_positions.data)
+            delta_pos[indices] = probe_positions.position_correction.get_update(
+                psi_prime - psi,
+                obj_patches,
+                delta_o_patches,
+                probe,
+                self.parameter_group.opr_mode_weights,
+                indices,
+                object_.optimizer_params["lr"],
             )
 
         delta_p_all_modes = None

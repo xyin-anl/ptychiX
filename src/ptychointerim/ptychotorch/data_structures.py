@@ -16,6 +16,7 @@ import ptychointerim.maths as pmath
 import ptychointerim.api as api
 import ptychointerim.maps as maps
 from ptychointerim.propagate import WavefieldPropagator, FourierPropagator
+import ptychointerim.position_correction as position_correction
 
 
 class ComplexTensor(Module):
@@ -1001,15 +1002,15 @@ class ProbePositions(ReconstructParameter):
         """
         Probe positions.
 
-        Parameters
-        ----------
-        data : Tensor
-            A tensor of shape (N, 2) giving the probe positions in pixels.
-            Input positions should be in row-major order, i.e., y-posiitons come first.
+        :param data: a tensor of shape (N, 2) giving the probe positions in pixels.
+            Input positions should be in row-major order, i.e., y-positions come first.
         """
         super().__init__(*args, name=name, options=options, is_complex=False, **kwargs)
         self.pixel_size_m = options.pixel_size_m
         self.update_magnitude_limit = options.update_magnitude_limit
+        self.position_correction = position_correction.PositionCorrection(
+            options=options.correction_options
+        )
 
     def get_positions_in_physical_unit(self, unit: str = "m"):
         return self.tensor * self.pixel_size_m * self.conversion_factor_dict[unit]
