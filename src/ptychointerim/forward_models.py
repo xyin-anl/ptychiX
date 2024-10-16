@@ -239,6 +239,26 @@ class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
         self.near_field_propagator = AngularSpectrumPropagator(self.prop_params)
 
     def forward_real_space(self, indices, obj_patches):
+        """
+        Propagate through the multislice object.
+        
+        If `retain_intermediates` is True, the modulated and then propagated
+        wavefield at each slice will also be stored in the intermediate
+        variable dictionary as "slice_psis".
+
+        Parameters
+        ----------
+        indices : Tensor
+            Indices of diffraction pattern in the batch.
+        obj_patches : Tensor
+            A (batch_size, n_slices, h, w) tensor of object patches.
+
+        Returns
+        -------
+        Tensor
+            A (batch_size, n_modes, h, w) tensor of wavefields at the
+            exiting plane.
+        """
         # Shape of obj_patches:   (batch_size, n_slices, h, w)
         if self.probe.has_multiple_opr_modes:
             # Shape of probe:     (batch_size, n_modes, h, w)
@@ -252,23 +272,23 @@ class MultislicePtychographyForwardModel(Ptychography2DForwardModel):
         if self.retain_intermediates:
             slice_psis = []
 
-        slice_psi_prop = probe
+        slice_psi = probe
         for i_slice in range(self.parameter_group.object.n_slices):
-            slice_patches = obj_patches[:, i_slice, ...]
-
+            if self.retain_intermediates and i_slice > 0:
+                slice_psis.append(slice_psi)
+                
             # Modulate wavefield.
             # Shape of slice_psi: (batch_size, n_modes, h, w)
-            slice_psi = slice_patches[:, None, :, :] * slice_psi_prop
-
-            if self.retain_intermediates:
-                slice_psis.append(slice_psi)
+            slice_patches = obj_patches[:, i_slice, ...]
+            slice_psi = slice_patches[:, None, :, :] * slice_psi
 
             # Propagate wavefield.
             if i_slice < self.parameter_group.object.n_slices - 1:
-                slice_psi_prop = self.propagate_to_next_slice(slice_psi, i_slice)
+                slice_psi = self.propagate_to_next_slice(slice_psi, i_slice)
         if self.retain_intermediates:
             # Shape of slice_psis: (batch_size, n_slices - 1, n_modes, h, w)
             self.record_intermediate_variable("slice_psis", torch.stack(slice_psis, dim=1))
+            self.record_intermediate_variable("psi", slice_psi)
         return slice_psi
     
     def propagate_to_next_slice(self, psi: Tensor, slice_index: int):

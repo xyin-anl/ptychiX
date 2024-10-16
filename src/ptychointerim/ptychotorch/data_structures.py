@@ -1,4 +1,4 @@
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, Sequence
 import dataclasses
 import os
 import logging
@@ -196,7 +196,10 @@ class ReconstructParameter(Module):
         else:
             return self.tensor.grad
 
-    def set_grad(self, grad):
+    def set_grad(
+        self, grad: Tensor, 
+        slicer: Optional[Union[slice, int] | tuple[Union[slice, int], ...]] = None
+    ):
         """
         Populate the `grad` field of the contained tensor, so that it can optimized
         by PyTorch optimizers. You should not need this for AutodiffReconstructor.
@@ -206,13 +209,42 @@ class ReconstructParameter(Module):
         Parameters
         ----------
         grad : Tensor
-            A tensor giving the gradient.
+            A tensor giving the gradient. If the gradient is complex, give it as it is. 
+            This routine will separate the real and imaginary parts and write them into
+            the tensor.grad inside the ComplexTensor object.
+        slicer : Optional[Union[slice, int] | tuple[Union[slice, int], ...]]
+            A tuple of, or a single slice object or integer, that defines the region of
+            the region of the gradient to update. The shape of `grad` should match 
+            the region given by `slicer`, if given. If None, the whole gradient is updated.
         """
+        if self.tensor.data.grad is None and slicer is not None:
+            raise ValueError("Setting gradient with slicing is not allowed when gradient is None.")
+        if slicer is None:
+            slicer = (slice(None),)
+        elif not isinstance(slicer, Sequence):
+            slicer = (slicer,)
+        if len(slicer) > len(self.shape):
+            raise ValueError("The number of slices should not exceed the number of dimensions.")
         if isinstance(self.tensor, ComplexTensor):
             grad = torch.stack([grad.real, grad.imag], dim=-1)
-            self.tensor.data.grad = grad
+            if self.tensor.data.grad is None:
+                self.tensor.data.grad = grad
+            else:
+                self.tensor.data.grad[*slicer, ..., :] = grad
         else:
-            self.tensor.grad = grad
+            if self.tensor.grad is None:
+                self.tensor.grad = grad
+            else:
+                self.tensor.grad[*slicer] = grad
+            
+    def initialize_grad(self):
+        """
+        Initialize the gradient with zeros.
+        """
+        if isinstance(self.tensor, ComplexTensor):
+            self.tensor.data.grad = torch.zeros_like(self.tensor.data)
+        else:
+            self.tensor.grad = torch.zeros_like(self.tensor)
 
     def post_update_hook(self, *args, **kwargs):
         pass
@@ -468,6 +500,11 @@ class MultisliceObject(Object2D):
             The origin of the given positions are assumed to be `self.center_pixel`.
         patch_shape : tuple
             Tuple giving the lateral patch shape in pixels.
+            
+        Returns
+        -------
+        Tensor
+            Tensor of shape (N, n_slices, h', w') containing the extracted patches.
         """
         # Positions are provided with the origin in the center of the object support.
         # We shift the positions so that the origin is in the upper left corner.
@@ -505,7 +542,7 @@ class MultisliceObject(Object2D):
 
     def place_patches_on_empty_buffer(self, positions: Tensor, patches: Tensor, *args, **kwargs):
         """
-        Place patches into a zero array with the lateral shape of the object.
+        Place patches into a zero array with the *lateral* shape of the object.
 
         Parameters
         ----------

@@ -138,12 +138,12 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
     def run_real_space_step(self, psi_opt, indices):
         """
         Run real space step of LSQ-ML, which updates the object, probe, and other variables
-        using psi updated in the reciprocal space step.
+        using psi updated in the reciprocal space step and backpropagated to real space.
 
         Parameters
         ----------
         psi_opt : Tensor
-            A (batch_size, n_probe_modes, h, w) complex tensor. 
+            A (batch_size, n_probe_modes, h, w) complex tensor.
             Should be the psi updated in the reciprocal space step.
         """
         positions = self.forward_model.intermediate_variables["positions"]
@@ -152,9 +152,16 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         chi = psi_opt - psi_0  # Eq, 19
         obj_patches = self.forward_model.intermediate_variables["obj_patches"]
 
-        delta_o_patches = self.update_object_and_probe(indices, chi, obj_patches, positions)
-        if self.parameter_group.probe_positions.optimization_enabled(self.current_epoch):
-            self.update_probe_positions(chi, indices, obj_patches, delta_o_patches)
+        if isinstance(self.parameter_group.object, ds.MultisliceObject):
+            delta_o_patches = self.update_object_and_probe_multislice(
+                indices, chi, obj_patches, positions
+            )
+            if self.parameter_group.probe_positions.optimization_enabled(self.current_epoch):
+                self.update_probe_positions(chi, indices, obj_patches[:, 0], delta_o_patches)
+        else:
+            delta_o_patches = self.update_object_and_probe(indices, chi, obj_patches, positions)
+            if self.parameter_group.probe_positions.optimization_enabled(self.current_epoch):
+                self.update_probe_positions(chi, indices, obj_patches, delta_o_patches)
 
     def update_preconditioners(self):
         # Update preconditioner of the object only if the probe has been updated in the previous
@@ -168,7 +175,9 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
     def _update_object_preconditioner(self):
         positions_all = self.parameter_group.probe_positions.tensor
         # Shape of probe:        (n_probe_modes, h, w)
-        object = self.parameter_group.object.tensor.complex()
+        object_ = self.parameter_group.object.data[..., :, :]
+        if isinstance(self.parameter_group.object, ds.MultisliceObject):
+            object_ = object_[0]
 
         probe_int = self.parameter_group.probe.get_all_mode_intensity(opr_mode=0)[None, :, :]
         # Shape of probe_int:    (n_scan_points, h, w)
@@ -182,7 +191,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                 "positions": positions_all + self.parameter_group.object.center_pixel,
                 "patches": probe_int,
             },
-            iterated_kwargs={"image": torch.zeros_like(object).type(torch.get_default_dtype())},
+            iterated_kwargs={"image": torch.zeros_like(object_).type(torch.get_default_dtype())},
             chunk_size=64,
         )
         self.parameter_group.object.preconditioner = probe_sq_map
@@ -196,39 +205,103 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         alpha_o_i, alpha_p_i = self.calculate_object_and_probe_update_step_sizes(
             indices, chi, obj_patches, delta_o_i, delta_p_i, gamma=gamma
         )
+        alpha_o_mean = pmath.trim_mean(alpha_o_i)
 
         if self.parameter_group.probe.optimization_enabled(self.current_epoch):
             self._apply_probe_update(alpha_p_i, delta_p_hat)
 
         if self.parameter_group.object.optimization_enabled(self.current_epoch):
-            alpha_mean = self._apply_object_update(alpha_o_i, delta_o_hat)
+            self._apply_object_update(alpha_o_mean, delta_o_hat)
 
-        if self.parameter_group.probe.has_multiple_opr_modes and (
-            self.parameter_group.probe.optimization_enabled(self.current_epoch)
-            or (
-                not self.parameter_group.opr_mode_weights.is_dummy
-                and self.parameter_group.opr_mode_weights.eigenmode_weight_optimization_enabled(
-                    self.current_epoch
-                )
-            )
-        ):
-            self.update_opr_probe_modes_and_weights(
-                indices, chi, delta_p_i, delta_p_hat, obj_patches
-            )
+        self.update_variable_probe(indices, chi, delta_p_i, delta_p_hat, obj_patches)
 
-        if (
-            not self.parameter_group.opr_mode_weights.is_dummy
-            and self.parameter_group.opr_mode_weights.intensity_variation_optimization_enabled(
-                self.current_epoch
-            )
-        ):
-            delta_weights_int = self._calculate_intensity_variation_update_direction(
-                indices, chi, obj_patches
-            )
-            self._apply_variable_intensity_updates(delta_weights_int)
-
-        delta_o_patches = alpha_mean * delta_o_i
+        delta_o_patches = alpha_o_mean * delta_o_i
         return delta_o_patches
+
+    def update_object_and_probe_multislice(self, indices, chi, obj_patches, positions, gamma=1e-5):
+        """
+        Update the object and probe for multislice reconstruction.
+
+        Parameters
+        ----------
+        indices : Tensor.
+            A tensor of indices of diffraction patterns processed in the current batch.
+        chi : Tensor.
+            A (batch_size, n_modes, h, w) complex tensor giving the exit wave difference
+            (psi_opt - psi_0) at the exit plane.
+        obj_patches : Tensor.
+            A (batch_size, h, w) complex tensor giving the object patches.
+        positions : Tensor.
+            A (batch_size, 2) tensor giving the probe positions in the current batch.
+        gamma : float
+            Damping factor for solving the step size linear equations.
+        """
+        object_: ds.MultisliceObject = self.parameter_group.object
+        self.parameter_group.object.initialize_grad()
+
+        for i_slice in range(object_.n_slices - 1, -1, -1):
+            psi_im1 = self._get_psi_im1(i_slice, indices)
+            delta_o_i = self._calculate_object_patch_update_direction(indices, chi, psi_im1=psi_im1)
+            delta_o_hat, delta_o_i = self._precondition_object_update_direction(
+                delta_o_i, positions
+            )
+            alpha_o_i = self.calculate_object_update_step_sizes(
+                indices, chi, delta_o_i, gamma=gamma
+            )
+            self._record_object_slice_gradient(i_slice, delta_o_hat, alpha_o_i)
+
+            # Conjugate modulate and backpropagate.
+            chi = chi * obj_patches[:, i_slice].conj()[:, None, :, :]
+            if i_slice > 0:
+                chi = self.forward_model.propagate_to_previous_slice(chi, slice_index=i_slice)
+
+        delta_p_i = self._calculate_probe_update_direction(chi, None)  # Eq. 24a
+        delta_p_hat = self._precondition_probe_update_direction(delta_p_i)  # Eq. 25a
+        alpha_p_i = self.calculate_probe_update_step_sizes(
+            chi, obj_patches[:, 0], delta_p_i, gamma=gamma
+        )
+
+        if self.parameter_group.probe.optimization_enabled(self.current_epoch):
+            self._apply_probe_update(alpha_p_i, delta_p_hat)
+
+        if self.parameter_group.object.optimization_enabled(self.current_epoch):
+            self._apply_object_update(None, None)
+
+        self.update_variable_probe(indices, chi, delta_p_i, delta_p_hat, obj_patches[:, 0])
+
+        delta_o_patches = pmath.trim_mean(alpha_o_i) * delta_o_i
+        return delta_o_patches
+
+    def _get_psi_im1(self, i_slice, indices):
+        """
+        Get $\psi_{i-1}$, the wavefield modulated by the previous slice and then propagated,
+        for multislice reconstruction. If `i_slice == 0`, return the probe instead.
+
+        Parameters
+        ----------
+        i_slice : int
+            The current slice index.
+        indices : Tensor
+            A tensor of indices of diffraction patterns processed in the current batch.
+
+        Returns
+        -------
+        Tensor
+            The previous wavefield. If `i_slice == 0` and the probe does not have OPR modes,
+            the returned tensor will be (n_modes, h, w); otherwise it will be
+            (batch_size, n_modes, h, w).
+        """
+        if i_slice > 0:
+            psi_im1 = self.forward_model.intermediate_variables["slice_psis"][:, i_slice - 1]
+        else:
+            if self.parameter_group.probe.has_multiple_opr_modes:
+                psi_im1 = self.parameter_group.probe.get_unique_probes(
+                    weights=self.parameter_group.opr_mode_weights.get_weights(indices),
+                    mode_to_apply=0,
+                )
+            else:
+                psi_im1 = self.parameter_group.probe.get_opr_mode(0)
+        return psi_im1
 
     def calculate_object_and_probe_update_step_sizes(
         self, indices, chi, obj_patches, delta_o_i, delta_p_i, gamma=1e-5
@@ -271,14 +344,66 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         return alpha_o_i, alpha_p_i
 
-    def _calculate_probe_update_direction(self, chi, obj_patches):
+    def calculate_object_update_step_sizes(self, indices, chi, delta_o_i, gamma=1e-5):
         """
-        Eq. 24a of Odstrcil (2018).
+        Calculate the update step sizes just for the object using Eq. 23b of Odstrcil (2018).
         """
-        # Shape of chi:          (batch_size, n_probe_modes, h, w)
-        # Shape of obj_patches:  (batch_size, h, w)
-        # Shape of delta_p:      (batch_size, n_probe_modes, h, w)
-        delta_p = chi * obj_patches.conj()[:, None, :, :]  # Eq. 24a
+        if self.parameter_group.probe.has_multiple_opr_modes:
+            # Shape of probe:         (n_batch, n_modes, h, w)
+            probe = self.parameter_group.probe.get_unique_probes(
+                self.parameter_group.opr_mode_weights.get_weights(indices), mode_to_apply=0
+            )
+        else:
+            # Shape of probe:         (n_modes, h, w)
+            probe = self.parameter_group.probe.get_opr_mode(0)
+
+        # Shape of delta_p_o/o_p:     (batch_size, n_probe_modes, h, w)
+        delta_o_patches_p = delta_o_i[:, None, :, :] * probe
+
+        numerator = (delta_o_patches_p.abs() ** 2).sum(-1).sum(-1).sum(-1) + gamma
+        denominator = torch.real(delta_o_patches_p.conj() * chi).sum(-1).sum(-1).sum(-1)
+
+        alpha_o_i = numerator / (denominator + gamma)
+
+        logging.debug(
+            "alpha_o_i: min={}, max={}, trim_mean={}".format(
+                alpha_o_i.min(), alpha_o_i.max(), pmath.trim_mean(alpha_o_i)
+            )
+        )
+        return alpha_o_i
+
+    def calculate_probe_update_step_sizes(self, chi, obj_patches, delta_p_i, gamma=1e-5):
+        """
+        Calculate the update step sizes just for the probe using Eq. 23a of Odstrcil (2018).
+        """
+        # Shape of delta_p_o/o_p:     (batch_size, n_probe_modes, h, w)
+        delta_p_o = delta_p_i * obj_patches[:, None, :, :]
+
+        # Shape of aij:               (batch_size,)
+        numerator = (delta_p_o.abs() ** 2).sum(-1).sum(-1).sum(-1) + gamma
+        denominator = torch.real(delta_p_o.conj() * chi).sum(-1).sum(-1).sum(-1)
+
+        alpha_p_i = numerator / (denominator + gamma)
+
+        logging.debug("alpha_p_i: min={}, max={}".format(alpha_p_i.min(), alpha_p_i.max()))
+        return alpha_p_i
+
+    def _calculate_probe_update_direction(self, chi, obj_patches=None):
+        """
+        Calculate probe update direction using Eq. 24a of Odstrcil (2018).
+
+        Parameters
+        ----------
+        chi: torch.Tensor
+            A (batch_size, n_probe_modes, h, w) tensor giving the difference of exit waves.
+        obj_patches: torch.Tensor
+            A (batch_size, h, w) tensor giving the object patches. If None, just return
+            chi as it is. This behavior is intended for multislice.
+        """
+        if obj_patches is not None:
+            delta_p = chi * obj_patches.conj()[:, None, :, :]  # Eq. 24a
+        else:
+            delta_p = chi
         return delta_p
 
     def _precondition_probe_update_direction(self, delta_p):
@@ -319,21 +444,50 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.parameter_group.probe.set_grad(-delta_p_hat * torch.mean(alpha_p_i))
         self.parameter_group.probe.optimizer.step()
 
-    def _calculate_object_patch_update_direction(self, indices, chi):
+    def _calculate_object_patch_update_direction(self, indices, chi, psi_im1=None):
         """
-        Eq. 24b of Odstrcil, 2018.
+        Calculate the update direction for object patches, implementing
+        Eq. 24b of Odstrcil, 2018. This function works in both 2D mode and
+        multislice mode:
+
+        - When `psi_im1` is None, 2D mode is assumed. `chi` is multiplied with the
+            complex conjugate of the probe.
+        - When `psi_im1` is not None, multislice mode is assumed. `chi` is multiplied
+            with the complex conjugate of `psi_im1`.
+
+        Parameters
+        ----------
+        indices : Tensor
+            Indices of diffraction patterns in the current batch.
+        chi : Tensor
+            A (batch_size, n_modes, h, w) tensor giving the difference of exit waves.
+            For multislice, this should be the exiting-plane `chi` backpropagated to the
+            current slice.
+        psi_im1 : Tensor
+            A (batch_size, n_modes, h, w) tensor giving $\psi_{i - 1}$, the wavefield
+            modulated by the previous slice and propagated to the current slice. If this
+            is given, multislice mode is assumed.
+
+        Returns
+        -------
+        Tensor
+            A (batch_size, h, w) tensor giving the update direction for object patches.
         """
-        # Shape of probe:        (n_probe_modes, h, w)
-        if self.parameter_group.probe.has_multiple_opr_modes:
-            probe = self.parameter_group.probe.get_unique_probes(
-                weights=self.parameter_group.opr_mode_weights.get_weights(indices), mode_to_apply=0
-            )
+        if psi_im1 is None:
+            # Shape of probe:        (n_probe_modes, h, w)
+            if self.parameter_group.probe.has_multiple_opr_modes:
+                p = self.parameter_group.probe.get_unique_probes(
+                    weights=self.parameter_group.opr_mode_weights.get_weights(indices),
+                    mode_to_apply=0,
+                )
+            else:
+                p = self.parameter_group.probe.get_opr_mode(0)
         else:
-            probe = self.parameter_group.probe.get_opr_mode(0)
+            p = psi_im1
         # Shape of chi:          (batch_size, n_probe_modes, h, w)
         # Shape delta_o_patches: (batch_size, h, w)
         # Multiply and sum over probe mode dimension
-        delta_o_patches = torch.sum(chi * probe.conj(), dim=1)  # Eq. 24b
+        delta_o_patches = torch.sum(chi * p.conj(), dim=1)  # Eq. 24b
         return delta_o_patches
 
     def _precondition_object_update_direction(self, delta_o_patches, positions, alpha_mix=0.05):
@@ -359,14 +513,24 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         )
         return delta_o_hat, delta_o_patches
 
-    def _apply_object_update(self, alpha_o_i, delta_o_hat):
+    def _record_object_slice_gradient(self, i_slice, delta_o_hat, alpha_o_i):
         """
-        Eq. 27b of Odstrcil, 2018.
+        Record the gradient of one slice of a multislice object.
         """
         alpha_mean = pmath.trim_mean(alpha_o_i, 0.1)
-        self.parameter_group.object.set_grad(-alpha_mean * delta_o_hat)
+        self.parameter_group.object.set_grad(-alpha_mean * delta_o_hat, slicer=i_slice)
+
+    def _apply_object_update(self, alpha_o_mean=None, delta_o_hat=None):
+        """
+        Apply object update using Eq. 27b of Odstrcil, 2018.
+
+        If both `alpha_o_mean` and `delta_o_hat` are given, the object's gradient is set
+        using averaged step size and `delta_o_hat`. Otherwise, we assume the gradient
+        is already set previously, and just simply run the optimizer step.
+        """
+        if delta_o_hat is not None and alpha_o_mean is not None:
+            self.parameter_group.object.set_grad(-alpha_o_mean * delta_o_hat)
         self.parameter_group.object.optimizer.step()
-        return alpha_mean
 
     def update_probe_positions(self, chi, indices, obj_patches, delta_o_patches):
         delta_pos = self.parameter_group.probe_positions.position_correction.get_update(
@@ -414,6 +578,31 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         coord_ramp = torch.fft.fftfreq(probe.shape[-1])
         delta_p_x = torch.ifft2(2 * torch.pi * coord_ramp[None, :] * 1j * f_probe)
+
+    def update_variable_probe(self, indices, chi, delta_p_i, delta_p_hat, obj_patches):
+        if self.parameter_group.probe.has_multiple_opr_modes and (
+            self.parameter_group.probe.optimization_enabled(self.current_epoch)
+            or (
+                not self.parameter_group.opr_mode_weights.is_dummy
+                and self.parameter_group.opr_mode_weights.eigenmode_weight_optimization_enabled(
+                    self.current_epoch
+                )
+            )
+        ):
+            self.update_opr_probe_modes_and_weights(
+                indices, chi, delta_p_i, delta_p_hat, obj_patches
+            )
+
+        if (
+            not self.parameter_group.opr_mode_weights.is_dummy
+            and self.parameter_group.opr_mode_weights.intensity_variation_optimization_enabled(
+                self.current_epoch
+            )
+        ):
+            delta_weights_int = self._calculate_intensity_variation_update_direction(
+                indices, chi, obj_patches
+            )
+            self._apply_variable_intensity_updates(delta_weights_int)
 
     def update_opr_probe_modes_and_weights(self, indices, chi, delta_p_i, delta_p_hat, obj_patches):
         """
