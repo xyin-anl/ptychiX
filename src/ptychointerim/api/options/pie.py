@@ -9,7 +9,9 @@ import ptychointerim.api.enums as enums
 
 @dataclasses.dataclass
 class PIEReconstructorOptions(base.ReconstructorOptions):
-        
+
+    metric_function: enums.LossFunctions = enums.LossFunctions.MSE_SQRT
+    
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.PIE
 

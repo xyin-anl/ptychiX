@@ -50,18 +50,15 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
                 raise ValueError(
                     "Optimizable parameter {} must have 'lr' in optimizer_params.".format(var.name)
                 )
-        if self.metric_function is not None:
-            raise NotImplementedError("EPIEReconstructor does not support metric function yet.")
         if self.parameter_group.probe.has_multiple_opr_modes:
             raise NotImplementedError("EPIEReconstructor does not support multiple OPR modes yet.")
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
-        (delta_o, delta_p, delta_pos), batch_loss = self.compute_updates(
+        (delta_o, delta_p, delta_pos), y_pred = self.compute_updates(
             *input_data, y_true, self.dataset.valid_pixel_mask
         )
         self.apply_updates(delta_o, delta_p, delta_pos)
-        batch_loss = torch.mean(batch_loss)
-        self.loss_tracker.update_batch_loss_with_value(batch_loss.item())
+        self.loss_tracker.update_batch_loss_with_metric_function(y_pred, y_true)
 
     def compute_updates(
         self, indices: torch.Tensor, y_true: torch.Tensor, valid_pixel_mask: torch.Tensor
@@ -126,8 +123,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             delta_p = delta_p.mean(0)
             delta_p_all_modes = delta_p[None, :, :]
 
-        batch_loss = torch.mean((torch.sqrt(y) - torch.sqrt(y_true)) ** 2)
-        return (delta_o, delta_p_all_modes, delta_pos), torch.atleast_1d(batch_loss)
+        return (delta_o, delta_p_all_modes, delta_pos), y
 
     def calculate_object_step_weight(self, p: Tensor):
         """Calculate the weight for the object update step."""
