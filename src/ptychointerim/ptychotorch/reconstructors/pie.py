@@ -9,6 +9,7 @@ from ptychointerim.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
 from ptychointerim.image_proc import place_patches_fourier_shift
+from ptychointerim.metrics import MSELossOfSqrt
 import ptychointerim.api as api
 
 
@@ -41,6 +42,11 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             *args,
             **kwargs,
         )
+        
+    def build_loss_tracker(self):
+        if self.metric_function is None:
+            self.metric_function = MSELossOfSqrt()
+        return super().build_loss_tracker()
 
     def check_inputs(self, *args, **kwargs):
         if not isinstance(self.parameter_group.object, ds.Object2D):

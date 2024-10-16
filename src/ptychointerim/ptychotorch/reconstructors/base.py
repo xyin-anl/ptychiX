@@ -58,13 +58,42 @@ class LossTracker:
         y_true: Optional[torch.Tensor] = None,
         loss: Optional[float] = None,
     ) -> None:
-        data_provided = y_pred is not None and y_true is not None
+        """
+        Update the loss after processing a minibatch. This routine decides whether
+        to compute the loss using the metric function or a provided loss value:
+
+        - If always_compute_loss is True, the loss is always computed using the metric
+          function. An exception is thrown if data (y_pred and y_true) are not provided,
+          or if the metric function is not provided.
+        - If always_compute_loss is False, the loss is updated using the provided loss
+          as long as it is provided.
+        - Otherwise, the loss is computed using the metric function and provided data.
+        
+        At least one of (y_pred, y_true) and loss must be provided. Also, in the former
+        case, metric_function must be provided.
+
+        Parameters
+        ----------
+        y_pred : Optional[Tensor]
+            The predicted or simulated data.
+        y_true : Optional[Tensor]
+            The measured or labeled data.
+        loss : Optional[float]
+            The precalculated loss value.
+        """
+        data_provided = (
+            y_pred is not None and y_true is not None and self.metric_function is not None
+        )
         loss_provided = loss is not None
         if self.always_compute_loss:
             if not data_provided:
-                raise ValueError("Always_compute_loss requires (y_pred, y_true) to be provided.")
+                raise ValueError(
+                    "Always_compute_loss requires (y_pred, y_true) and metric_function to be provided."
+                )
         if not (data_provided or loss_provided):
-            raise ValueError("One of (y_pred, y_true) and (loss,) must be provided.")
+            raise ValueError(
+                "One of (y_pred, y_true) and (loss,) must be provided. Also, in the former case, metric_function must be provided."
+            )
 
         if loss_provided and not self.always_compute_loss:
             self.update_batch_loss_with_value(loss)
@@ -303,7 +332,7 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             # Apply total variation constraint.
             if object_.total_variation_enabled(self.current_epoch):
                 object_.constrain_total_variation()
-                
+
             # Remove grid artifacts.
             if object_.remove_grid_artifacts_enabled(self.current_epoch):
                 object_.remove_grid_artifacts()
