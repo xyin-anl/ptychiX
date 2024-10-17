@@ -3,13 +3,13 @@ import torch
 from torch import Tensor
 from torch.nn import ModuleList
 
-import ptychointerim.ptychotorch.data_structures as ds
-from ptychointerim.propagate import (
+import ptychi.ptychotorch.data_structures as ds
+from ptychi.propagate import (
     WavefieldPropagatorParameters,
     AngularSpectrumPropagator,
     FourierPropagator,
 )
-from ptychointerim.metrics import MSELossOfSqrt
+from ptychi.metrics import MSELossOfSqrt
 
 
 class ForwardModel(torch.nn.Module):

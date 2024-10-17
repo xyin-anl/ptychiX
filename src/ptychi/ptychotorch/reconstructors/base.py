@@ -6,11 +6,11 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 import tqdm
 
-import ptychointerim.ptychotorch.data_structures as ds
-from ptychointerim.ptychotorch.utils import to_numpy
-import ptychointerim.api as api
-import ptychointerim.maps as maps
-import ptychointerim.forward_models as fm
+import ptychi.ptychotorch.data_structures as ds
+from ptychi.ptychotorch.utils import to_numpy
+import ptychi.api as api
+import ptychi.maps as maps
+import ptychi.forward_models as fm
 
 
 class LossTracker:

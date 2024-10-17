@@ -2,7 +2,7 @@ from typing import Type
 
 import torch
 
-from ptychointerim.api.enums import (
+from ptychi.api.enums import (
     Dtypes,
     Optimizers,
     LossFunctions,
@@ -11,16 +11,16 @@ from ptychointerim.api.enums import (
     NoiseModels,
     ForwardModels,
 )
-from ptychointerim.metrics import MSELossOfSqrt
-from ptychointerim.ptychotorch.reconstructors import (
+from ptychi.metrics import MSELossOfSqrt
+from ptychi.ptychotorch.reconstructors import (
     AutodiffPtychographyReconstructor,
     PIEReconstructor,
     EPIEReconstructor,
     RPIEReconstructor,
     LSQMLReconstructor,
 )
-import ptychointerim.forward_models as fm
-from ptychointerim.ptychotorch.reconstructors.base import Reconstructor
+import ptychi.forward_models as fm
+from ptychi.ptychotorch.reconstructors.base import Reconstructor
 
 
 def get_complex_dtype_by_enum(key: Dtypes) -> torch.dtype:

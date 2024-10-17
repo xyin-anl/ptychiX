@@ -2,9 +2,9 @@ import argparse
 
 import torch
 
-import ptychointerim.api as api
-from ptychointerim.api.task import PtychographyTask
-from ptychointerim.ptychotorch.utils import get_suggested_object_size, get_default_complex_dtype
+import ptychi.api as api
+from ptychi.api.task import PtychographyTask
+from ptychi.ptychotorch.utils import get_suggested_object_size, get_default_complex_dtype
 
 import test_utils as tutils
 

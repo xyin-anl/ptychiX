@@ -4,13 +4,13 @@ import torch
 from torch.utils.data import Dataset
 from torch import Tensor
 
-import ptychointerim.ptychotorch.data_structures as ds
-from ptychointerim.ptychotorch.reconstructors.base import (
+import ptychi.ptychotorch.data_structures as ds
+from ptychi.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
-from ptychointerim.image_proc import place_patches_fourier_shift
-from ptychointerim.metrics import MSELossOfSqrt
-import ptychointerim.api as api
+from ptychi.image_proc import place_patches_fourier_shift
+from ptychi.metrics import MSELossOfSqrt
+import ptychi.api as api
 
 
 class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):

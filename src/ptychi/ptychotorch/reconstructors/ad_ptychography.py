@@ -3,11 +3,11 @@ from typing import Optional
 import torch
 from torch.utils.data import Dataset
 
-import ptychointerim.ptychotorch.data_structures as ds
-import ptychointerim.forward_models as fm
-from ptychointerim.ptychotorch.reconstructors.ad_general import AutodiffReconstructor
-from ptychointerim.ptychotorch.reconstructors.base import IterativePtychographyReconstructor
-import ptychointerim.api as api
+import ptychi.ptychotorch.data_structures as ds
+import ptychi.forward_models as fm
+from ptychi.ptychotorch.reconstructors.ad_general import AutodiffReconstructor
+from ptychi.ptychotorch.reconstructors.base import IterativePtychographyReconstructor
+import ptychi.api as api
 
 
 class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychographyReconstructor):

@@ -8,7 +8,7 @@ import numpy
 import numpy.typing
 import torch
 
-from ptychointerim.propagate import FourierPropagator, WavefieldPropagator
+from ptychi.propagate import FourierPropagator, WavefieldPropagator
 
 BooleanArray: TypeAlias = numpy.typing.NDArray[numpy.bool_]
 IntegerArray: TypeAlias = numpy.typing.NDArray[numpy.integer[Any]]

@@ -1,7 +1,7 @@
 import dataclasses
 from dataclasses import field
 
-import ptychointerim.api.options.base as base
+import ptychi.api.options.base as base
 from .data import PtychographyDataOptions
 
 

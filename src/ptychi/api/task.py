@@ -9,9 +9,9 @@ import numpy as np
 from torch import Tensor
 from numpy import ndarray
 
-import ptychointerim.api as api
-import ptychointerim.maps as maps
-from ptychointerim.ptychotorch.data_structures import (
+import ptychi.api as api
+import ptychi.maps as maps
+from ptychi.ptychotorch.data_structures import (
     Object2D,
     MultisliceObject,
     Probe,
@@ -20,14 +20,14 @@ from ptychointerim.ptychotorch.data_structures import (
     DummyParameter,
     Ptychography2DParameterGroup,
 )
-from ptychointerim.ptychotorch.io_handles import PtychographyDataset
-from ptychointerim.forward_models import (
+from ptychi.ptychotorch.io_handles import PtychographyDataset
+from ptychi.forward_models import (
     Ptychography2DForwardModel,
     MultislicePtychographyForwardModel,
 )
-from ptychointerim.ptychotorch.utils import to_tensor
-import ptychointerim.ptychotorch.utils as utils
-from ptychointerim.ptychotorch.reconstructors import AutodiffPtychographyReconstructor
+from ptychi.ptychotorch.utils import to_tensor
+import ptychi.ptychotorch.utils as utils
+from ptychi.ptychotorch.reconstructors import AutodiffPtychographyReconstructor
 
 
 class Task:

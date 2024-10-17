@@ -2,10 +2,10 @@ import argparse
 
 import torch
 
-import ptychointerim.api as api
-from ptychointerim.api.task import PtychographyTask
-from ptychointerim.ptychotorch.utils import get_suggested_object_size, get_default_complex_dtype, rescale_probe
-from ptychointerim.maths import orthogonalize_gs
+import ptychi.api as api
+from ptychi.api.task import PtychographyTask
+from ptychi.ptychotorch.utils import get_suggested_object_size, get_default_complex_dtype, rescale_probe
+from ptychi.maths import orthogonalize_gs
 
 import test_utils as tutils
 

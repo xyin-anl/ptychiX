@@ -4,10 +4,10 @@ import logging
 import torch
 import numpy as np
 
-import ptychointerim.api as api
-from ptychointerim.api.task import PtychographyTask
-from ptychointerim.api import LSQMLOptions, AutodiffPtychographyOptions
-import ptychointerim.ptychotorch.utils as utils
+import ptychi.api as api
+from ptychi.api.task import PtychographyTask
+from ptychi.api import LSQMLOptions, AutodiffPtychographyOptions
+import ptychi.ptychotorch.utils as utils
 
 import test_utils as tutils
 

@@ -5,8 +5,8 @@ import logging
 from numpy import ndarray
 from torch import Tensor
 
-import ptychointerim.api.enums as enums
-from ptychointerim.api.options.plan import OptimizationPlan
+import ptychi.api.enums as enums
+from ptychi.api.options.plan import OptimizationPlan
 
 @dataclasses.dataclass
 class Options:

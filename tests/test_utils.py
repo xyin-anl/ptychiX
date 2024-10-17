@@ -6,7 +6,7 @@ import torch
 import h5py
 import numpy as np
 
-from ptychointerim.ptychotorch.utils import rescale_probe, add_additional_opr_probe_modes_to_probe, set_default_complex_dtype, to_tensor
+from ptychi.ptychotorch.utils import rescale_probe, add_additional_opr_probe_modes_to_probe, set_default_complex_dtype, to_tensor
 
 
 def get_timestamp():

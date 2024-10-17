@@ -1,13 +1,13 @@
 from importlib.metadata import version, PackageNotFoundError
 
 try:
-    __version__ = version("ptychointerim")
+    __version__ = version("ptychi")
 except PackageNotFoundError:
     pass
 
 from .device import Device, list_available_devices
-import ptychointerim.ptychopack
-import ptychointerim.ptychotorch
+import ptychi.ptychopack
+import ptychi.ptychotorch
 
 __all__ = [
     "Device",

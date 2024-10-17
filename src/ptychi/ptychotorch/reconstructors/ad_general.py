@@ -3,11 +3,11 @@ from typing import Type, Optional
 import torch
 from torch.utils.data import Dataset
 
-import ptychointerim.ptychotorch.data_structures as ds
-import ptychointerim.forward_models as fm
-from ptychointerim.ptychotorch.reconstructors.base import IterativeReconstructor, LossTracker
-import ptychointerim.api as api
-import ptychointerim.maps as maps
+import ptychi.ptychotorch.data_structures as ds
+import ptychi.forward_models as fm
+from ptychi.ptychotorch.reconstructors.base import IterativeReconstructor, LossTracker
+import ptychi.api as api
+import ptychi.maps as maps
 
 
 class AutodiffReconstructor(IterativeReconstructor):

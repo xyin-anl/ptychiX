@@ -1,9 +1,9 @@
 import torch
 import numpy as np
 
-from ptychointerim.ptychotorch.data_structures import Object2D
-from ptychointerim.api.options.base import ObjectOptions
-import ptychointerim.api as api
+from ptychi.ptychotorch.data_structures import Object2D
+from ptychi.api.options.base import ObjectOptions
+import ptychi.api as api
 
 
 def test_remove_grid_artifacts(debug=False):

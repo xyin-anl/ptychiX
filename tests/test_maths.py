@@ -1,4 +1,4 @@
-import ptychointerim.maths as pmath
+import ptychi.maths as pmath
 
 import torch
 

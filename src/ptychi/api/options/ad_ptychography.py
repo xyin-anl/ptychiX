@@ -3,11 +3,11 @@ import dataclasses
 from dataclasses import field
 
 
-import ptychointerim.api.options.base as base
-import ptychointerim.api.options.task as task_options
-import ptychointerim.api.enums as enums
-import ptychointerim.api.options.ad_general as ad_general
-import ptychointerim.forward_models as fm
+import ptychi.api.options.base as base
+import ptychi.api.options.task as task_options
+import ptychi.api.enums as enums
+import ptychi.api.options.ad_general as ad_general
+import ptychi.forward_models as fm
 
 
 @dataclasses.dataclass

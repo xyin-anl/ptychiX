@@ -1,3 +1,5 @@
+Welcome to the repository of Pty-chi, a PyTorch-based ptychography reconstruction library!
+
 ============
 Installation
 ============
@@ -5,7 +7,7 @@ Installation
 Clone the repository to your workspace, and create a new conda environment
 using::
 
-    conda create -n <new_env_name> --file requirements-dev.txt
+    conda create -n ptychi --file requirements-dev.txt
 
 Then install the package using::
 

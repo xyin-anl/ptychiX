@@ -4,19 +4,19 @@ import logging
 import torch
 from torch.utils.data import Dataset
 
-from ptychointerim.ptychotorch.reconstructors.base import (
+from ptychi.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
     LossTracker,
 )
-import ptychointerim.ptychotorch.data_structures as ds
-import ptychointerim.forward_models as fm
-from ptychointerim.image_proc import (
+import ptychi.ptychotorch.data_structures as ds
+import ptychi.forward_models as fm
+from ptychi.image_proc import (
     place_patches_fourier_shift,
     extract_patches_fourier_shift,
 )
-from ptychointerim.ptychotorch.utils import chunked_processing
-import ptychointerim.maths as pmath
-import ptychointerim.api as api
+from ptychi.ptychotorch.utils import chunked_processing
+import ptychi.maths as pmath
+import ptychi.api as api
 
 
 class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):

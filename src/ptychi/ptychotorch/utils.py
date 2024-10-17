@@ -6,8 +6,8 @@ from torchvision.transforms import GaussianBlur
 import numpy as np
 from numpy import ndarray
 
-import ptychointerim.maths as pmath
-from ptychointerim.propagate import FourierPropagator
+import ptychi.maths as pmath
+from ptychi.propagate import FourierPropagator
 
 
 default_complex_dtype = torch.complex64

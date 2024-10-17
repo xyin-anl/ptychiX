@@ -10,13 +10,13 @@ import numpy as np
 from numpy import ndarray
 import tifffile
 
-import ptychointerim.image_proc as ip
-from ptychointerim.ptychotorch.utils import to_tensor, get_default_complex_dtype
-import ptychointerim.maths as pmath
-import ptychointerim.api as api
-import ptychointerim.maps as maps
-from ptychointerim.propagate import WavefieldPropagator, FourierPropagator
-import ptychointerim.position_correction as position_correction
+import ptychi.image_proc as ip
+from ptychi.ptychotorch.utils import to_tensor, get_default_complex_dtype
+import ptychi.maths as pmath
+import ptychi.api as api
+import ptychi.maps as maps
+from ptychi.propagate import WavefieldPropagator, FourierPropagator
+import ptychi.position_correction as position_correction
 
 
 class ComplexTensor(Module):

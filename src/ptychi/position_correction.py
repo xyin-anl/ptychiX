@@ -1,8 +1,7 @@
 import torch
-from ptychointerim.image_proc import find_cross_corr_peak, gaussian_gradient
-# from ptychointerim.ptychotorch.data_structures import Probe, OPRModeWeights
-import ptychointerim.ptychotorch.data_structures as data_structures
-import ptychointerim.api as api
+from ptychi.image_proc import find_cross_corr_peak, gaussian_gradient
+import ptychi.ptychotorch.data_structures as data_structures
+import ptychi.api as api
 
 
 class PositionCorrection:
