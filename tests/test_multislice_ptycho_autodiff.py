@@ -13,7 +13,7 @@ import test_utils as tutils
 def test_multislice_ptycho_autodiff(generate_gold=False, debug=False):
     name = 'test_multislice_ptycho_autodiff'
     
-    tutils.setup(name, cpu_only=True, gpu_indices=[0])
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
     data, probe, pixel_size_m, positions_px = tutils.load_data_ptychodus(
         *tutils.get_default_input_data_file_paths('multislice_ptycho_AuNi'),
@@ -50,7 +50,7 @@ def test_multislice_ptycho_autodiff(generate_gold=False, debug=False):
     options.reconstructor_options.loss_function = api.LossFunctions.MSE_SQRT
     options.reconstructor_options.batch_size = 101
     options.reconstructor_options.num_epochs = 32
-    options.reconstructor_options.default_device = api.Devices.CPU
+    options.reconstructor_options.default_device = api.Devices.GPU
     options.reconstructor_options.random_seed = 123
     
     task = PtychographyTask(options)

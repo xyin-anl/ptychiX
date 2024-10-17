@@ -13,7 +13,7 @@ import test_utils as tutils
 def test_multislice_ptycho_lsqml(generate_gold=False, debug=False):
     name = 'test_multislice_ptycho_lsqml'
     
-    tutils.setup(name, cpu_only=True, gpu_indices=[0])
+    tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
     data, probe, pixel_size_m, positions_px = tutils.load_data_ptychodus(
         *tutils.get_default_input_data_file_paths('multislice_ptycho_AuNi'),
@@ -49,7 +49,7 @@ def test_multislice_ptycho_lsqml(generate_gold=False, debug=False):
     options.reconstructor_options.metric_function = api.LossFunctions.MSE_SQRT
     options.reconstructor_options.batch_size = 101
     options.reconstructor_options.num_epochs = 32
-    options.reconstructor_options.default_device = api.Devices.CPU
+    options.reconstructor_options.default_device = api.Devices.GPU
     options.reconstructor_options.random_seed = 123
     
     task = PtychographyTask(options)
@@ -57,7 +57,7 @@ def test_multislice_ptycho_lsqml(generate_gold=False, debug=False):
 
     recon = task.get_data_to_cpu('object', as_numpy=True)
     
-    if debug:
+    if debug and not generate_gold:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(1, 2)
         ax[0].imshow(np.angle(recon[0]))
