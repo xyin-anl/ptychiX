@@ -7,7 +7,7 @@ Installation
 Clone the repository to your workspace, and create a new conda environment
 using::
 
-    conda create -n ptychi --file requirements-dev.txt
+    conda create -n ptychi -c conda-forge -c nvidia --file requirements-dev.txt
 
 Then install the package using::
 
