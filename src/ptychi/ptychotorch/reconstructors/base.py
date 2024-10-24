@@ -261,7 +261,8 @@ class IterativeReconstructor(Reconstructor):
         pass
 
     def run(self, n_epochs: Optional[int] = None, *args, **kwargs):
-        self.run_pre_run_hooks()
+        if self.current_epoch == 0:
+            self.run_pre_run_hooks()
         n_epochs = n_epochs if n_epochs is not None else self.n_epochs
         for _ in tqdm.trange(n_epochs):
             self.run_pre_epoch_hooks()
