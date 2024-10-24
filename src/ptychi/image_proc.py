@@ -1,9 +1,13 @@
-from typing import Tuple, Literal
+from typing import Tuple, Literal, Optional
 import math
 import logging
 
 import torch
 from torch import Tensor
+import torch.signal
+
+import ptychi.maths as pmath
+import ptychi.api.enums as enums
 
 
 def extract_patches_fourier_shift(
@@ -128,7 +132,7 @@ def place_patches_fourier_shift(
     return image
 
 
-def fourier_shift(images: Tensor, shifts: Tensor) -> Tensor:
+def fourier_shift(images: Tensor, shifts: Tensor, strictly_preserve_zeros: bool = False) -> Tensor:
     """
     Apply Fourier shift to a batch of images.
 
@@ -138,12 +142,22 @@ def fourier_shift(images: Tensor, shifts: Tensor) -> Tensor:
         A [N, H, W] tensor of images.
     shifts : Tensor
         A [N, 2] tensor of shifts in pixels.
+    strictly_preserve_zeros : bool
+        If True, mask of strictly zero pixels will be generated and shifted
+        by the same amount. Pixels that have a non-zero value in the shifted
+        mask will be set to zero in the shifted image. This preserves the zero
+        pixels in the original image, preventing FFT from introducing small
+        non-zero values due to machine precision.
 
     Returns
     -------
     Tensor
         Shifted images.
     """
+    if strictly_preserve_zeros:
+        zero_mask = images == 0
+        zero_mask = zero_mask.float()
+        zero_mask_shifted = fourier_shift(zero_mask, shifts, strictly_preserve_zeros=False)
     ft_images = torch.fft.fft2(images)
     freq_y, freq_x = torch.meshgrid(
         torch.fft.fftfreq(images.shape[-2]), torch.fft.fftfreq(images.shape[-1]), indexing="ij"
@@ -162,6 +176,8 @@ def fourier_shift(images: Tensor, shifts: Tensor) -> Tensor:
     shifted_images = torch.fft.ifft2(ft_images)
     if not images.dtype.is_complex:
         shifted_images = shifted_images.real
+    if strictly_preserve_zeros:
+        shifted_images[zero_mask_shifted > 0] = 0
     return shifted_images
 
 
@@ -237,6 +253,160 @@ def gaussian_gradient(image: Tensor, sigma: float = 1.0, kernel_size=5) -> Tenso
     return grad_y, grad_x
 
 
+def fourier_gradient(image: Tensor) -> Tensor:
+    """
+    Calculate the gradient of an image using Fourier differentiation
+    theorem: `fft(df/dx) = 2 * pi * i * u * fft(f)`.
+
+    Parameters
+    ----------
+    image : Tensor
+        A (... H, W) tensor of images.
+
+    Returns
+    -------
+    Tuple[Tensor, Tensor]
+        The y and x gradients.
+    """
+    u, v = torch.fft.fftfreq(image.shape[-2]), torch.fft.fftfreq(image.shape[-1])
+    u, v = torch.meshgrid(u, v, indexing="ij")
+    f_image = torch.fft.fft2(image)
+    grad_y = torch.fft.ifft2(f_image * (2j * torch.pi) * u)
+    grad_x = torch.fft.ifft2(f_image * (2j * torch.pi) * v)
+    return grad_y, grad_x
+
+
+def get_phase_gradient(
+    img: Tensor,
+    fourier_shift_step: float = 0,
+    image_grad_method: enums.ImageGradientMethods = enums.ImageGradientMethods.FOURIER_SHIFT,
+    eps: float = 1e-6,
+) -> Tensor:
+    """
+    Get the gradient of the phase of a complex 2D image by first calculating
+    the spatial gradient of the complex image, then taking the phase of the
+    complex gradient -- i.e., it takes the phase of the gradient rather than
+    the gradient of the phase. This avoids the sharp gradients due to phase
+    wrapping when directly taking the gradient of the phase.
+
+    Parameters
+    ----------
+    img : Tensor
+        A [N, H, W] or [H, W] tensor giving a batch of images or a single image.
+    step : float
+        The finite-difference step size used to calculate the gradient, if
+        the Fourier shift method is used.
+    finite_diff_method : enums.ImageGradientMethods
+        The method used to calculate the phase gradient. 
+            - FOURIER_SHIFT: Use Fourier shift to perform shift.
+            - NEAREST: Use nearest neighbor to perform shift.
+            - FOURIER_DIFFERENTIATION: Use Fourier differentiation.
+    eps : float
+        A stablizing constant.
+
+    Returns
+    -------
+    Tuple[Tensor, Tensor]
+        A tuple of 2 tensors with the gradient in y and x directions.
+    """
+    if fourier_shift_step <= 0 and image_grad_method == enums.ImageGradientMethods.FOURIER_SHIFT:
+        raise ValueError("Step must be positive.")
+
+    if image_grad_method == enums.ImageGradientMethods.FOURIER_DIFFERENTIATION:
+        gy, gx = fourier_gradient(img)
+        gy = torch.imag(img.conj() * gy)
+        gx = torch.imag(img.conj() * gx)
+    else:
+        # Use finite difference.
+        if img.ndim == 2:
+            img = img.unsqueeze(0)
+        pad = int(math.ceil(fourier_shift_step)) + 1
+        img = torch.nn.functional.pad(img, (pad, pad, pad, pad))
+
+        sy1 = torch.tensor([[-fourier_shift_step, 0]], device=img.device).repeat(img.shape[0], 1)
+        sy2 = torch.tensor([[fourier_shift_step, 0]], device=img.device).repeat(img.shape[0], 1)
+        if image_grad_method == enums.ImageGradientMethods.FOURIER_SHIFT:
+            # If the image contains zero-valued pixels, Fourier shift can result in small
+            # non-zero values that dangles around 0. This can cause the phase
+            # of the shifted image to dangle between pi and -pi. In that case, use
+            # `finite_diff_method="nearest" instead`, or use `step=1`.
+            complex_prod = fourier_shift(img, sy1) * fourier_shift(img, sy2).conj()
+        elif image_grad_method == enums.ImageGradientMethods.NEAREST:
+            complex_prod = img * torch.concat([img[:, :1, :], img[:, :-1, :]], dim=1).conj()
+        else:
+            raise ValueError(f"Unknown finite-difference method: {image_grad_method}")
+        complex_prod = torch.where(
+            complex_prod.abs() < complex_prod.abs().max() * 1e-6, 0, complex_prod
+        )
+        gy = pmath.angle(complex_prod, eps=eps) / (2 * fourier_shift_step)
+        gy = gy[0, pad:-pad, pad:-pad]
+
+        sx1 = torch.tensor([[0, -fourier_shift_step]], device=img.device).repeat(img.shape[0], 1)
+        sx2 = torch.tensor([[0, fourier_shift_step]], device=img.device).repeat(img.shape[0], 1)
+        if image_grad_method == enums.ImageGradientMethods.FOURIER_SHIFT:
+            complex_prod = fourier_shift(img, sx1) * fourier_shift(img, sx2).conj()
+        elif image_grad_method == enums.ImageGradientMethods.NEAREST:
+            complex_prod = img * torch.concat([img[:, :, :1], img[:, :, :-1]], dim=2).conj()
+        complex_prod = torch.where(
+            complex_prod.abs() < complex_prod.abs().max() * 1e-6, 0, complex_prod
+        )
+        gx = pmath.angle(complex_prod, eps=eps) / (2 * fourier_shift_step)
+        gx = gx[0, pad:-pad, pad:-pad]
+    return gy, gx
+
+
+def integrate_image_2d_fourier(grad_y: Tensor, grad_x: Tensor) -> Tensor:
+    """
+    Integrate an image with the gradient in y and x directions using Fourier
+    differentiation.
+
+    Parameters
+    ----------
+    grad_y, grad_x: Tensor
+        A (H, W) tensor of gradients in y or x directions.
+
+    Returns
+    -------
+    Tensor
+        The integrated image.
+    """
+    shape = grad_y.shape
+    f = torch.fft.fft2(grad_x + 1j * grad_y)
+    y, x = torch.fft.fftfreq(shape[0]), torch.fft.fftfreq(shape[1])
+
+    r = torch.exp(2j * torch.pi * (x[:, None] + y))
+    r = r / (2j * torch.pi * (x[:, None] + 1j * y))
+    r[0, 0] = 0
+    integrated_image = f * r
+    integrated_image = torch.fft.ifft2(integrated_image)
+    if not torch.is_complex(grad_x):
+        integrated_image = integrated_image.real
+    return integrated_image
+
+
+def integrate_image_2d(grad_y: Tensor, grad_x: Tensor, bc: float = 0) -> Tensor:
+    """
+    Integrate an image with the gradient in y and x directions.
+
+    Parameters
+    ----------
+    grad_y : Tensor
+        The gradient in y direction.
+    grad_x : Tensor
+        The gradient in x direction.
+    bc : float
+        The boundary condition at the top left corner, by default 0
+
+    Returns
+    -------
+    Tensor
+        The integrated image.
+    """
+    left_boundary = bc + torch.cumsum(grad_y[:, 0], dim=0)
+    int_img = torch.cumsum(grad_x, dim=1) + left_boundary[:, None]
+    return int_img
+
+
 def convolve2d(
     image: Tensor,
     kernel: Tensor,
@@ -291,6 +461,76 @@ def convolve2d(
 
     result = torch.nn.functional.conv2d(image, kernel, padding="valid")
     result = result.reshape(*orig_shape[:-2], result.shape[-2], result.shape[-1])
+    return result
+
+
+def convolve1d(
+    input: Tensor,
+    kernel: Tensor,
+    padding: Literal["same", "valid"] = "same",
+    padding_mode: Literal["replicate", "constant"] = "replicate",
+    dim: int = -1,
+) -> Tensor:
+    """
+    1D convolution with an explicitly given kernel using torch.nn.functional.conv1d.
+
+    This routine flips the kernel to adhere with the textbook definition of convolution.
+    torch.nn.functional.conv1d does not flip the kernel in itself.
+
+    Parameters
+    ----------
+    image : Tensor
+        A (... d) tensor of signals.
+    kernel : Tensor
+        A (d,) tensor of kernel.
+
+    Returns
+    -------
+    Tensor
+        A (... d) tensor of convolved signals.
+    """
+    if not input.ndim >= 1:
+        raise ValueError("Image must have at least 1 dimensions.")
+    if not kernel.ndim == 1:
+        raise ValueError("Kernel must have exactly 1 dimensions.")
+
+    if input.dtype.is_complex:
+        kernel = kernel.type(input.dtype)
+
+    dim = dim % input.ndim
+    orig_shape = input.shape
+    # Move dim to the end.
+    if dim != input.ndim - 1:
+        input = torch.moveaxis(input, dim, input.ndim - 1)
+    bcast_shape = input.shape[:-1]
+    # Reshape image to (N, 1, d).
+    if input.ndim == 1:
+        input = input.reshape(1, 1, input.shape[-1])
+    else:
+        input = input.reshape(-1, 1, input.shape[-1])
+
+    # Reshape kernel to (1, 1, d).
+    kernel = kernel.flip((0,))
+    kernel = kernel.reshape(1, 1, kernel.shape[-1])
+
+    if padding == "same":
+        pad_lengths = [
+            kernel.shape[-1] // 2,
+            kernel.shape[-1] // 2,
+        ]
+        if kernel.shape[-1] % 2 == 0:
+            pad_lengths[-1] -= 1
+        input = torch.nn.functional.pad(input, pad_lengths, mode=padding_mode)
+
+    result = torch.nn.functional.conv1d(input, kernel, padding="valid")
+
+    # Restore shape.
+    if len(orig_shape) == 1:
+        result = result.reshape(orig_shape[0])
+    else:
+        result = result.reshape([*bcast_shape, result.shape[-1]])
+        if dim != input.ndim - 1:
+            result = torch.moveaxis(result, result.ndim - 1, dim)
     return result
 
 
@@ -498,3 +738,187 @@ def remove_grid_artifacts(
 
     img_new = torch.real(torch.fft.ifft2(torch.fft.ifftshift(f_img)))
     return img_new
+
+
+def vignett(img: Tensor, margin: int = 20, sigma: float = 1.0):
+    """
+    Vignett an image so that it gradually decays near the boundary.
+    For each dimension of the image, a mask with a width of `2 * margin`
+    and with half of it filled with 0s and half with 1s is
+    generated and convolved with a Gaussian kernel of size
+    `margin` and standard deviation `sigma`. The blurred mask is cropped and
+    multiplied to the near-edge regions of the image.
+
+    This function is not differentiable because of the clone and
+    slice-assignment operation.
+
+    Parameters
+    ----------
+    img : Tensor
+        The input image.
+    margin : int
+        The margin of image where the decay takes place.
+    sigma : float
+        The standard deviation of the Gaussian kernel.
+    """
+    img = img.clone()
+    for i_dim in range(img.ndim):
+        if img.shape[i_dim] <= 2 * margin:
+            continue
+        mask_shape = (
+            [img.shape[i] for i in range(i_dim)]
+            + [2 * margin]
+            + [img.shape[i] for i in range(i_dim + 1, img.ndim)]
+        )
+        mask = torch.zeros(mask_shape, device=img.device)
+        mask_slicer = [slice(None)] * i_dim + [slice(margin, None)]
+        mask[*mask_slicer] = 1.0
+        gauss_win = torch.signal.windows.gaussian(margin // 2, std=sigma)
+        gauss_win = gauss_win / torch.sum(gauss_win)
+        mask = convolve1d(mask, gauss_win, dim=i_dim, padding="same")
+        mask_final_slicer = [slice(None)] * i_dim + [slice(len(gauss_win), len(gauss_win) + margin)]
+        mask = mask[*mask_final_slicer]
+        mask = torch.where(mask < 1e-3, 0, mask)
+
+        slicer = [slice(None)] * i_dim + [slice(0, margin)]
+        img[slicer] = img[slicer] * mask
+
+        slicer = [slice(None)] * i_dim + [slice(-margin, None)]
+        img[slicer] = img[slicer] * mask.flip(i_dim)
+    return img
+
+
+def remove_polynomial_background(
+    img: Tensor,
+    flat_region_mask: Tensor,
+    polyfit_order: int = 1,
+) -> Tensor:
+    """
+    Fit a 2D polynomial to the region that is supposed to be flat in an
+    image, and subtract the fitted function from the image.
+
+    Parameters
+    ----------
+    img : Tensor
+        The input image.
+    flat_region_mask : Tensor
+        A boolean mask with the same shape as `img` that specifies the region of
+        the image that should be flat.
+    polyfit_order : int, optional
+        The order of the polynomial to fit. Should be an integer >= 0. If 0,
+        just subtract the average. The default is 1.
+
+    Returns
+    -------
+    Tensor
+        The image with the polynomial background subtracted.
+    """
+    if polyfit_order == 0:
+        return img - img[flat_region_mask].mean()
+    ys, xs = torch.where(flat_region_mask)
+    y_full, x_full = torch.meshgrid(
+        torch.arange(img.shape[0]), torch.arange(img.shape[1]), indexing="ij"
+    )
+    y_full = y_full.reshape(-1)
+    x_full = x_full.reshape(-1)
+
+    y_all_orders = []
+    x_all_orders = []
+    y_full_all_orders = []
+    x_full_all_orders = []
+    for order in range(polyfit_order + 1):
+        y_all_orders.append(ys**order)
+        x_all_orders.append(xs**order)
+        y_full_all_orders.append(y_full**order)
+        x_full_all_orders.append(x_full**order)
+    const_basis = torch.ones(len(ys), device=img.device)
+    const_basis_full = torch.ones(len(y_full), device=img.device)
+
+    a_mat = torch.stack(y_all_orders + x_all_orders + [const_basis], dim=1)
+    b_vec = img[flat_region_mask].reshape(-1, 1)
+    x_vec = torch.linalg.solve(a_mat, b_vec)
+    a_mat_full = torch.stack(y_full_all_orders + x_full_all_orders + [const_basis_full], dim=1)
+    bg = a_mat_full @ x_vec
+    bg = bg.reshape(img.shape)
+    return img - bg
+
+
+def unwrap_phase_2d(
+    img: Tensor,
+    fourier_shift_step: float = 0.5,
+    image_grad_method: enums.ImageGradientMethods = enums.ImageGradientMethods.FOURIER_SHIFT,
+    weight_map: Optional[Tensor] = None,
+    flat_region_mask: Optional[Tensor] = None,
+    deramp_polyfit_order: int = 1,
+    eps: float = 1e-6,
+):
+    """
+    Unwrap phase of 2D image.
+
+    Parameters
+    ----------
+    img : Tensor
+        A complex 2D tensor giving the image.
+    fourier_shift_step : float
+        The finite-difference step size used to calculate the gradient, 
+        if the Fourier shift method is used. 
+    finite_diff_method : enums.ImageGradientMethods
+        The method used to calculate the phase gradient. 
+            - FOURIER_SHIFT: Use Fourier shift to perform shift.
+            - NEAREST: Use nearest neighbor to perform shift.
+            - FOURIER_DIFFERENTIATION: Use Fourier differentiation.
+    weight_map : Optional[Tensor]
+        A weight map multiplied to the input image.
+    flat_region_mask : Optional[Tensor]
+        A boolean mask with the same shape as `img` that specifies the region of
+        the image that should be flat. This is used to remove unrealistic phase
+        ramps in the image. If None, de-ramping will not be done.
+    deramp_polyfit_order : int
+        The order of the polynomal fit used to de-ramp the phase.
+    eps : float
+        A small number to avoid division by zero.
+
+    Returns
+    -------
+    Tensor
+        The phase of the original image after unwrapping.
+    """
+    if not img.is_complex():
+        raise ValueError("Input tensor must be complex.")
+
+    if isinstance(weight_map, Tensor):
+        weight_map = torch.clip(weight_map, 0.0, 1.0)
+    else:
+        weight_map = 1
+
+    img = weight_map * img / (img.abs() + eps)
+    top_left_phase_bc = torch.angle(img[0, 0])
+
+    # Pad image to avoid FFT boundary artifacts.
+    padding = [64, 64]
+    if torch.any(torch.tensor(padding) > 0):
+        img = torch.nn.functional.pad(
+            img[None, None, :, :], (padding[1], padding[1], padding[0], padding[0]), mode="reflect"
+        )[0, 0]
+        img = vignett(img, margin=10, sigma=2.5)
+
+    gy, gx = get_phase_gradient(img, fourier_shift_step=fourier_shift_step, image_grad_method=image_grad_method)
+
+    # The result of `integrate_image_2d_fourier`, which integrates the image using
+    # Fourier differentiation and is what's used in fold_slice `get_img_int_2D.m`,
+    # looks weird. Therefore, we use `integrate_image_2d`, which first integrates
+    # the left boundary using grad_y and then integrates the entire image using
+    # grad_x with the left boundary as the boundary condition. Also, to avoid the
+    # numerical precision-related artifacts at the boundary of the padded image
+    # resulting from `get_phase_gradient`, we remove the padding first.
+    if torch.any(torch.tensor(padding) > 0):
+        gy = gy[padding[0] : -padding[0], padding[1] : -padding[1]]
+        gx = gx[padding[0] : -padding[0], padding[1] : -padding[1]]
+    phase = torch.real(integrate_image_2d(gy, gx, bc=top_left_phase_bc))
+
+    if flat_region_mask is not None:
+        phase = remove_polynomial_background(
+            phase, flat_region_mask, polyfit_order=deramp_polyfit_order
+        )
+
+    return phase
