@@ -4,26 +4,20 @@ import torch
 
 import ptychi.api as api
 from ptychi.api.task import PtychographyTask
-from ptychi.ptychotorch.utils import get_suggested_object_size, get_default_complex_dtype, rescale_probe
-from ptychi.maths import orthogonalize_gs
+from ptychi.ptychotorch.utils import get_suggested_object_size, get_default_complex_dtype
 
 import test_utils as tutils
 
 
-def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=False, high_tol=False):
-    if pytestconfig is not None:
-        high_tol = pytestconfig.getoption("high_tol")
-
-    name = 'test_2d_ptycho_epie_mixed_states'
+def test_2d_ptycho_mpie(generate_gold=False, debug=False):
+    name = 'test_2d_ptycho_mpie'
     
     tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
     data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
-
-    probe = orthogonalize_gs(torch.tensor(probe), (-1, -2), 1)
-    probe = rescale_probe(probe[0], data)[None]
-        
-    options = api.EPIEOptions()
+    probe = probe[:, [0], :, :]
+    
+    options = api.RPIEOptions()
     
     options.data_options.data = data
     
@@ -31,21 +25,20 @@ def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=Fa
     options.object_options.pixel_size_m = pixel_size_m
     options.object_options.optimizable = True
     options.object_options.optimizer = api.Optimizers.SGD
+    options.object_options.optimizer_params = {'momentum': 0.1, 'nesterov': True}
     options.object_options.step_size = 0.1
     options.object_options.alpha = 1
     
     options.probe_options.initial_guess = probe
     options.probe_options.optimizable = True
     options.probe_options.optimizer = api.Optimizers.SGD
+    options.probe_options.optimizer_params = {'momentum': 0.1, 'nesterov': True}
     options.probe_options.step_size = 0.1
     options.probe_options.alpha = 1
 
     options.probe_position_options.position_x_px = positions_px[:, 1]
     options.probe_position_options.position_y_px = positions_px[:, 0]
-    options.probe_position_options.optimizable = True
-    options.probe_position_options.optimizer = api.Optimizers.SGD
-    options.probe_position_options.step_size = 1000
-    options.probe_position_options.correction_options.correction_type = api.PositionCorrectionTypes.CROSS_CORRELATION
+    options.probe_position_options.optimizable = False
     
     options.reconstructor_options.batch_size = 96
     options.reconstructor_options.num_epochs = 32
@@ -60,14 +53,13 @@ def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=Fa
     if generate_gold:
         tutils.save_gold_data(name, recon)
     else:
-        tutils.run_comparison(name, recon, high_tol=high_tol)
+        tutils.run_comparison(name, recon, high_tol=True)
     
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--generate-gold', action='store_true')
-    parser.add_argument('--high-tol', action='store_true')
     args = parser.parse_args()
 
-    test_2d_ptycho_epie_mixed_states(None, generate_gold=args.generate_gold, debug=True, high_tol=args.high_tol)
+    test_2d_ptycho_mpie(generate_gold=args.generate_gold, debug=True)
     

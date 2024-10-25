@@ -25,7 +25,6 @@ def test_2d_ptycho_opt_plan(pytestconfig, generate_gold=False, debug=False, high
         [1, *utils.get_suggested_object_size(positions_px, probe.shape[-2:], extra=100)], 
         dtype=utils.get_default_complex_dtype()
     )
-    positions_m = positions_px * pixel_size_m
     
     options = LSQMLOptions()
     options.data_options.data = data
@@ -43,9 +42,8 @@ def test_2d_ptycho_opt_plan(pytestconfig, generate_gold=False, debug=False, high
     options.probe_options.optimizer = 'sgd'
     options.probe_options.step_size = 1
     
-    options.probe_position_options.position_x_m = positions_m[:, 1]
-    options.probe_position_options.position_y_m = positions_m[:, 0]
-    options.probe_position_options.pixel_size_m = pixel_size_m
+    options.probe_position_options.position_x_px = positions_px[:, 1]
+    options.probe_position_options.position_y_px = positions_px[:, 0]
     options.probe_position_options.update_magnitude_limit = 1.0
     options.probe_position_options.optimizable = True
     options.probe_position_options.optimization_plan.start = 1

@@ -223,14 +223,11 @@ class PositionCorrectionOptions:
 
 @dataclasses.dataclass
 class ProbePositionOptions(ParameterOptions):
-    position_x_m: Union[ndarray, Tensor] = None
-    """The x position in meters."""
+    position_x_px: Union[ndarray, Tensor] = None
+    """The x position in pixel."""
 
-    position_y_m: Union[ndarray, Tensor] = None
-    """The y position in meters."""
-
-    pixel_size_m: float = 1.0
-    """The pixel size in meters."""
+    position_y_px: Union[ndarray, Tensor] = None
+    """The y position in pixel."""
 
     update_magnitude_limit: Optional[float] = 0
     """Magnitude limit of the probe update. No limit is imposed if it is 0."""

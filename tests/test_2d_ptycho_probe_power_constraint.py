@@ -25,7 +25,6 @@ def test_2d_ptycho_probe_power_constraint_lsqml(pytestconfig, generate_gold=Fals
         [1, *utils.get_suggested_object_size(positions_px, probe.shape[-2:], extra=100)], 
         dtype=utils.get_default_complex_dtype()
     )
-    positions_m = positions_px * pixel_size_m
     
     options = LSQMLOptions()
     options.data_options.data = data
@@ -43,8 +42,8 @@ def test_2d_ptycho_probe_power_constraint_lsqml(pytestconfig, generate_gold=Fals
     options.probe_options.probe_power = data[0].sum()
     options.probe_options.probe_power_constraint_stride = 1
     
-    options.probe_position_options.position_x_m = positions_m[:, 1]
-    options.probe_position_options.position_y_m = positions_m[:, 0]
+    options.probe_position_options.position_x_px = positions_px[:, 1]
+    options.probe_position_options.position_y_px = positions_px[:, 0]
     options.probe_position_options.pixel_size_m = pixel_size_m
     options.probe_position_options.update_magnitude_limit = 1.0
     options.probe_position_options.optimizable = True
@@ -96,7 +95,6 @@ def test_2d_ptycho_probe_power_constraint_ad(pytestconfig, generate_gold=False, 
         [1, *utils.get_suggested_object_size(positions_px, probe.shape[-2:], extra=100)], 
         dtype=utils.get_default_complex_dtype()
     )
-    positions_m = positions_px * pixel_size_m
     
     options = AutodiffPtychographyOptions()
     options.data_options.data = data
@@ -114,8 +112,8 @@ def test_2d_ptycho_probe_power_constraint_ad(pytestconfig, generate_gold=False, 
     options.probe_options.probe_power = data[0].sum()
     options.probe_options.probe_power_constraint_stride = 1
     
-    options.probe_position_options.position_x_m = positions_m[:, 1]
-    options.probe_position_options.position_y_m = positions_m[:, 0]
+    options.probe_position_options.position_x_px = positions_px[:, 1]
+    options.probe_position_options.position_y_px = positions_px[:, 0]
     options.probe_position_options.pixel_size_m = pixel_size_m
     options.probe_position_options.update_magnitude_limit = 1.0
     options.probe_position_options.optimizable = True

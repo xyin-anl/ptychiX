@@ -37,9 +37,8 @@ def test_2d_ptycho_epie_position_correction(pytestconfig, generate_gold=False, d
     options.probe_options.step_size = 0.1
     options.probe_options.alpha = 1
 
-    options.probe_position_options.position_x_m = positions_px[:, 1]
-    options.probe_position_options.position_y_m = positions_px[:, 0]
-    options.probe_position_options.pixel_size_m = 1
+    options.probe_position_options.position_x_px = positions_px[:, 1]
+    options.probe_position_options.position_y_px = positions_px[:, 0]
     options.probe_position_options.optimizable = True
     options.probe_position_options.optimizer = api.Optimizers.SGD
     options.probe_position_options.step_size = 1000

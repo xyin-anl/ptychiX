@@ -120,10 +120,9 @@ class PtychographyTask(Task):
         self.probe = probe.Probe(data=data, options=self.probe_options)
 
     def build_probe_positions(self):
-        pos_y = to_tensor(self.position_options.position_y_m)
-        pos_x = to_tensor(self.position_options.position_x_m)
+        pos_y = to_tensor(self.position_options.position_y_px)
+        pos_x = to_tensor(self.position_options.position_x_px)
         data = torch.stack([pos_y, pos_x], dim=1)
-        data = data / self.position_options.pixel_size_m
         self.probe_positions = probepos.ProbePositions(data=data, options=self.position_options)
 
     def build_opr_mode_weights(self):
@@ -139,7 +138,7 @@ class PtychographyTask(Task):
             if self.opr_mode_weight_options.initial_weights.ndim == 1:
                 # If a 1D array is given, expand it to all scan points.
                 initial_weights = initial_weights.unsqueeze(0).repeat(
-                    len(self.position_options.position_x_m), 1
+                    len(self.position_options.position_x_px), 1
                 )
             self.opr_mode_weights = oprweights.OPRModeWeights(
                 data=initial_weights, options=self.opr_mode_weight_options

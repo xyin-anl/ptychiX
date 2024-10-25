@@ -41,8 +41,8 @@ def test_multislice_ptycho_lsqml_regularized(generate_gold=False, debug=False):
     options.probe_options.optimizer = api.Optimizers.SGD
     options.probe_options.step_size = 1
     
-    options.probe_position_options.position_x_m = positions_px[:, 1]
-    options.probe_position_options.position_y_m = positions_px[:, 0]
+    options.probe_position_options.position_x_px = positions_px[:, 1]
+    options.probe_position_options.position_y_px = positions_px[:, 0]
     options.probe_position_options.optimizable = False
     options.probe_position_options.optimizer = api.Optimizers.SGD
     options.probe_position_options.step_size = 1e-1

@@ -33,9 +33,8 @@ def test_2d_ptycho_lsqml(pytestconfig, generate_gold=False, debug=False, high_to
     options.probe_options.optimizer = api.Optimizers.SGD
     options.probe_options.step_size = 1
 
-    options.probe_position_options.position_x_m = positions_px[:, 1]
-    options.probe_position_options.position_y_m = positions_px[:, 0]
-    options.probe_position_options.pixel_size_m = 1
+    options.probe_position_options.position_x_px = positions_px[:, 1]
+    options.probe_position_options.position_y_px = positions_px[:, 0]
     options.probe_position_options.optimizable = False
     
     options.reconstructor_options.batch_size = 96
@@ -77,9 +76,8 @@ def test_2d_ptycho_lsqml_poscorr(pytestconfig, generate_gold=False, debug=False,
     options.probe_options.optimizer = api.Optimizers.SGD
     options.probe_options.step_size = 1
 
-    options.probe_position_options.position_x_m = positions_px[:, 1]
-    options.probe_position_options.position_y_m = positions_px[:, 0]
-    options.probe_position_options.pixel_size_m = 1
+    options.probe_position_options.position_x_px = positions_px[:, 1]
+    options.probe_position_options.position_y_px = positions_px[:, 0]
     options.probe_position_options.optimizable = True
     options.probe_position_options.optimizer = api.Optimizers.SGD
     options.probe_position_options.step_size = 0.1
@@ -127,9 +125,8 @@ def test_2d_ptycho_lsqml_opr(pytestconfig, generate_gold=False, debug=False, hig
     options.probe_options.optimizer = api.Optimizers.SGD
     options.probe_options.step_size = 1
 
-    options.probe_position_options.position_x_m = positions_px[:, 1]
-    options.probe_position_options.position_y_m = positions_px[:, 0]
-    options.probe_position_options.pixel_size_m = 1
+    options.probe_position_options.position_x_px = positions_px[:, 1]
+    options.probe_position_options.position_y_px = positions_px[:, 0]
     options.probe_position_options.optimizable = False
     
     options.opr_mode_weight_options.initial_weights = generate_initial_opr_mode_weights(len(positions_px), probe.shape[0], eigenmode_weight=0.1)
