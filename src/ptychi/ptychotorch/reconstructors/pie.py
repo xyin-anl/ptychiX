@@ -47,8 +47,8 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         )
         
     def build_loss_tracker(self):
-        if self.metric_function is None:
-            self.metric_function = MSELossOfSqrt()
+        if self.displayed_loss_function is None:
+            self.displayed_loss_function = MSELossOfSqrt()
         return super().build_loss_tracker()
 
     def check_inputs(self, *args, **kwargs):

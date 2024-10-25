@@ -48,7 +48,7 @@ def test_multislice_ptycho_lsqml_regularized(generate_gold=False, debug=False):
     options.probe_position_options.step_size = 1e-1
     options.probe_position_options.update_magnitude_limit = 1.0
     
-    options.reconstructor_options.metric_function = api.LossFunctions.MSE_SQRT
+    options.reconstructor_options.displayed_loss_function = api.LossFunctions.MSE_SQRT
     options.reconstructor_options.batch_size = 101
     options.reconstructor_options.num_epochs = 32
     options.reconstructor_options.default_device = api.Devices.GPU

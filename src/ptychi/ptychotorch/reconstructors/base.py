@@ -189,23 +189,17 @@ class IterativeReconstructor(Reconstructor):
             The ParameterGroup containing optimizable and non-optimizable parameters.
         dataset : Dataset
             The dataset containing diffraction patterns.
-        batch_size : int
-            The batch size.
-        n_epochs : int
-            The number of epochs.
-        metric_function : api.loss_functions.LossFunction
-            The function that computes the tracked cost. Different from the
-            loss_function argument in some reconstructors, this function is only used for cost tracking
-            and is not involved in the reconstruction math.
+        options : ReconstructorOptions
+            The options for the reconstruction.
         """
         super().__init__(parameter_group, options=options, *args, **kwargs)
         self.batch_size = options.batch_size
         self.dataset = dataset
         self.n_epochs = options.num_epochs
         self.dataloader = None
-        self.metric_function = options.metric_function
-        if self.metric_function is not None:
-            self.metric_function = maps.get_loss_function_by_enum(options.metric_function)()
+        self.displayed_loss_function = options.displayed_loss_function
+        if self.displayed_loss_function is not None:
+            self.displayed_loss_function = maps.get_loss_function_by_enum(options.displayed_loss_function)()
         self.current_epoch = 0
 
     def build(self) -> None:
@@ -224,7 +218,7 @@ class IterativeReconstructor(Reconstructor):
         self.dataset.move_attributes_to_device(torch.get_default_device())
 
     def build_loss_tracker(self):
-        self.loss_tracker = LossTracker(metric_function=self.metric_function)
+        self.loss_tracker = LossTracker(metric_function=self.displayed_loss_function)
 
     def build_counter(self):
         self.current_epoch = 0

@@ -306,10 +306,10 @@ class ReconstructorOptions(Options):
     random_seed: Optional[int] = None
     """The random seed to use for reproducibility. If None, no seed will be set."""
 
-    metric_function: Optional[enums.LossFunctions] = enums.LossFunctions.MSE_SQRT
+    displayed_loss_function: Optional[enums.LossFunctions] = enums.LossFunctions.MSE_SQRT
     """
-    The function that computes the tracked cost. Different from the `loss_function`
-    argument in some reconstructors, this function is only used for cost tracking
+    The function that computes the displayed cost. Different from the `loss_function`
+    argument in some reconstructors, this function is only used for cost displaying
     and is not involved in the reconstruction math.
     """
 

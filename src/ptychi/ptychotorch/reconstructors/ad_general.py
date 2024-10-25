@@ -40,11 +40,11 @@ class AutodiffReconstructor(IterativeReconstructor):
         self.build_forward_model()
 
     def build_loss_tracker(self):
-        f = self.loss_function if self.metric_function is None else self.metric_function
+        f = self.loss_function if self.displayed_loss_function is None else self.displayed_loss_function
         # LossTracker should always compute the loss using data if metric function and loss function
         # are not the same type.
-        always_compute_loss = (self.metric_function is not None) and (
-            type(self.metric_function) is not type(self.loss_function)
+        always_compute_loss = (self.displayed_loss_function is not None) and (
+            type(self.displayed_loss_function) is not type(self.loss_function)
         )
         self.loss_tracker = LossTracker(metric_function=f, always_compute_loss=always_compute_loss)
 

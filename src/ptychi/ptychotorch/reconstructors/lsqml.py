@@ -84,7 +84,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.build_noise_model()
 
     def build_loss_tracker(self):
-        f = self.noise_model.nll if self.metric_function is None else self.metric_function
+        f = self.noise_model.nll if self.displayed_loss_function is None else self.displayed_loss_function
         self.loss_tracker = LossTracker(metric_function=f)
 
     def build_noise_model(self):
