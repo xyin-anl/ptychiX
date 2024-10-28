@@ -295,26 +295,13 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             positions = self.parameter_group.probe_positions
 
             # Apply probe power constraint.
-            if (
-                probe.probe_power > 0.0
-                and self.current_epoch >= probe.optimization_plan.start
-                and (self.current_epoch - probe.optimization_plan.start)
-                % probe.probe_power_constraint_stride
-                == 0
-            ):
+            if probe.probe_power_constraint_enabled(self.current_epoch):
                 probe.constrain_probe_power(
                     self.parameter_group.object, self.parameter_group.opr_mode_weights
                 )
 
             # Apply incoherent mode orthogonality constraint.
-            if (
-                probe.has_multiple_incoherent_modes
-                and probe.orthogonalize_incoherent_modes
-                and self.current_epoch >= probe.optimization_plan.start
-                and (self.current_epoch - probe.optimization_plan.start)
-                % probe.orthogonalize_incoherent_modes_stride
-                == 0
-            ):
+            if probe.incoherent_mode_orthogonality_constraint_enabled(self.current_epoch):
                 probe.constrain_incoherent_modes_orthogonality()
 
             # Apply OPR orthogonality constraint.

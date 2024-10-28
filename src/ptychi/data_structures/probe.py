@@ -13,6 +13,7 @@ import ptychi.data_structures.base as ds
 import ptychi.data_structures.object as object
 import ptychi.data_structures.opr_mode_weights as oprweights
 from ptychi.propagate import FourierPropagator, WavefieldPropagator
+
 if TYPE_CHECKING:
     import ptychi.api as api
 
@@ -185,6 +186,19 @@ class Probe(ds.ReconstructParameter):
                 unique_probe = p_orig[:, 0, ...]
         return unique_probe
 
+    def incoherent_mode_orthogonality_constraint_enabled(self, current_epoch: int) -> bool:
+        if (
+            self.has_multiple_incoherent_modes
+            and self.orthogonalize_incoherent_modes
+            and current_epoch >= self.optimization_plan.start
+            and (current_epoch - self.optimization_plan.start)
+            % self.orthogonalize_incoherent_modes_stride
+            == 0
+        ):
+            return True
+        else:
+            return False
+
     def constrain_incoherent_modes_orthogonality(self):
         """Orthogonalize the incoherent probe modes for the first OPR mode."""
         probe = self.data
@@ -211,6 +225,16 @@ class Probe(ds.ReconstructParameter):
         probe = probe * norm_first_mode_orig / norm_first_mode_new
 
         self.set_data(probe)
+        
+    def opr_mode_orthogonalization_enabled(self, current_epoch: int) -> bool:
+        enabled = self.optimization_enabled(current_epoch)
+        return (
+            enabled
+            and self.has_multiple_opr_modes
+            and self.orthogonalize_opr_modes
+            and (current_epoch - self.optimization_plan.start) % self.orthogonalize_opr_modes_stride
+            == 0
+        )
 
     def constrain_opr_mode_orthogonality(
         self, weights: Union[Tensor, ds.ReconstructParameter], eps=1e-5
@@ -299,6 +323,18 @@ class Probe(ds.ReconstructParameter):
         self.set_data(probe)
         return weights
 
+    def probe_power_constraint_enabled(self, current_epoch: int) -> bool:
+        if (
+            self.probe_power > 0.0
+            and current_epoch >= self.optimization_plan.start
+            and (current_epoch - self.optimization_plan.start)
+            % self.probe_power_constraint_stride
+            == 0
+        ):
+            return True
+        else:
+            return False
+
     def constrain_probe_power(
         self,
         object_: "object.Object",
@@ -351,16 +387,6 @@ class Probe(ds.ReconstructParameter):
         new_data = self.data
         new_data[1:, ...] = eigen_modes
         self.set_data(new_data)
-
-    def opr_mode_orthogonalization_enabled(self, current_epoch: int) -> bool:
-        enabled = self.optimization_enabled(current_epoch)
-        return (
-            enabled
-            and self.has_multiple_opr_modes
-            and self.orthogonalize_opr_modes
-            and (current_epoch - self.optimization_plan.start) % self.orthogonalize_opr_modes_stride
-            == 0
-        )
 
     def save_tiff(self, path: str):
         """
