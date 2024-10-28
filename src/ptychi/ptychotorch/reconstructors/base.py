@@ -292,6 +292,7 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
         with torch.no_grad():
             probe = self.parameter_group.probe
             object_ = self.parameter_group.object
+            positions = self.parameter_group.probe_positions
 
             # Apply probe power constraint.
             if (
@@ -338,6 +339,10 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             # Remove grid artifacts.
             if object_.remove_grid_artifacts_enabled(self.current_epoch):
                 object_.remove_grid_artifacts()
+                
+            # Apply position constraint.
+            if positions.position_mean_constraint_enabled(self.current_epoch):
+                positions.constrain_position_mean()
 
 
 class AnalyticalIterativeReconstructor(IterativeReconstructor):

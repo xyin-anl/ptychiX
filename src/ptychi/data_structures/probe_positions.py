@@ -28,3 +28,11 @@ class ProbePositions(ds.ReconstructParameter):
 
     def get_positions_in_pixel(self):
         return self.data
+    
+    def position_mean_constraint_enabled(self, current_epoch: int):
+        return self.options.constrain_position_mean and self.optimization_enabled(current_epoch)
+    
+    def constrain_position_mean(self):
+        data = self.data
+        data = data - data.mean(0)
+        self.set_data(data)

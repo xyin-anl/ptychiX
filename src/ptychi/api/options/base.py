@@ -232,15 +232,23 @@ class ProbePositionOptions(ParameterOptions):
     update_magnitude_limit: Optional[float] = 0
     """Magnitude limit of the probe update. No limit is imposed if it is 0."""
 
+    constrain_position_mean: bool = False
+    """
+    Whether to subtract the mean from positions after updating positions.
+    """
+
+    correction_options: PositionCorrectionOptions = dataclasses.field(
+        default_factory=PositionCorrectionOptions
+    )
+    """
+    Detailed options for position correction.
+    """
+    
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
         del d["position_x_m"]
         del d["position_y_m"]
         return d
-
-    correction_options: PositionCorrectionOptions = dataclasses.field(
-        default_factory=PositionCorrectionOptions
-    )
 
 
 @dataclasses.dataclass
