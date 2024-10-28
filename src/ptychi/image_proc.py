@@ -278,7 +278,9 @@ def fourier_gradient(image: Tensor) -> Tensor:
 def get_phase_gradient(
     img: Tensor,
     fourier_shift_step: float = 0,
-    image_grad_method: Literal["fourier_shift", "fourier_differentiation", "nearest"] = "fourier_shift",
+    image_grad_method: Literal[
+        "fourier_shift", "fourier_differentiation", "nearest"
+    ] = "fourier_shift",
     eps: float = 1e-6,
 ) -> Tensor:
     """
@@ -296,10 +298,10 @@ def get_phase_gradient(
         The finite-difference step size used to calculate the gradient, if
         the Fourier shift method is used.
     finite_diff_method : enums.ImageGradientMethods
-        The method used to calculate the phase gradient. 
-            - FOURIER_SHIFT: Use Fourier shift to perform shift.
-            - NEAREST: Use nearest neighbor to perform shift.
-            - FOURIER_DIFFERENTIATION: Use Fourier differentiation.
+        The method used to calculate the phase gradient.
+            - "fourier_shift": Use Fourier shift to perform shift.
+            - "nearest": Use nearest neighbor to perform shift.
+            - "fourier_differentiation": Use Fourier differentiation.
     eps : float
         A stablizing constant.
 
@@ -383,7 +385,52 @@ def integrate_image_2d_fourier(grad_y: Tensor, grad_x: Tensor) -> Tensor:
     return integrated_image
 
 
-def integrate_image_2d(grad_y: Tensor, grad_x: Tensor, bc: float = 0) -> Tensor:
+def integrate_image_2d_deconvolution(
+    grad_y: Tensor,
+    grad_x: Tensor,
+    tf_y: Optional[Tensor] = None,
+    tf_x: Optional[Tensor] = None,
+    bc_center: float = 0,
+) -> Tensor:
+    """
+    Integrate an image with the gradient in y and x directions by deconvolving
+    the differentiation kernel, whose transfer function is assumed to be a
+    ramp function.
+    
+    Adapted from Tripathi, A., McNulty, I., Munson, T., & Wild, S. M. (2016). 
+    Single-view phase retrieval of an extended sample by exploiting edge detection 
+    and sparsity. Optics Express, 24(21), 24719–24738. doi:10.1364/OE.24.024719
+
+    Parameters
+    ----------
+    grad_y, grad_x: Tensor
+        A (H, W) tensor of gradients in y or x directions.
+    tf_y, tf_x: Tensor
+        A (H, W) tensor of transfer functions in y or x directions. If not
+        provided, they are assumed to be 2i * pi * u (or v), which are the
+        effective transfer functions in Fourier differentiation.
+    bc_center: float
+        The value of the boundary condition at the center of the image.
+
+    Returns
+    -------
+    Tensor
+        The integrated image.
+    """
+    u, v = torch.fft.fftfreq(grad_x.shape[0]), torch.fft.fftfreq(grad_x.shape[1])
+    u, v = torch.meshgrid(u, v, indexing="ij")
+    if tf_y is None or tf_x is None:
+        tf_y = 2j * torch.pi * u
+        tf_x = 2j * torch.pi * v
+    f_grad_y = torch.fft.fft2(grad_y)
+    f_grad_x = torch.fft.fft2(grad_x)
+    img = (f_grad_y * tf_y + f_grad_x * tf_x) / (tf_y.abs() ** 2 + tf_x.abs() ** 2 + 1e-5)
+    img = -torch.fft.ifft2(img)
+    img = img + bc_center - img[img.shape[0] // 2, img.shape[1] // 2]
+    return img
+
+
+def integrate_image_2d(grad_y: Tensor, grad_x: Tensor, bc_center: float = 0) -> Tensor:
     """
     Integrate an image with the gradient in y and x directions.
 
@@ -393,16 +440,17 @@ def integrate_image_2d(grad_y: Tensor, grad_x: Tensor, bc: float = 0) -> Tensor:
         The gradient in y direction.
     grad_x : Tensor
         The gradient in x direction.
-    bc : float
-        The boundary condition at the top left corner, by default 0
+    bc_center : float
+        The boundary condition at the center of the image, by default 0
 
     Returns
     -------
     Tensor
         The integrated image.
     """
-    left_boundary = bc + torch.cumsum(grad_y[:, 0], dim=0)
+    left_boundary = torch.cumsum(grad_y[:, 0], dim=0)
     int_img = torch.cumsum(grad_x, dim=1) + left_boundary[:, None]
+    int_img = int_img + bc_center - int_img[int_img.shape[0] // 2, int_img.shape[1] // 2]
     return int_img
 
 
@@ -845,7 +893,9 @@ def remove_polynomial_background(
 def unwrap_phase_2d(
     img: Tensor,
     fourier_shift_step: float = 0.5,
-    image_grad_method: Literal["fourier_shift", "fourier_differentiation", "nearest"] = "fourier_shift",
+    image_grad_method: Literal[
+        "fourier_shift", "fourier_differentiation", "nearest"
+    ] = "fourier_shift",
     weight_map: Optional[Tensor] = None,
     flat_region_mask: Optional[Tensor] = None,
     deramp_polyfit_order: int = 1,
@@ -859,10 +909,10 @@ def unwrap_phase_2d(
     img : Tensor
         A complex 2D tensor giving the image.
     fourier_shift_step : float
-        The finite-difference step size used to calculate the gradient, 
-        if the Fourier shift method is used. 
+        The finite-difference step size used to calculate the gradient,
+        if the Fourier shift method is used.
     finite_diff_method : str
-        The method used to calculate the phase gradient. 
+        The method used to calculate the phase gradient.
             - "fourier_shift": Use Fourier shift to perform shift.
             - "nearest": Use nearest neighbor to perform shift.
             - "fourier_differentiation": Use Fourier differentiation.
@@ -891,7 +941,7 @@ def unwrap_phase_2d(
         weight_map = 1
 
     img = weight_map * img / (img.abs() + eps)
-    top_left_phase_bc = torch.angle(img[0, 0])
+    bc_center = torch.angle(img[img.shape[0] // 2, img.shape[1] // 2])
 
     # Pad image to avoid FFT boundary artifacts.
     padding = [64, 64]
@@ -901,7 +951,9 @@ def unwrap_phase_2d(
         )[0, 0]
         img = vignett(img, margin=10, sigma=2.5)
 
-    gy, gx = get_phase_gradient(img, fourier_shift_step=fourier_shift_step, image_grad_method=image_grad_method)
+    gy, gx = get_phase_gradient(
+        img, fourier_shift_step=fourier_shift_step, image_grad_method=image_grad_method
+    )
 
     # The result of `integrate_image_2d_fourier`, which integrates the image using
     # Fourier differentiation and is what's used in fold_slice `get_img_int_2D.m`,
@@ -913,7 +965,8 @@ def unwrap_phase_2d(
     if torch.any(torch.tensor(padding) > 0):
         gy = gy[padding[0] : -padding[0], padding[1] : -padding[1]]
         gx = gx[padding[0] : -padding[0], padding[1] : -padding[1]]
-    phase = torch.real(integrate_image_2d(gy, gx, bc=top_left_phase_bc))
+    # phase = torch.real(integrate_image_2d(gy, gx, bc_center=bc_center))
+    phase = torch.real(integrate_image_2d_deconvolution(gy, gx, bc_center=bc_center))
 
     if flat_region_mask is not None:
         phase = remove_polynomial_background(

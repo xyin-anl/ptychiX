@@ -34,7 +34,7 @@ def test_multislice_ptycho_lsqml_regularized(generate_gold=False, debug=False):
     options.object_options.step_size = 1
     options.object_options.multislice_regularization_weight = 0.1
     options.object_options.multislice_regularization_unwrap_phase = True
-    options.object_options.multislice_regularization_unwrap_image_grad_method = api.enums.ImageGradientMethods.FOURIER_SHIFT
+    options.object_options.multislice_regularization_unwrap_image_grad_method = api.enums.ImageGradientMethods.FOURIER_DIFFERENTIATION
     
     options.probe_options.initial_guess = probe
     options.probe_options.optimizable = True
