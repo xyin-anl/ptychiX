@@ -248,8 +248,8 @@ class ProbePositionOptions(ParameterOptions):
     
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
-        del d["position_x_m"]
-        del d["position_y_m"]
+        del d["position_x_px"]
+        del d["position_y_px"]
         return d
 
 
