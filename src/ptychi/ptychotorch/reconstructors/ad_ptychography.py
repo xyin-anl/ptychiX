@@ -7,6 +7,7 @@ import ptychi.data_structures.object
 import ptychi.forward_models as fm
 from ptychi.ptychotorch.reconstructors.ad_general import AutodiffReconstructor
 from ptychi.ptychotorch.reconstructors.base import IterativePtychographyReconstructor
+
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg
     import ptychi.api as api
@@ -28,12 +29,20 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
             *args,
             **kwargs,
         )
-                
+
     def build_forward_model(self):
         if self.parameter_group.object.is_multislice:
-            if 'wavelength_m' not in self.forward_model_params.keys():
-                self.forward_model_params['wavelength_m'] = self.dataset.wavelength_m
+            if "wavelength_m" not in self.forward_model_params.keys():
+                self.forward_model_params["wavelength_m"] = self.dataset.wavelength_m
         return super().build_forward_model()
+
+    def run_pre_epoch_hooks(self) -> None:
+        if (
+            self.parameter_group.object.is_multislice
+            and self.parameter_group.object.options.multislice_regularization_weight > 0
+        ):
+            self.update_preconditioners()
+        return super().run_pre_epoch_hooks()
 
     def run_post_differentiation_hooks(self, input_data, y_true):
         super().run_post_differentiation_hooks(input_data, y_true)

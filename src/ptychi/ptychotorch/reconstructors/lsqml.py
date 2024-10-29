@@ -164,37 +164,6 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         if self.parameter_group.probe_positions.optimization_enabled(self.current_epoch):
             self.update_probe_positions(chi, indices, obj_patches, delta_o_patches)
 
-    def update_preconditioners(self):
-        # Update preconditioner of the object only if the probe has been updated in the previous
-        # epoch, or when the preconditioner is None.
-        if (
-            self.parameter_group.probe.optimization_enabled(self.current_epoch - 1)
-            or self.parameter_group.object.preconditioner is None
-        ):
-            self._update_object_preconditioner()
-
-    def _update_object_preconditioner(self):
-        positions_all = self.parameter_group.probe_positions.tensor
-        # Shape of probe:        (n_probe_modes, h, w)
-        object_ = self.parameter_group.object.get_slice(0)
-
-        probe_int = self.parameter_group.probe.get_all_mode_intensity(opr_mode=0)[None, :, :]
-        # Shape of probe_int:    (n_scan_points, h, w)
-        probe_int = probe_int.repeat(len(positions_all), 1, 1)
-        # Stitch probes of all positions on the object buffer
-        # TODO: allow setting chunk size externally
-        probe_sq_map = chunked_processing(
-            func=place_patches_fourier_shift,
-            common_kwargs={"op": "add"},
-            chunkable_kwargs={
-                "positions": positions_all + self.parameter_group.object.center_pixel,
-                "patches": probe_int,
-            },
-            iterated_kwargs={"image": torch.zeros_like(object_.real).type(torch.get_default_dtype())},
-            chunk_size=64,
-        )
-        self.parameter_group.object.preconditioner = probe_sq_map
-
     def update_object_and_probe(self, indices, chi, obj_patches, positions, gamma=1e-5):
         # TODO: avoid unnecessary computations when not both of object and probe are optimizable
         delta_p_i = self._calculate_probe_update_direction(chi, obj_patches, slice_index=0)  # Eq. 24a

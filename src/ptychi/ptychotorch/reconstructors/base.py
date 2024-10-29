@@ -6,7 +6,8 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 import tqdm
 
-from ptychi.ptychotorch.utils import to_numpy
+from ptychi.ptychotorch.utils import to_numpy, chunked_processing
+from ptychi.image_proc import place_patches_fourier_shift
 import ptychi.maps as maps
 import ptychi.forward_models as fm
 import ptychi.api.enums as enums
@@ -304,6 +305,37 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                 self.parameter_group.probe_positions.data.cpu(), self.batch_size
             )
         return super().build_dataloader(batch_sampler=batch_sampler)
+    
+    def update_preconditioners(self):
+        # Update preconditioner of the object only if the probe has been updated in the previous
+        # epoch, or when the preconditioner is None.
+        if (
+            self.parameter_group.probe.optimization_enabled(self.current_epoch - 1)
+            or self.parameter_group.object.preconditioner is None
+        ):
+            self.update_object_preconditioner()
+
+    def update_object_preconditioner(self):
+        positions_all = self.parameter_group.probe_positions.tensor
+        # Shape of probe:        (n_probe_modes, h, w)
+        object_ = self.parameter_group.object.get_slice(0)
+
+        probe_int = self.parameter_group.probe.get_all_mode_intensity(opr_mode=0)[None, :, :]
+        # Shape of probe_int:    (n_scan_points, h, w)
+        probe_int = probe_int.repeat(len(positions_all), 1, 1)
+        # Stitch probes of all positions on the object buffer
+        # TODO: allow setting chunk size externally
+        probe_sq_map = chunked_processing(
+            func=place_patches_fourier_shift,
+            common_kwargs={"op": "add"},
+            chunkable_kwargs={
+                "positions": positions_all + self.parameter_group.object.center_pixel,
+                "patches": probe_int,
+            },
+            iterated_kwargs={"image": torch.zeros_like(object_.real).type(torch.get_default_dtype())},
+            chunk_size=64,
+        )
+        self.parameter_group.object.preconditioner = probe_sq_map
 
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
