@@ -219,11 +219,11 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             self._record_object_slice_gradient(i_slice, delta_o_hat, alpha_o_i)
 
             # Conjugate modulate and backpropagate.
-            chi = chi * obj_patches[:, i_slice].conj()[:, None, :, :]
             if i_slice > 0:
+                chi = chi * obj_patches[:, i_slice].conj()[:, None, :, :]
                 chi = self.forward_model.propagate_to_previous_slice(chi, slice_index=i_slice)
 
-        delta_p_i = self._calculate_probe_update_direction(chi, None)  # Eq. 24a
+        delta_p_i = self._calculate_probe_update_direction(chi, obj_patches=obj_patches, slice_index=0)  # Eq. 24a
         delta_p_hat = self._precondition_probe_update_direction(delta_p_i)  # Eq. 25a
         alpha_p_i = self.calculate_probe_update_step_sizes(
             chi, obj_patches, delta_p_i, gamma=gamma
