@@ -9,6 +9,7 @@ from ptychi.ptychotorch.reconstructors.base import (
 )
 from ptychi.image_proc import place_patches_fourier_shift
 from ptychi.metrics import MSELossOfSqrt
+import ptychi.forward_models as fm
 if TYPE_CHECKING:
     import ptychi.api as api
     import ptychi.data_structures.parameter_group as pg
@@ -90,11 +91,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         p = probe.get_opr_mode(0)
 
-        psi_prime = (
-            psi_far
-            / ((psi_far.abs() ** 2).sum(1, keepdims=True).sqrt() + 1e-7)
-            * torch.sqrt(y_true + 1e-7)[:, None]
-        )
+        psi_prime = fm.replace_propagated_exit_wave_magnitude(psi_far, y_true)
         # Do not swap magnitude for bad pixels.
         psi_prime = torch.where(
             valid_pixel_mask.repeat(psi_prime.shape[0], probe.n_modes, 1, 1), psi_prime, psi_far

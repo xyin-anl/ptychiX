@@ -402,3 +402,28 @@ class PtychographyPoissonNoiseModel(PoissonNoiseModel):
             g[:, torch.logical_not(self.valid_pixel_mask)] = 0
         g = g[:, None, :, :] * psi_far
         return g
+
+
+def replace_propagated_exit_wave_magnitude(psi: Tensor, actual_pattern_intensity: Tensor) -> Tensor:
+    """
+    Replace the propogated exit wave amplitude.
+
+    Parameters
+    ----------
+    psi : Tensor
+        Predicted exit wave propagated to the detector plane.
+    actual_pattern_intensity : Tensor
+        The measured diffraction pattern at the detector.
+
+    Returns
+    -------
+    Tensor
+        Predicted exit wave with the phase from `psi` and magnitude equal to the square root
+        of `actual_pattern_intensity`.
+    """
+
+    return (
+        psi
+        / ((psi.abs() ** 2).sum(1, keepdims=True).sqrt() + 1e-7)
+        * torch.sqrt(actual_pattern_intensity + 1e-7)[:, None]
+    )

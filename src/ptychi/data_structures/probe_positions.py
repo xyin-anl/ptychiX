@@ -26,6 +26,10 @@ class ProbePositions(ds.ReconstructParameter):
             options=options.correction_options
         )
 
+    @property
+    def n_scan_points(self):
+        return len(self.data)
+
     def get_positions_in_pixel(self):
         return self.data
     

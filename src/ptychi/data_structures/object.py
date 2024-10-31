@@ -7,6 +7,7 @@ from torch import Tensor
 import ptychi.image_proc as ip
 import ptychi.data_structures.base as ds
 from ptychi.ptychotorch.utils import get_default_complex_dtype, to_tensor
+import ptychi.maps as maps
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -165,12 +166,15 @@ class PlanarObject(Object):
         Tensor
             Tensor of shape (N, n_slices, h', w') containing the extracted patches.
         """
+        extract_patches_function = maps.get_patch_interp_function_by_enum(
+            self.options.patch_interpolation_method, function_type="extractor"
+        )
         # Positions are provided with the origin in the center of the object support.
         # We shift the positions so that the origin is in the upper left corner.
         positions = positions + self.center_pixel
         patches_all_slices = []
         for i_slice in range(self.n_slices):
-            patches = ip.extract_patches_fourier_shift(
+            patches = extract_patches_function(
                 self.get_slice(i_slice), positions, patch_shape
             )
             patches_all_slices.append(patches)
@@ -189,10 +193,13 @@ class PlanarObject(Object):
         patches : Tensor
             Tensor of shape (n_patches, n_slices, H, W) of image patches.
         """
+        place_patches_function = maps.get_patch_interp_function_by_enum(
+            self.options.patch_interpolation_method, function_type="placer"
+        )
         positions = positions + self.center_pixel
         updated_slices = []
         for i_slice in range(self.n_slices):
-            image = ip.place_patches_fourier_shift(
+            image = place_patches_function(
                 self.get_slice(i_slice), positions, patches[:, i_slice, ...]
             )
             updated_slices.append(image)
