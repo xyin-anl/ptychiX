@@ -130,7 +130,7 @@ class AngularSpectrumPropagator(WavefieldPropagator):
         ratio = self.F2 / (parameters.pixel_width_wlu**2)
         tf = torch.exp(i2piz * torch.sqrt(1 - ratio))
 
-        _transfer_function = torch.where(ratio < 1, tf, 0)
+        _transfer_function = torch.where(ratio < 1, tf, 1)
         # Separate registered buffer into real and imaginary parts to prevent it
         # from breaking in DataParallel.
         self.register_buffer('_transfer_function_real', _transfer_function.real)
@@ -142,7 +142,7 @@ class AngularSpectrumPropagator(WavefieldPropagator):
         ratio = self.F2 / (parameters.pixel_width_wlu**2)
         tf = torch.exp(i2piz * torch.sqrt(1 - ratio))
 
-        _transfer_function = torch.where(ratio < 1, tf, 0)
+        _transfer_function = torch.where(ratio < 1, tf, 1)
         self._transfer_function_real[...] = _transfer_function.real
         self._transfer_function_imag[...] = _transfer_function.imag
 
