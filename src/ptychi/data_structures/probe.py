@@ -96,11 +96,17 @@ class Probe(ds.ReconstructParameter):
     def has_multiple_incoherent_modes(self):
         return self.n_modes > 1
 
-    def get_mode(self, mode: int):
-        return self.tensor.complex()[:, mode]
+    def get_mode(self, mode: int, keepdim: bool = False):
+        mode = self.tensor.complex()[:, mode]
+        if keepdim:
+            mode = mode.unsqueeze(1)
+        return mode
 
-    def get_opr_mode(self, mode: int):
-        return self.tensor.complex()[mode]
+    def get_opr_mode(self, mode: int, keepdim: bool = False):
+        mode = self.tensor.complex()[mode]
+        if keepdim:
+            mode = mode.unsqueeze(0)
+        return mode
 
     def get_mode_and_opr_mode(self, mode: int, opr_mode: int):
         return self.tensor.complex()[opr_mode, mode]

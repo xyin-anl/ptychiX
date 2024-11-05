@@ -26,6 +26,11 @@ class LSQMLReconstructorOptions(base.ReconstructorOptions):
     we're adding the option of using simultaneous AND non-simultaneous step 
     length calculation.
     """
+    
+    solve_step_sizes_only_using_first_probe_mode: bool = False
+    """
+    If True, object and probe step sizes will only be calculated using the first probe mode.
+    """
 
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.LSQML
