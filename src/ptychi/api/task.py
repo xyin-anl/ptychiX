@@ -173,10 +173,18 @@ class PtychographyTask(Task):
         self.reconstructor = reconstructor_class(**reconstructor_kwargs)
         self.reconstructor.build()
 
-    def run(self):
-        self.reconstructor.run()
+    def run(self, n_epochs: int = None):
+        """
+        Run reconstruction either for `n_epochs` (if given), or for the number of epochs given
+        in the options. The internal states of the Task object persists when this function
+        finishes. To run more epochs continuing from the last run, call this function again.
 
-    def iterate(self, n_epochs: int):
+        Parameters
+        ----------
+        n_epochs : int, optional
+            The number of epochs to run. If None, use the number of epochs specified in the
+            option object.
+        """
         self.reconstructor.run(n_epochs=n_epochs)
 
     def get_data(
