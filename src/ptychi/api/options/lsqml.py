@@ -38,11 +38,22 @@ class LSQMLReconstructorOptions(base.ReconstructorOptions):
 
 @dataclasses.dataclass
 class LSQMLObjectOptions(base.ObjectOptions):
-    pass
+    
+    solved_step_size_upper_bound: float = 1.0
+    """
+    The upper bound on the solved step size for object. If None,
+    no upper bound is used.
+    """
 
 
 @dataclasses.dataclass
 class LSQMLProbeOptions(base.ProbeOptions):
+    
+    solved_step_size_upper_bound: float = 1.0
+    """
+    The upper bound on the solved step size for probe. If None,
+    no upper bound is used.
+    """
     
     eigenmode_update_relaxation: float = 0.1
     """

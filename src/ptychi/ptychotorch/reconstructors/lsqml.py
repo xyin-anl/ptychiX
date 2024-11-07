@@ -364,10 +364,11 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         # Shape of delta_p_o/o_p:     (batch_size, n_probe_modes or 1, h, w)
         delta_o_patches_p = delta_o_i[:, None, :, :] * probe
 
-        numerator = torch.sum(delta_o_patches_p.abs() ** 2, dim=(-1, -2, -3)) + gamma
-        denominator = torch.sum(torch.real(delta_o_patches_p.conj() * chi), dim=(-1, -2, -3))
+        numerator = torch.sum(torch.real(delta_o_patches_p.conj() * chi), dim=(-1, -2, -3))
+        denominator = torch.sum(delta_o_patches_p.abs() ** 2, dim=(-1, -2, -3))
 
         alpha_o_i = numerator / (denominator + gamma)
+        alpha_o_i = alpha_o_i.clamp(0, self.parameter_group.object.options.solved_step_size_upper_bound)
 
         logger.debug(
             "alpha_o_i: min={}, max={}, trim_mean={}".format(
@@ -390,10 +391,11 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         delta_p_o = delta_p_i * obj_patches[:, None, :, :]
 
         # Shape of aij:               (batch_size,)
-        numerator = torch.sum(delta_p_o.abs() ** 2, dim=(-1, -2, -3)) + gamma
-        denominator = torch.sum(torch.real(delta_p_o.conj() * chi), dim=(-1, -2, -3))
+        numerator = torch.sum(torch.real(delta_p_o.conj() * chi), dim=(-1, -2, -3))
+        denominator = torch.sum(delta_p_o.abs() ** 2, dim=(-1, -2, -3))
 
         alpha_p_i = numerator / (denominator + gamma)
+        alpha_p_i = alpha_p_i.clamp(0, self.parameter_group.object.options.solved_step_size_upper_bound)
 
         logger.debug("alpha_p_i: min={}, max={}".format(alpha_p_i.min(), alpha_p_i.max()))
         return alpha_p_i
