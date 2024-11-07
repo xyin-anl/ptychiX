@@ -95,10 +95,13 @@ class PtychographyTask(Task):
                 map(str, self.reconstructor_options.gpu_indices)
             )
         if torch.cuda.device_count() > 0:
+            cuda_visible_devices_str = "(unset)"
+            if "CUDA_VISIBLE_DEVICES" in os.environ.keys():
+                cuda_visible_devices_str = os.environ["CUDA_VISIBLE_DEVICES"]
             logger.info(
-                "Using device: {} (CUDA_VISIBLE_DEVICES={})".format(
+                "Using device: {} (CUDA_VISIBLE_DEVICES=\"{}\")".format(
                     [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())],
-                    os.environ["CUDA_VISIBLE_DEVICES"],
+                    cuda_visible_devices_str,
                 )
             )
         else:
