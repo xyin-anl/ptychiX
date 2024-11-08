@@ -13,7 +13,6 @@ from ptychi.ptychotorch.reconstructors.base import (
 )
 from ptychi.metrics import MSELossOfSqrt
 import ptychi.forward_models as fm
-import ptychi.image_proc as ip
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -21,8 +20,6 @@ if TYPE_CHECKING:
 
 
 class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
-    pass
-
     parameter_group: "pg.PlanarPtychographyParameterGroup"
 
     def __init__(
@@ -43,15 +40,12 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.patch_placer = maps.get_patch_interp_function_by_enum(
             self.parameter_group.object.options.patch_interpolation_method, "placer"
         )
-        self.parameter_group.probe_positions.options
 
     def check_inputs(self, *args, **kwargs):
         if self.parameter_group.object.is_multislice:
             raise NotImplementedError("DMReconstructor only supports 2D objects.")
         if self.parameter_group.probe.has_multiple_opr_modes:
-            raise NotImplementedError(
-                "DMReconstructor does not support multiple OPR modes yet."
-            )
+            raise NotImplementedError("DMReconstructor does not support multiple OPR modes yet.")
         if (
             self.parameter_group.probe_positions.options.correction_options.correction_type
             != enums.PositionCorrectionTypes.GRADIENT
@@ -93,9 +87,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         return super().build_loss_tracker()
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
-        y_pred = self.compute_updates(
-            *input_data, y_true, self.dataset.valid_pixel_mask
-        )
+        y_pred = self.compute_updates(*input_data, y_true, self.dataset.valid_pixel_mask)
         self.loss_tracker.update_batch_loss_with_metric_function(y_pred, y_true)
 
     def compute_updates(
@@ -158,15 +150,11 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             2 * new_psi - self.psi
         )
         revised_psi = torch.where(
-            valid_pixel_mask.repeat(
-                revised_psi.shape[0], self.parameter_group.probe.n_modes, 1, 1
-            ),
+            valid_pixel_mask.repeat(revised_psi.shape[0], self.parameter_group.probe.n_modes, 1, 1),
             fm.replace_propagated_exit_wave_magnitude(revised_psi, y_true),
             revised_psi,
         )
-        revised_psi = self.forward_model.far_field_propagator.propagate_backward(
-            revised_psi
-        )
+        revised_psi = self.forward_model.far_field_propagator.propagate_backward(revised_psi)
         psi_update = (revised_psi - new_psi) * self.options.exit_wave_update_relaxation
         self.psi += psi_update
 
@@ -194,9 +182,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             "add",
         )
 
-        object_denominator = torch.zeros_like(
-            object_.get_slice(0), dtype=object_.data.real.dtype
-        )
+        object_denominator = torch.zeros_like(object_.get_slice(0), dtype=object_.data.real.dtype)
         object_denominator = self.patch_placer(
             object_denominator,
             positions + object_.center_pixel,
@@ -217,13 +203,9 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
     def update_probe(self, obj_patches: Tensor):
         probe_numerator = (obj_patches.conj() * self.psi).sum(0)
         probe_denominator = (obj_patches.abs() ** 2).sum(0)
-        self.parameter_group.probe.set_data(
-            probe_numerator / (probe_denominator + 1e-10)
-        )
+        self.parameter_group.probe.set_data(probe_numerator / (probe_denominator + 1e-10))
 
-    def update_positions(
-        self, indices: Tensor, obj_patches: Tensor, exit_wave_update: Tensor
-    ):
+    def update_positions(self, indices: Tensor, obj_patches: Tensor, exit_wave_update: Tensor):
         probe = self.parameter_group.probe
         probe_positions = self.parameter_group.probe_positions
 
@@ -237,6 +219,5 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             indices,
             None,
         )
-
         probe_positions.set_grad(-delta_pos)
         probe_positions.optimizer.step()

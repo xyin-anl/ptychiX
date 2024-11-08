@@ -21,7 +21,9 @@ class DMObjectOptions(base.ObjectOptions):
     """Maximum allowed amplitude for the object reconstruction. Values above this will be clamped 
     to this value."""
 
-    patch_interpolation_method: enums.PatchInterpolationMethods = enums.PatchInterpolationMethods.BILINEAR
+    patch_interpolation_method: enums.PatchInterpolationMethods = (
+        enums.PatchInterpolationMethods.BILINEAR
+    )
     # Override the default method of the base object options
     # Overriding here is not a good solution.
 
