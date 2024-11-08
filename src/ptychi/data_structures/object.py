@@ -128,6 +128,8 @@ class PlanarObject(Object):
             raise ValueError("The number of slice spacings must be n_slices - 1.")
 
         if self.is_multislice:
+            if self.options.slice_spacings_m is None:
+                raise ValueError("slice_spacings_m must be specified for multislice objects.")
             self.register_buffer("slice_spacings_m", to_tensor(self.options.slice_spacings_m))
         else:
             self.slice_spacing_m = None

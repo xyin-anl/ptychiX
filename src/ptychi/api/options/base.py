@@ -341,6 +341,12 @@ class ReconstructorOptions(Options):
     argument in some reconstructors, this function is only used for cost displaying
     and is not involved in the reconstruction math.
     """
+    
+    use_low_memory_forward_model: bool = False
+    """
+    If True, forward propagation of ptychography will be done using less vectorized code.
+    This reduces the speed, but also lowers memory usage.
+    """
 
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.base
