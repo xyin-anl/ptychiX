@@ -54,7 +54,6 @@ def test_multislice_ptycho_lsqml_regularized(generate_gold=False, debug=False):
     options.reconstructor_options.batch_size = 101
     options.reconstructor_options.num_epochs = 32
     options.reconstructor_options.default_device = api.Devices.GPU
-    options.reconstructor_options.gpu_indices = (0,)
     options.reconstructor_options.random_seed = 123
     
     task = PtychographyTask(options)

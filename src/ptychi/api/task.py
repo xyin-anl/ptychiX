@@ -90,10 +90,6 @@ class PtychographyTask(Task):
 
     def build_default_device(self):
         torch.set_default_device(maps.get_device_by_enum(self.reconstructor_options.default_device))
-        if len(self.reconstructor_options.gpu_indices) > 0:
-            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-                map(str, self.reconstructor_options.gpu_indices)
-            )
         if torch.cuda.device_count() > 0:
             cuda_visible_devices_str = "(unset)"
             if "CUDA_VISIBLE_DEVICES" in os.environ.keys():

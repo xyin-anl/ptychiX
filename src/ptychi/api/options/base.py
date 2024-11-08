@@ -329,9 +329,6 @@ class ReconstructorOptions(Options):
     default_device: enums.Devices = enums.Devices.GPU
     """The default device to use for computation."""
 
-    gpu_indices: Sequence[int] = ()
-    """The GPU indices to use for computation. If empty, use all available GPUs."""
-
     default_dtype: enums.Dtypes = enums.Dtypes.FLOAT32
     """The default data type to use for computation."""
 
