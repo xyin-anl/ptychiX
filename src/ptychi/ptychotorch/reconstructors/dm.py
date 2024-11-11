@@ -55,17 +55,6 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             raise NotImplementedError(
                 "DMReconstructor only supports gradient position correction at the moment."
             )
-        if (
-            self.parameter_group.object.options.patch_interpolation_method
-            == enums.PatchInterpolationMethods.FOURIER
-        ):
-            warnings.warn(
-                """
-                Using fourier interpolation for extraction and placement typically leads to bad results!
-                Use bilinear or nearest interpolation instead.
-                """,
-                category=UserWarning,
-            )
 
     def build_dataloader(self):
         """
