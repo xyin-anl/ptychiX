@@ -12,7 +12,6 @@ from ptychi.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
 from ptychi.metrics import MSELossOfSqrt
-import ptychi.forward_models as fm
 
 if TYPE_CHECKING:
     import ptychi.api as api

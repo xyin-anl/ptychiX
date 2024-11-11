@@ -15,17 +15,10 @@ class DMReconstructorOptions(base.ReconstructorOptions):
     "Relaxation multiplier for the exit wave update."
 
 
-@dataclasses.dataclass
 class DMObjectOptions(base.ObjectOptions):
     amplitude_clamp_limit: float = 1000
     """Maximum allowed amplitude for the object reconstruction. Values above this will be clamped 
     to this value."""
-
-    patch_interpolation_method: enums.PatchInterpolationMethods = (
-        enums.PatchInterpolationMethods.BILINEAR
-    )
-    # Override the default method of the base object options
-    # Overriding here is not a good solution.
 
 
 @dataclasses.dataclass
