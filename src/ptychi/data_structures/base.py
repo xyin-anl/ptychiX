@@ -109,6 +109,7 @@ class ReconstructParameter(Module):
 
         self.is_complex = is_complex
         self.preconditioner = None
+        self.update_buffer = None
 
         if is_complex:
             if data is not None:

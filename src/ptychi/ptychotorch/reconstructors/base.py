@@ -206,6 +206,7 @@ class IterativeReconstructor(Reconstructor):
                 options.displayed_loss_function
             )()
         self.current_epoch = 0
+        self.current_minibatch = 0
 
     def build(self) -> None:
         super().build()
@@ -272,6 +273,7 @@ class IterativeReconstructor(Reconstructor):
         n_epochs = n_epochs if n_epochs is not None else self.n_epochs
         for _ in tqdm.trange(n_epochs):
             self.run_pre_epoch_hooks()
+            self.current_minibatch = 0
             for batch_data in self.dataloader:
                 input_data = [x.to(torch.get_default_device()) for x in batch_data[:-1]]
                 y_true = batch_data[-1].to(torch.get_default_device())
@@ -279,6 +281,7 @@ class IterativeReconstructor(Reconstructor):
                 self.run_pre_update_hooks()
                 self.run_minibatch(input_data, y_true)
                 self.run_post_update_hooks()
+                self.current_minibatch += 1
             self.run_post_epoch_hooks()
             self.loss_tracker.conclude_epoch(epoch=self.current_epoch)
             self.loss_tracker.print_latest()
