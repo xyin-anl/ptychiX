@@ -126,6 +126,8 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         if probe_positions.optimization_enabled(self.current_epoch):
             self.update_positions(indices, obj_patches, psi_update)
 
+        torch.cuda.empty_cache()
+
         return y
 
     def calculate_updated_exit_wave(
@@ -197,7 +199,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         object_denominator = self.parameter_group.object.preconditioner
 
         updated_object = object_numerator / torch.sqrt(
-            object_denominator**2 + (1e-3 * object_denominator.max()) ** 2
+            object_denominator**2 + (0.05 * object_denominator.max()) ** 2
         )
 
         # Clamp the object amplitude
