@@ -69,7 +69,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         self.alpha_psi_far = 0.5
         self.alpha_psi_far_all_points = None
-        self.alpha_object = 1
+        self.alpha_object_all_slices = torch.tensor([1.0 for _ in range(self.parameter_group.object.n_slices)])
 
     def check_inputs(self, *args, **kwargs):
         if self.parameter_group.opr_mode_weights.optimizer is not None:
@@ -192,7 +192,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         alpha_o_i, alpha_p_i = self.calculate_object_and_probe_update_step_sizes(
             indices, chi, obj_patches, delta_o_i, delta_p_i, gamma=gamma
         )
-        self.alpha_object = pmath.trim_mean(alpha_o_i)
+        self.alpha_object_all_slices[0] = pmath.trim_mean(alpha_o_i)
 
         if self.parameter_group.probe.optimization_enabled(self.current_epoch):
             self._apply_probe_update(alpha_p_i, delta_p_hat)
@@ -201,7 +201,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             self.parameter_group.object.optimization_enabled(self.current_epoch)
             and self.options.batching_mode == enums.BatchingModes.RANDOM
         ):
-            self._apply_object_update(self.alpha_object, delta_o_precond)
+            self._apply_object_update(self.alpha_object_all_slices[0], delta_o_precond)
         else:
             self._record_object_slice_gradient(
                 0, delta_o_comb, alpha_o_i=None, add_to_existing=True
@@ -209,7 +209,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         self.update_variable_probe(indices, chi, delta_p_i, delta_p_hat, obj_patches)
 
-        delta_o_patches = self.alpha_object * delta_o_i
+        delta_o_patches = self.alpha_object_all_slices[0] * delta_o_i
         return delta_o_patches
 
     def update_object_and_probe_multislice(self, indices, chi, obj_patches, positions, gamma=1e-5):
@@ -277,7 +277,8 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
                 if self.parameter_group.probe.optimization_enabled(self.current_epoch):
                     self._apply_probe_update(alpha_p_i, delta_p_hat)
-
+                    
+            self.alpha_object_all_slices[i_slice] = pmath.trim_mean(alpha_o_i)
             chi = delta_p_i
 
         if (
@@ -288,8 +289,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         self.update_variable_probe(indices, chi, delta_p_i, delta_p_hat, obj_patches)
 
-        self.alpha_object = pmath.trim_mean(alpha_o_i)
-        delta_o_patches = self.alpha_object * delta_o_i
+        delta_o_patches = self.alpha_object_all_slices[0] * delta_o_i
         return delta_o_patches
 
     def _get_psi_im1(self, i_slice, indices):
@@ -565,7 +565,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         )
         return delta_o_hat[None, ...]
 
-    def _precondition_object_update_direction(self, delta_o_hat, positions=None, alpha_mix=0.05):
+    def _precondition_object_update_direction(self, delta_o_hat, positions=None, alpha_mix=0.05, slice_index=0):
         """
         Eq. 25b of Odstrcil, 2018.
 
@@ -577,7 +577,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             A (batch_size, 1, h, w) tensor giving the preconditioned update direction for object patches.
             Only returned when `positions` is not None.
         """
-        delta_o_hat = delta_o_hat[0]
+        delta_o_hat = delta_o_hat[slice_index]
 
         preconditioner = self.parameter_group.object.preconditioner
         delta_o_hat = delta_o_hat / torch.sqrt(
@@ -854,10 +854,15 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             self.parameter_group.object.optimization_enabled(self.current_epoch)
             and self.options.batching_mode == enums.BatchingModes.COMPACT
         ):
-            delta_o_hat = self._precondition_object_update_direction(
-                -self.parameter_group.object.get_grad(), positions=None
-            )
-            self._apply_object_update(self.alpha_object, delta_o_hat)
+            delta_o_hat_full = []
+            for i_slice in range(self.parameter_group.object.n_slices):
+                delta_o_hat = self._precondition_object_update_direction(
+                    -self.parameter_group.object.get_grad()[i_slice:i_slice + 1], 
+                    positions=None
+                )
+                delta_o_hat_full.append(delta_o_hat)
+            delta_o_hat_full = torch.cat(delta_o_hat_full, dim=0)
+            self._apply_object_update(self.alpha_object_all_slices[:, None, None], delta_o_hat_full)
         return super().run_post_epoch_hooks()
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs) -> None:
