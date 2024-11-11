@@ -91,7 +91,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         p = probe.get_opr_mode(0)
 
-        psi_prime = fm.replace_propagated_exit_wave_magnitude(psi_far, y_true)
+        psi_prime = self.replace_propagated_exit_wave_magnitude(psi_far, y_true)
         # Do not swap magnitude for bad pixels.
         psi_prime = torch.where(
             valid_pixel_mask.repeat(psi_prime.shape[0], probe.n_modes, 1, 1), psi_prime, psi_far

@@ -45,7 +45,9 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         if self.parameter_group.object.is_multislice:
             raise NotImplementedError("DMReconstructor only supports 2D objects.")
         if self.parameter_group.probe.has_multiple_opr_modes:
-            raise NotImplementedError("DMReconstructor does not support multiple OPR modes yet.")
+            raise NotImplementedError(
+                "DMReconstructor does not support multiple OPR modes yet."
+            )
         if (
             self.parameter_group.probe_positions.options.correction_options.correction_type
             != enums.PositionCorrectionTypes.GRADIENT
@@ -87,7 +89,9 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         return super().build_loss_tracker()
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
-        y_pred = self.compute_updates(*input_data, y_true, self.dataset.valid_pixel_mask)
+        y_pred = self.compute_updates(
+            *input_data, y_true, self.dataset.valid_pixel_mask
+        )
         self.loss_tracker.update_batch_loss_with_metric_function(y_pred, y_true)
 
     def compute_updates(
@@ -150,11 +154,15 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             2 * new_psi - self.psi
         )
         revised_psi = torch.where(
-            valid_pixel_mask.repeat(revised_psi.shape[0], self.parameter_group.probe.n_modes, 1, 1),
-            fm.replace_propagated_exit_wave_magnitude(revised_psi, y_true),
+            valid_pixel_mask.repeat(
+                revised_psi.shape[0], self.parameter_group.probe.n_modes, 1, 1
+            ),
+            self.replace_propagated_exit_wave_magnitude(revised_psi, y_true),
             revised_psi,
         )
-        revised_psi = self.forward_model.far_field_propagator.propagate_backward(revised_psi)
+        revised_psi = self.forward_model.far_field_propagator.propagate_backward(
+            revised_psi
+        )
         psi_update = (revised_psi - new_psi) * self.options.exit_wave_update_relaxation
         self.psi += psi_update
 
@@ -182,15 +190,15 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             "add",
         )
 
-        object_denominator = torch.zeros_like(object_.get_slice(0), dtype=object_.data.real.dtype)
-        object_denominator = self.patch_placer(
-            object_denominator,
-            positions + object_.center_pixel,
-            (p[None].abs() ** 2).real.sum(1)[0],
-            "add",
-        ).real
+        object_denominator = torch.zeros_like(
+            object_.get_slice(0), dtype=object_.data.real.dtype
+        )
+        self.update_preconditioners()
+        object_denominator = self.parameter_group.object.preconditioner
 
-        updated_object = (object_numerator / (object_denominator + 1e-10))[None]
+        updated_object = object_numerator / torch.sqrt(
+            object_denominator**2 + (1e-3 * object_denominator.max()) ** 2
+        )
 
         # Clamp the object amplitude
         idx = updated_object.abs() > object_.options.amplitude_clamp_limit
@@ -203,9 +211,13 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
     def update_probe(self, obj_patches: Tensor):
         probe_numerator = (obj_patches.conj() * self.psi).sum(0)
         probe_denominator = (obj_patches.abs() ** 2).sum(0)
-        self.parameter_group.probe.set_data(probe_numerator / (probe_denominator + 1e-10))
+        self.parameter_group.probe.set_data(
+            probe_numerator / (probe_denominator + 1e-10)
+        )
 
-    def update_positions(self, indices: Tensor, obj_patches: Tensor, exit_wave_update: Tensor):
+    def update_positions(
+        self, indices: Tensor, obj_patches: Tensor, exit_wave_update: Tensor
+    ):
         probe = self.parameter_group.probe
         probe_positions = self.parameter_group.probe_positions
 
