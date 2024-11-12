@@ -174,6 +174,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
     def update_object_and_probe(self, indices, chi, obj_patches, positions, gamma=1e-5):
         # TODO: avoid unnecessary computations when not both of object and probe are optimizable
         self._initialize_object_gradient()
+        self._initialize_object_step_size_buffer()
         
         delta_p_i = self._calculate_probe_update_direction(
             chi, obj_patches, slice_index=0
@@ -189,7 +190,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         alpha_o_i, alpha_p_i = self.calculate_object_and_probe_update_step_sizes(
             indices, chi, obj_patches, delta_o_i, delta_p_i, gamma=gamma
         )
-        self.alpha_object_all_slices[0] = pmath.trim_mean(alpha_o_i)
+        self.alpha_object_all_slices[0] += pmath.trim_mean(alpha_o_i)
 
         if self.parameter_group.probe.optimization_enabled(self.current_epoch):
             self._apply_probe_update(alpha_p_i, delta_p_hat)
@@ -229,6 +230,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         """
         object_ = self.parameter_group.object
         self._initialize_object_gradient()
+        self._initialize_object_step_size_buffer()
 
         for i_slice in range(object_.n_slices - 1, -1, -1):
             if i_slice < object_.n_slices - 1:
@@ -275,7 +277,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                 if self.parameter_group.probe.optimization_enabled(self.current_epoch):
                     self._apply_probe_update(alpha_p_i, delta_p_hat)
                     
-            self.alpha_object_all_slices[i_slice] = pmath.trim_mean(alpha_o_i)
+            self.alpha_object_all_slices[i_slice] += pmath.trim_mean(alpha_o_i)
             chi = delta_p_i
 
         if (
@@ -604,6 +606,20 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         else:
             if self.current_minibatch == 0:
                 self.parameter_group.object.initialize_grad()
+                
+    def _initialize_object_step_size_buffer(self):
+        """
+        Initialize object step size with zeros. This method is called at the beginning of the
+        real-space step of a minibatch. If batching mode is "random", the buffer is always
+        re-initialized when this method is called. If batching mode is "compact", the buffer
+        is only initialized if the current minibatch is the first in the current epoch so
+        that it can be accumulated across minibatches.
+        """
+        if self.options.batching_mode == enums.BatchingModes.RANDOM:
+            self.alpha_object_all_slices[...] = 0
+        else:
+            if self.current_minibatch == 0:
+                self.alpha_object_all_slices[...] = 0
 
     def _record_object_slice_gradient(
         self, i_slice, delta_o_hat, alpha_o_i=None, add_to_existing=False
@@ -852,6 +868,8 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             self.parameter_group.object.optimization_enabled(self.current_epoch)
             and self.options.batching_mode == enums.BatchingModes.COMPACT
         ):
+            # Average object step sizes.
+            self.alpha_object_all_slices = self.alpha_object_all_slices / self.current_minibatch
             delta_o_hat_full = []
             for i_slice in range(self.parameter_group.object.n_slices):
                 delta_o_hat = self._precondition_object_update_direction(
