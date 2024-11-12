@@ -326,7 +326,7 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
         # Stitch probes of all positions on the object buffer
         # TODO: allow setting chunk size externally
         probe_sq_map = chunked_processing(
-            func=object_.place_patches_function,
+            func=self.parameter_group.object.place_patches_function,
             common_kwargs={"op": "add"},
             chunkable_kwargs={
                 "positions": positions_all + self.parameter_group.object.center_pixel,

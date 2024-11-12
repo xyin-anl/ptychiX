@@ -4,6 +4,7 @@ import logging
 import torch
 from torch.utils.data import Dataset
 
+from ptychi import maps
 import ptychi.data_structures.object
 from ptychi.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
@@ -494,11 +495,12 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         )
 
         # Re-extract delta O patches
-        delta_o_patches = self.parameter_group.object.place_patches_function(
+        delta_o_patches = self.parameter_group.object.extract_patches_function(
             delta_o_hat,
             positions + self.parameter_group.object.center_pixel,
             delta_o_patches.shape[-2:],
         )
+
         return delta_o_hat[None, ...], delta_o_patches[:, None, :, :]
 
     def _record_object_slice_gradient(self, i_slice, delta_o_hat, alpha_o_i):
