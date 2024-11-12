@@ -11,6 +11,8 @@ import ptychi.maps as maps
 
 if TYPE_CHECKING:
     import ptychi.api as api
+    
+logger = logging.getLogger(__name__)
 
 
 class Object(ds.ReconstructParameter):
@@ -58,7 +60,7 @@ class Object(ds.ReconstructParameter):
         l1_grad = torch.sgn(data)
         data = data - self.l1_norm_constraint_weight * l1_grad
         self.set_data(data)
-        logging.debug("L1 norm constraint applied to object.")
+        logger.debug("L1 norm constraint applied to object.")
 
     def smoothness_constraint_enabled(self, current_epoch: int):
         if (
@@ -127,6 +129,8 @@ class PlanarObject(Object):
             raise ValueError("The number of slice spacings must be n_slices - 1.")
 
         if self.is_multislice:
+            if self.options.slice_spacings_m is None:
+                raise ValueError("slice_spacings_m must be specified for multislice objects.")
             self.register_buffer("slice_spacings_m", to_tensor(self.options.slice_spacings_m))
         else:
             self.slice_spacing_m = None
@@ -236,7 +240,7 @@ class PlanarObject(Object):
         Smooth the magnitude of the object.
         """
         if self.smoothness_constraint_alpha > 1.0 / 8:
-            logging.warning(
+            logger.warning(
                 f"Alpha = {self.smoothness_constraint_alpha} in smoothness constraint should be less than 1/8."
             )
         psf = torch.ones(3, 3, device=self.device) * self.smoothness_constraint_alpha

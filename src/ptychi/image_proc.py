@@ -19,6 +19,8 @@ class PlacePatchesProtocol(Protocol):
 class ExtractPatchesProtocol(Protocol):
     def __call__(self, image: Tensor, positions: Tensor, shape: Tuple[int, int]) -> Tensor: ...
 
+logger = logging.getLogger(__name__)
+
 
 def extract_patches_fourier_shift(
     image: Tensor, positions: Tensor, shape: Tuple[int, int]
@@ -358,7 +360,7 @@ def gaussian_gradient(image: Tensor, sigma: float = 1.0, kernel_size=5) -> Tenso
     for i, g in enumerate(grads):
         m = torch.logical_and(grad_y.abs() < 1e-6, grad_y.abs() != 0)
         if torch.count_nonzero(m) > 0:
-            logging.debug("Gradient magnitudes between 0 and 1e-6 are set to 0.")
+            logger.debug("Gradient magnitudes between 0 and 1e-6 are set to 0.")
             g = g * torch.logical_not(m)
             grads[i] = g
     grad_y, grad_x = grads

@@ -18,8 +18,11 @@ import ptychi.data_structures.parameter_group as paramgrp
 import ptychi.maps as maps
 from ptychi.data_structures.base import DummyParameter
 from ptychi.ptychotorch.io_handles import PtychographyDataset
+from ptychi.ptychotorch.reconstructors.base import Reconstructor
 from ptychi.ptychotorch.utils import to_tensor
 import ptychi.ptychotorch.utils as utils
+
+logger = logging.getLogger(__name__)
 
 
 class Task:
@@ -64,13 +67,12 @@ class PtychographyTask(Task):
         self.probe = None
         self.probe_positions = None
         self.opr_mode_weights = None
-        self.reconstructor = None
+        self.reconstructor: Reconstructor | None = None
 
         self.build()
 
     def build(self):
         self.build_random_seed()
-        self.build_logger()
         self.build_default_device()
         self.build_default_dtype()
         self.build_data()
@@ -86,15 +88,20 @@ class PtychographyTask(Task):
             np.random.seed(self.reconstructor_options.random_seed)
             random.seed(self.reconstructor_options.random_seed)
 
-    def build_logger(self):
-        logging.basicConfig(level=self.reconstructor_options.log_level)
-
     def build_default_device(self):
         torch.set_default_device(maps.get_device_by_enum(self.reconstructor_options.default_device))
-        if len(self.reconstructor_options.gpu_indices) > 0:
-            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-                map(str, self.reconstructor_options.gpu_indices)
+        if torch.cuda.device_count() > 0:
+            cuda_visible_devices_str = "(unset)"
+            if "CUDA_VISIBLE_DEVICES" in os.environ.keys():
+                cuda_visible_devices_str = os.environ["CUDA_VISIBLE_DEVICES"]
+            logger.info(
+                "Using device: {} (CUDA_VISIBLE_DEVICES=\"{}\")".format(
+                    [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())],
+                    cuda_visible_devices_str,
+                )
             )
+        else:
+            logger.info("Using device: {}".format(torch.get_default_device()))
 
     def build_default_dtype(self):
         torch.set_default_dtype(maps.get_dtype_by_enum(self.reconstructor_options.default_dtype))
@@ -165,10 +172,18 @@ class PtychographyTask(Task):
         self.reconstructor = reconstructor_class(**reconstructor_kwargs)
         self.reconstructor.build()
 
-    def run(self):
-        self.reconstructor.run()
+    def run(self, n_epochs: int = None):
+        """
+        Run reconstruction either for `n_epochs` (if given), or for the number of epochs given
+        in the options. The internal states of the Task object persists when this function
+        finishes. To run more epochs continuing from the last run, call this function again.
 
-    def iterate(self, n_epochs: int):
+        Parameters
+        ----------
+        n_epochs : int, optional
+            The number of epochs to run. If None, use the number of epochs specified in the
+            option object.
+        """
         self.reconstructor.run(n_epochs=n_epochs)
 
     def get_data(

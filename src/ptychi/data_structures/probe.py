@@ -16,6 +16,8 @@ from ptychi.propagate import FourierPropagator, WavefieldPropagator
 
 if TYPE_CHECKING:
     import ptychi.api as api
+    
+logger = logging.getLogger(__name__)
 
 
 class Probe(ds.ReconstructParameter):
@@ -96,11 +98,17 @@ class Probe(ds.ReconstructParameter):
     def has_multiple_incoherent_modes(self):
         return self.n_modes > 1
 
-    def get_mode(self, mode: int):
-        return self.tensor.complex()[:, mode]
+    def get_mode(self, mode: int, keepdim: bool = False):
+        mode = self.tensor.complex()[:, mode]
+        if keepdim:
+            mode = mode.unsqueeze(1)
+        return mode
 
-    def get_opr_mode(self, mode: int):
-        return self.tensor.complex()[mode]
+    def get_opr_mode(self, mode: int, keepdim: bool = False):
+        mode = self.tensor.complex()[mode]
+        if keepdim:
+            mode = mode.unsqueeze(0)
+        return mode
 
     def get_mode_and_opr_mode(self, mode: int, opr_mode: int):
         return self.tensor.complex()[opr_mode, mode]
@@ -365,7 +373,7 @@ class Probe(ds.ReconstructParameter):
         self.set_data(self.data * power_correction)
         object_.set_data(object_.data / power_correction)
 
-        logging.info("Probe and object scaled by {}.".format(power_correction))
+        logger.info("Probe and object scaled by {}.".format(power_correction))
 
     def post_update_hook(self) -> None:
         super().post_update_hook()

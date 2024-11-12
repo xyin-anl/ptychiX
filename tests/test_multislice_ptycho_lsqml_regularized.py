@@ -32,6 +32,7 @@ def test_multislice_ptycho_lsqml_regularized(generate_gold=False, debug=False):
     options.object_options.optimizable = True
     options.object_options.optimizer = api.Optimizers.SGD
     options.object_options.step_size = 1
+    options.object_options.solved_step_size_upper_bound = 1
     options.object_options.multislice_regularization_weight = 0.1
     options.object_options.multislice_regularization_unwrap_phase = True
     options.object_options.multislice_regularization_unwrap_image_grad_method = api.enums.ImageGradientMethods.FOURIER_DIFFERENTIATION
@@ -40,6 +41,7 @@ def test_multislice_ptycho_lsqml_regularized(generate_gold=False, debug=False):
     options.probe_options.optimizable = True
     options.probe_options.optimizer = api.Optimizers.SGD
     options.probe_options.step_size = 1
+    options.probe_options.solved_step_size_upper_bound = 1
     
     options.probe_position_options.position_x_px = positions_px[:, 1]
     options.probe_position_options.position_y_px = positions_px[:, 0]
@@ -52,7 +54,6 @@ def test_multislice_ptycho_lsqml_regularized(generate_gold=False, debug=False):
     options.reconstructor_options.batch_size = 101
     options.reconstructor_options.num_epochs = 32
     options.reconstructor_options.default_device = api.Devices.GPU
-    options.reconstructor_options.gpu_indices = (0,)
     options.reconstructor_options.random_seed = 123
     
     task = PtychographyTask(options)

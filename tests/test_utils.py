@@ -101,6 +101,11 @@ def run_comparison(name, test_data, high_tol=False):
     gold_data = load_gold_data(name)
     atol = 1e-3
     rtol = 1e-2 if high_tol else 1e-4
+    compare_data(test_data, gold_data, atol=atol, rtol=rtol, name=name)
+    return
+
+
+def compare_data(test_data, gold_data, atol=1e-7, rtol=1e-7, name=""):
     if not np.allclose(gold_data.shape, test_data.shape):
         print('{} FAILED [SHAPE MISMATCH]'.format(name))
         print('  Gold shape: {}'.format(gold_data.shape))
@@ -118,7 +123,7 @@ def run_comparison(name, test_data, high_tol=False):
         print('  Value at max abs diff (gold): {}'.format(gold_data[*loc_max_diff].item()))
         raise AssertionError
     print('{} PASSED'.format(name))
-    return
+
 
 def plot_complex_image(img):
     import matplotlib.pyplot as plt

@@ -19,17 +19,41 @@ class LSQMLReconstructorOptions(base.ReconstructorOptions):
     The standard deviation of the gaussian noise. Only used when `noise_model == enums.NoiseModels.GAUSSIAN`.
     """
     
+    solve_obj_prb_step_size_jointly_for_first_slice_in_multislice: bool = False
+    """
+    Whether to solve the simultaneous object/probe step length calculation;
+    in FoldSlice they use independent (non-joint) step length calculation, but 
+    we're adding the option of using simultaneous AND non-simultaneous step 
+    length calculation.
+    """
+    
+    solve_step_sizes_only_using_first_probe_mode: bool = False
+    """
+    If True, object and probe step sizes will only be calculated using the first probe mode.
+    """
+
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.LSQML
     
 
 @dataclasses.dataclass
 class LSQMLObjectOptions(base.ObjectOptions):
-    pass
+    
+    solved_step_size_upper_bound: float = 1.0
+    """
+    The upper bound on the solved step size for object. If None,
+    no upper bound is used.
+    """
 
 
 @dataclasses.dataclass
 class LSQMLProbeOptions(base.ProbeOptions):
+    
+    solved_step_size_upper_bound: float = 1.0
+    """
+    The upper bound on the solved step size for probe. If None,
+    no upper bound is used.
+    """
     
     eigenmode_update_relaxation: float = 0.1
     """

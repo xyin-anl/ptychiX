@@ -59,7 +59,6 @@ def test_2d_ptycho_opt_plan(pytestconfig, generate_gold=False, debug=False, high
     options.reconstructor_options.num_epochs = 4
     options.reconstructor_options.batch_size = 40
     options.reconstructor_options.default_device = api.Devices.GPU
-    options.reconstructor_options.gpu_indices = [0]
     options.reconstructor_options.displayed_loss_function = api.LossFunctions.MSE_SQRT
     options.reconstructor_options.log_level = logging.DEBUG
     
