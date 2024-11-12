@@ -11,10 +11,6 @@ from ptychi.ptychotorch.reconstructors.base import (
 )
 import ptychi.data_structures.base as ds
 import ptychi.forward_models as fm
-from ptychi.image_proc import (
-    place_patches_fourier_shift,
-    extract_patches_fourier_shift,
-)
 from ptychi.ptychotorch.utils import chunked_processing
 import ptychi.maths as pmath
 if TYPE_CHECKING:
@@ -498,7 +494,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         )
 
         # Re-extract delta O patches
-        delta_o_patches = extract_patches_fourier_shift(
+        delta_o_patches = self.parameter_group.object.place_patches_function(
             delta_o_hat,
             positions + self.parameter_group.object.center_pixel,
             delta_o_patches.shape[-2:],

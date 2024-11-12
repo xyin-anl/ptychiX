@@ -134,6 +134,13 @@ class PlanarObject(Object):
         center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
         self.register_buffer("center_pixel", center_pixel)
 
+        self.extract_patches_function = maps.get_patch_interp_function_by_enum(
+            self.options.patch_interpolation_method, function_type="extractor"
+        )
+        self.place_patches_function = maps.get_patch_interp_function_by_enum(
+            self.options.patch_interpolation_method, function_type="placer"
+        )
+
     @property
     def is_multislice(self) -> bool:
         return self.shape[0] > 1
@@ -166,15 +173,12 @@ class PlanarObject(Object):
         Tensor
             Tensor of shape (N, n_slices, h', w') containing the extracted patches.
         """
-        extract_patches_function = maps.get_patch_interp_function_by_enum(
-            self.options.patch_interpolation_method, function_type="extractor"
-        )
         # Positions are provided with the origin in the center of the object support.
         # We shift the positions so that the origin is in the upper left corner.
         positions = positions + self.center_pixel
         patches_all_slices = []
         for i_slice in range(self.n_slices):
-            patches = extract_patches_function(
+            patches = self.extract_patches_function(
                 self.get_slice(i_slice), positions, patch_shape
             )
             patches_all_slices.append(patches)
@@ -227,7 +231,7 @@ class PlanarObject(Object):
         image = torch.zeros(
             self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device
         )
-        image = ip.place_patches_fourier_shift(image, positions, patches, op="add")
+        image = self.place_patches_function(image, positions, patches, op="add")
         return image
 
     def constrain_smoothness(self) -> None:

@@ -7,7 +7,6 @@ from torch.utils.data import DataLoader, Dataset
 import tqdm
 
 from ptychi.ptychotorch.utils import to_numpy, chunked_processing
-from ptychi.image_proc import place_patches_fourier_shift
 import ptychi.maps as maps
 import ptychi.forward_models as fm
 import ptychi.api.enums as enums

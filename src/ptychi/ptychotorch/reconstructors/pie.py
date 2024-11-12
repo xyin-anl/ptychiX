@@ -7,9 +7,7 @@ from torch import Tensor
 from ptychi.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
-from ptychi.image_proc import place_patches_fourier_shift
 from ptychi.metrics import MSELossOfSqrt
-import ptychi.forward_models as fm
 if TYPE_CHECKING:
     import ptychi.api as api
     import ptychi.data_structures.parameter_group as pg
@@ -103,7 +101,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             step_weight = self.calculate_object_step_weight(p)
             delta_o_patches = step_weight * (psi_prime - psi)
             delta_o_patches = delta_o_patches.sum(1)
-            delta_o = place_patches_fourier_shift(
+            delta_o = object_.place_patches_function(
                 torch.zeros_like(object_.get_slice(0)),
                 positions + object_.center_pixel,
                 delta_o_patches,
