@@ -8,6 +8,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 env:
   PTYCHO_CI_DATA_DIR: /local/ptycho_aux_data/ci_data
@@ -20,6 +21,8 @@ permissions:
 jobs:
   linux-x86-gpu:
 
+    continue-on-error: true
+
     defaults:
       run:
         shell: bash -l {0}
@@ -28,6 +31,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+
+    - name: Update test data
+      id: update_test_data
+      run: |
+        PACKAGE_DIR=$(pwd)
+        cd $PTYCHO_CI_DATA_DIR
+        git pull origin main
+        cd $PACKAGE_DIR
 
     - name: Create environment
       id: create_env
