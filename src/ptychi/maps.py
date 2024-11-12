@@ -74,7 +74,9 @@ def get_patch_placer_function_by_name(
 ) -> ip.PlacePatchesProtocol:
     return {
         enums.PatchInterpolationMethods.FOURIER: ip.place_patches_fourier_shift,
-        enums.PatchInterpolationMethods.BILINEAR: ip.place_patches_bilinear_shift,
+        enums.PatchInterpolationMethods.BILINEAR: partial(
+            ip.place_patches_bilinear_shift, round_positions=False
+        ),
         enums.PatchInterpolationMethods.NEAREST: partial(
             ip.place_patches_bilinear_shift, round_positions=True
         ),
@@ -86,7 +88,9 @@ def get_patch_extractor_function_by_name(
 ) -> ip.ExtractPatchesProtocol:
     return {
         enums.PatchInterpolationMethods.FOURIER: ip.extract_patches_fourier_shift,
-        enums.PatchInterpolationMethods.BILINEAR: ip.extract_patches_bilinear_shift,
+        enums.PatchInterpolationMethods.BILINEAR: partial(
+            ip.extract_patches_bilinear_shift, round_positions=False
+        ),
         enums.PatchInterpolationMethods.NEAREST: partial(
             ip.extract_patches_bilinear_shift, round_positions=True
         ),

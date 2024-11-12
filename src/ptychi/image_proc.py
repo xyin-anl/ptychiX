@@ -17,7 +17,7 @@ class PlacePatchesProtocol(Protocol):
 
 
 class ExtractPatchesProtocol(Protocol):
-    def __call__(image: Tensor, positions: Tensor, shape: Tuple[int, int]) -> Tensor: ...
+    def __call__(self, image: Tensor, positions: Tensor, shape: Tuple[int, int]) -> Tensor: ...
 
 
 def extract_patches_fourier_shift(
