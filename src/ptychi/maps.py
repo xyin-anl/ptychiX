@@ -1,4 +1,4 @@
-from typing import Type
+from typing import Literal, Type
 
 import torch
 
@@ -7,6 +7,8 @@ from ptychi.metrics import MSELossOfSqrt
 import ptychi.ptychotorch.reconstructors as reconstructors
 import ptychi.forward_models as fm
 from ptychi.ptychotorch.reconstructors.base import Reconstructor
+import ptychi.image_proc as ip
+from functools import partial
 
 
 def get_complex_dtype_by_enum(key: enums.Dtypes) -> torch.dtype:
@@ -51,6 +53,7 @@ def get_reconstructor_by_enum(key: enums.Reconstructors) -> Type["Reconstructor"
         enums.Reconstructors.PIE: reconstructors.PIEReconstructor,
         enums.Reconstructors.EPIE: reconstructors.EPIEReconstructor,
         enums.Reconstructors.RPIE: reconstructors.RPIEReconstructor,
+        enums.Reconstructors.DM: reconstructors.DMReconstructor,
     }[key]
 
 
@@ -64,3 +67,31 @@ def get_device_by_enum(key: enums.Devices) -> str:
 
 def get_dtype_by_enum(key: enums.Dtypes) -> torch.dtype:
     return {enums.Dtypes.FLOAT32: torch.float32, enums.Dtypes.FLOAT64: torch.float64}[key]
+
+
+def get_patch_placer_function_by_name(
+    key: enums.PatchInterpolationMethods,
+) -> ip.PlacePatchesProtocol:
+    return {
+        enums.PatchInterpolationMethods.FOURIER: ip.place_patches_fourier_shift,
+        enums.PatchInterpolationMethods.BILINEAR: partial(
+            ip.place_patches_bilinear_shift, round_positions=False
+        ),
+        enums.PatchInterpolationMethods.NEAREST: partial(
+            ip.place_patches_bilinear_shift, round_positions=True
+        ),
+    }[key]
+
+
+def get_patch_extractor_function_by_name(
+    key: enums.PatchInterpolationMethods,
+) -> ip.ExtractPatchesProtocol:
+    return {
+        enums.PatchInterpolationMethods.FOURIER: ip.extract_patches_fourier_shift,
+        enums.PatchInterpolationMethods.BILINEAR: partial(
+            ip.extract_patches_bilinear_shift, round_positions=False
+        ),
+        enums.PatchInterpolationMethods.NEAREST: partial(
+            ip.extract_patches_bilinear_shift, round_positions=True
+        ),
+    }[key]

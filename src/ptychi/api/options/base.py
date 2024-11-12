@@ -145,6 +145,9 @@ class ObjectOptions(ParameterOptions):
     
     multislice_regularization_stride: int = 1
     """The number of epochs between multislice regularization updates."""
+
+    patch_interpolation_method: enums.PatchInterpolationMethods = enums.PatchInterpolationMethods.FOURIER
+    """The interpolation method used for extracting and updating patches of the object."""
     
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()

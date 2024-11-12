@@ -7,7 +7,6 @@ from torch import Tensor
 from ptychi.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
-from ptychi.image_proc import place_patches_fourier_shift
 from ptychi.metrics import MSELossOfSqrt
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -90,11 +89,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         p = probe.get_opr_mode(0)
 
-        psi_prime = (
-            psi_far
-            / ((psi_far.abs() ** 2).sum(1, keepdims=True).sqrt() + 1e-7)
-            * torch.sqrt(y_true + 1e-7)[:, None]
-        )
+        psi_prime = self.replace_propagated_exit_wave_magnitude(psi_far, y_true)
         # Do not swap magnitude for bad pixels.
         psi_prime = torch.where(
             valid_pixel_mask.repeat(psi_prime.shape[0], probe.n_modes, 1, 1), psi_prime, psi_far
@@ -106,7 +101,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             step_weight = self.calculate_object_step_weight(p)
             delta_o_patches = step_weight * (psi_prime - psi)
             delta_o_patches = delta_o_patches.sum(1)
-            delta_o = place_patches_fourier_shift(
+            delta_o = object_.place_patches_function(
                 torch.zeros_like(object_.get_slice(0)),
                 positions + object_.center_pixel,
                 delta_o_patches,

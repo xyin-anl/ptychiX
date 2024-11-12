@@ -34,6 +34,7 @@ class Reconstructors(StrEnum):
     PIE = auto()
     EPIE = auto()
     RPIE = auto()
+    DM = auto()
 
 
 class PositionCorrectionTypes(StrEnum):
@@ -49,7 +50,7 @@ class NoiseModels(StrEnum):
 class OrthogonalizationMethods(StrEnum):
     GS = auto()
     SVD = auto()
-    
+
 
 class ForwardModels(StrEnum):
     base = auto()
@@ -76,4 +77,9 @@ class ImageGradientMethods(StrEnum):
     FOURIER_DIFFERENTIATION = auto()
     FOURIER_SHIFT = auto()
     NEAREST = auto()
-    
+
+
+class PatchInterpolationMethods(StrEnum):
+    FOURIER = auto()
+    BILINEAR = auto()
+    NEAREST = auto()

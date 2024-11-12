@@ -7,6 +7,7 @@ from torch import Tensor
 import ptychi.image_proc as ip
 import ptychi.data_structures.base as ds
 from ptychi.ptychotorch.utils import get_default_complex_dtype, to_tensor
+import ptychi.maps as maps
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -137,6 +138,13 @@ class PlanarObject(Object):
         center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
         self.register_buffer("center_pixel", center_pixel)
 
+        self.extract_patches_function = maps.get_patch_extractor_function_by_name(
+            self.options.patch_interpolation_method
+        )
+        self.place_patches_function = maps.get_patch_placer_function_by_name(
+            self.options.patch_interpolation_method
+        )
+
     @property
     def is_multislice(self) -> bool:
         return self.shape[0] > 1
@@ -174,7 +182,7 @@ class PlanarObject(Object):
         positions = positions + self.center_pixel
         patches_all_slices = []
         for i_slice in range(self.n_slices):
-            patches = ip.extract_patches_fourier_shift(
+            patches = self.extract_patches_function(
                 self.get_slice(i_slice), positions, patch_shape
             )
             patches_all_slices.append(patches)
@@ -196,7 +204,7 @@ class PlanarObject(Object):
         positions = positions + self.center_pixel
         updated_slices = []
         for i_slice in range(self.n_slices):
-            image = ip.place_patches_fourier_shift(
+            image = self.place_patches_function(
                 self.get_slice(i_slice), positions, patches[:, i_slice, ...]
             )
             updated_slices.append(image)
@@ -224,7 +232,7 @@ class PlanarObject(Object):
         image = torch.zeros(
             self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device
         )
-        image = ip.place_patches_fourier_shift(image, positions, patches, op="add")
+        image = self.place_patches_function(image, positions, patches, op="add")
         return image
 
     def constrain_smoothness(self) -> None:

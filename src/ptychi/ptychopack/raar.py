@@ -3,10 +3,12 @@ import logging
 
 import torch
 
+from ..image_proc import ObjectPatchInterpolator
+
 from ..device import Device
 from ..maths import orthogonalize_gs
 from .api import CorrectionPlan, DataProduct, DetectorData, IterativeAlgorithm
-from .support import squared_modulus, ObjectPatchInterpolator
+from .support import squared_modulus
 
 logger = logging.getLogger(__name__)
 

@@ -4,6 +4,7 @@ import logging
 import torch
 from torch.utils.data import Dataset
 
+from ptychi import maps
 import ptychi.data_structures.object
 from ptychi.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
@@ -11,10 +12,6 @@ from ptychi.ptychotorch.reconstructors.base import (
 )
 import ptychi.data_structures.base as ds
 import ptychi.forward_models as fm
-from ptychi.image_proc import (
-    place_patches_fourier_shift,
-    extract_patches_fourier_shift,
-)
 from ptychi.ptychotorch.utils import chunked_processing
 import ptychi.maths as pmath
 import ptychi.api.enums as enums
@@ -586,11 +583,12 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         # Re-extract delta O patches
         if positions is not None:
-            delta_o_patches = extract_patches_fourier_shift(
+            delta_o_patches = self.parameter_group.object.extract_patches_function(
                 delta_o_hat,
                 positions + self.parameter_group.object.center_pixel,
                 self.parameter_group.probe.shape[-2:],
             )
+    
             return delta_o_hat[None, ...], delta_o_patches[:, None, :, :]
         return delta_o_hat[None, ...]
     

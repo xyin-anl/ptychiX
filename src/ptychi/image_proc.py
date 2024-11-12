@@ -1,4 +1,4 @@
-from typing import Tuple, Literal, Optional
+from typing import Tuple, Literal, Optional, Protocol
 import math
 import logging
 
@@ -7,6 +7,17 @@ from torch import Tensor
 import torch.signal
 
 import ptychi.maths as pmath
+from ptychi.ptychopack.api import ComplexTensor, RealTensor
+
+
+class PlacePatchesProtocol(Protocol):
+    def __call__(
+        self, image: Tensor, positions: Tensor, patches: Tensor, op: Literal["add", "set"] = "add"
+    ) -> Tensor: ...
+
+
+class ExtractPatchesProtocol(Protocol):
+    def __call__(self, image: Tensor, positions: Tensor, shape: Tuple[int, int]) -> Tensor: ...
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +93,18 @@ def place_patches_fourier_shift(
         A tensor of shape (N, 2) giving the center positions of the patches in pixels.
         The origin of the given positions are assumed to be the TOP LEFT corner of the image.
     patches : Tensor
-        (N, H, W) tensor ofimage patches.
+        A (N, H, W) or (H, W) tensor of image patches.
 
     Returns
     -------
     Tensor
         A tensor with the same shape as the object with patches added onto it.
     """
+    # If the input is a single patch, add the third dimension
+    # and expand it to the correct number of patches
+    if len(patches.shape) == 2:
+        patches = patches[None].expand(len(positions), -1, -1)
+
     shape = patches.shape[-2:]
 
     # Floating point ranges over which interpolations should be done. +1 to shrink
@@ -130,6 +146,103 @@ def place_patches_fourier_shift(
         pad_lengths[2] : image.shape[0] - pad_lengths[3],
         pad_lengths[0] : image.shape[1] - pad_lengths[1],
     ]
+    return image
+
+
+class ObjectPatchInterpolator:
+    def __init__(self, object_: ComplexTensor, position_px: RealTensor, size: torch.Size) -> None:
+        # top left corner of object support
+        xmin = position_px[-1] - size[-1] / 2
+        ymin = position_px[-2] - size[-2] / 2
+
+        # whole components (pixel indexes)
+        xmin_wh = xmin.int()
+        ymin_wh = ymin.int()
+
+        # fractional (subpixel) components
+        xmin_fr = xmin - xmin_wh
+        ymin_fr = ymin - ymin_wh
+
+        # bottom right corner of object patch support
+        xmax_wh = xmin_wh + size[-1] + 1
+        ymax_wh = ymin_wh + size[-2] + 1
+
+        # reused quantities
+        xmin_fr_c = 1.0 - xmin_fr
+        ymin_fr_c = 1.0 - ymin_fr
+
+        # barycentric interpolant weights
+        self._weight00 = ymin_fr_c * xmin_fr_c
+        self._weight01 = ymin_fr_c * xmin_fr
+        self._weight10 = ymin_fr * xmin_fr_c
+        self._weight11 = ymin_fr * xmin_fr
+
+        # extract patch support region from full object
+        self._object_support = object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh]
+
+    def get_patch(self) -> ComplexTensor:
+        """interpolate object support to extract patch"""
+        object_patch = self._weight00 * self._object_support[:-1, :-1]
+        object_patch += self._weight01 * self._object_support[:-1, 1:]
+        object_patch += self._weight10 * self._object_support[1:, :-1]
+        object_patch += self._weight11 * self._object_support[1:, 1:]
+        return object_patch
+
+    def update_patch(self, object_update: ComplexTensor) -> None:
+        """add patch update to object support"""
+        self._object_support[:-1, :-1] += self._weight00 * object_update
+        self._object_support[:-1, 1:] += self._weight01 * object_update
+        self._object_support[1:, :-1] += self._weight10 * object_update
+        self._object_support[1:, 1:] += self._weight11 * object_update
+
+
+def extract_patches_bilinear_shift(
+    image: Tensor,
+    positions: Tensor,
+    shape: Tuple[int, int],
+    round_positions: bool = False,
+) -> Tensor:
+    if round_positions:
+        positions = torch.round(positions).to(int)
+
+    obj_patches = torch.zeros((len(positions), *shape), dtype=image.dtype)
+    for i in range(len(positions)):
+        interpolator = ObjectPatchInterpolator(
+            image,
+            positions[i],
+            shape,
+        )
+        obj_patches[i] = interpolator.get_patch()
+    return obj_patches
+
+
+def place_patches_bilinear_shift(
+    image: Tensor,
+    positions: Tensor,
+    patches: Tensor,
+    op: Literal["add", "set"] = "add",
+    round_positions: bool = False,
+) -> Tensor:
+    if op == "set":
+        raise NotImplementedError("\"set\" operation is not supported.")
+
+    if round_positions:
+        positions = torch.round(positions).to(int)
+
+    for i in range(len(positions)):
+        if patches.shape[0] == len(positions):
+            patch_input = patches[i]
+        elif len(patches.shape) == 2:
+            patch_input = patches
+        else:
+            raise ValueError("Incorrect patch size.")
+
+        interpolator = ObjectPatchInterpolator(
+            image,
+            positions[i],
+            patch_input.shape,
+        )
+        interpolator.update_patch(patch_input)
     return image
 
 
@@ -907,7 +1020,7 @@ def unwrap_phase_2d(
     Unwrap phase of 2D image.
 
     Parameters
-    ----------
+    ---------- 
     img : Tensor
         A complex 2D tensor giving the image.
     fourier_shift_step : float
