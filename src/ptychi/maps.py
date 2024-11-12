@@ -69,23 +69,25 @@ def get_dtype_by_enum(key: enums.Dtypes) -> torch.dtype:
     return {enums.Dtypes.FLOAT32: torch.float32, enums.Dtypes.FLOAT64: torch.float64}[key]
 
 
-def get_patch_interp_function_by_enum(
-    key: enums.PatchInterpolationMethods, function_type: Literal["extractor", "placer"]
-) -> callable:
-    match function_type:
-        case "extractor":
-            return {
-                enums.PatchInterpolationMethods.FOURIER: ip.extract_patches_fourier_shift,
-                enums.PatchInterpolationMethods.BILINEAR: ip.extract_patches_bilinear_shift,
-                enums.PatchInterpolationMethods.NEAREST: partial(
-                    ip.extract_patches_bilinear_shift, round_positions=True
-                ),
-            }[key]
-        case "placer":
-            return {
-                enums.PatchInterpolationMethods.FOURIER: ip.place_patches_fourier_shift,
-                enums.PatchInterpolationMethods.BILINEAR: ip.place_patches_bilinear_shift,
-                enums.PatchInterpolationMethods.NEAREST: partial(
-                    ip.place_patches_bilinear_shift, round_positions=True
-                ),
-            }[key]
+def get_patch_placer_function_by_name(
+    key: enums.PatchInterpolationMethods,
+) -> ip.PlacePatchesProtocol:
+    return {
+        enums.PatchInterpolationMethods.FOURIER: ip.place_patches_fourier_shift,
+        enums.PatchInterpolationMethods.BILINEAR: ip.place_patches_bilinear_shift,
+        enums.PatchInterpolationMethods.NEAREST: partial(
+            ip.place_patches_bilinear_shift, round_positions=True
+        ),
+    }[key]
+
+
+def get_patch_extractor_function_by_name(
+    key: enums.PatchInterpolationMethods,
+) -> ip.ExtractPatchesProtocol:
+    return {
+        enums.PatchInterpolationMethods.FOURIER: ip.extract_patches_fourier_shift,
+        enums.PatchInterpolationMethods.BILINEAR: ip.extract_patches_bilinear_shift,
+        enums.PatchInterpolationMethods.NEAREST: partial(
+            ip.extract_patches_bilinear_shift, round_positions=True
+        ),
+    }[key]

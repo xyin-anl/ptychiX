@@ -134,11 +134,11 @@ class PlanarObject(Object):
         center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
         self.register_buffer("center_pixel", center_pixel)
 
-        self.extract_patches_function = maps.get_patch_interp_function_by_enum(
-            self.options.patch_interpolation_method, function_type="extractor"
+        self.extract_patches_function = maps.get_patch_extractor_function_by_name(
+            self.options.patch_interpolation_method
         )
-        self.place_patches_function = maps.get_patch_interp_function_by_enum(
-            self.options.patch_interpolation_method, function_type="placer"
+        self.place_patches_function = maps.get_patch_placer_function_by_name(
+            self.options.patch_interpolation_method
         )
 
     @property
@@ -197,13 +197,10 @@ class PlanarObject(Object):
         patches : Tensor
             Tensor of shape (n_patches, n_slices, H, W) of image patches.
         """
-        place_patches_function = maps.get_patch_interp_function_by_enum(
-            self.options.patch_interpolation_method, function_type="placer"
-        )
         positions = positions + self.center_pixel
         updated_slices = []
         for i_slice in range(self.n_slices):
-            image = place_patches_function(
+            image = self.place_patches_function(
                 self.get_slice(i_slice), positions, patches[:, i_slice, ...]
             )
             updated_slices.append(image)

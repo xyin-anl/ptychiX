@@ -1,4 +1,4 @@
-from typing import Tuple, Literal, Optional
+from typing import Tuple, Literal, Optional, Protocol
 import math
 import logging
 
@@ -8,6 +8,16 @@ import torch.signal
 
 import ptychi.maths as pmath
 from ptychi.ptychopack.api import ComplexTensor, RealTensor
+
+
+class PlacePatchesProtocol(Protocol):
+    def __call__(
+        self, image: Tensor, positions: Tensor, patches: Tensor, op: Literal["add", "set"] = "add"
+    ) -> Tensor: ...
+
+
+class ExtractPatchesProtocol(Protocol):
+    def __call__(image: Tensor, positions: Tensor, shape: Tuple[int, int]) -> Tensor: ...
 
 
 def extract_patches_fourier_shift(
@@ -211,6 +221,9 @@ def place_patches_bilinear_shift(
     op: Literal["add", "set"] = "add",
     round_positions: bool = False,
 ) -> Tensor:
+    if op == "set":
+        raise NotImplementedError("\"set\" operation is not supported.")
+
     if round_positions:
         positions = torch.round(positions).to(int)
 
