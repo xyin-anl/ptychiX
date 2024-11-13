@@ -158,7 +158,9 @@ class Reconstructor:
 
     def get_config_dict(self) -> dict:
         d = self.parameter_group.get_config_dict()
-        d.update({"reconstructor": self.__class__.__name__})
+        reconstructor_options = {"name": self.__class__.__name__}
+        reconstructor_options.update(self.options.__dict__)
+        d["reconstructor_options"] = reconstructor_options
         return d
 
 
