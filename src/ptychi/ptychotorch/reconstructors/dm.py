@@ -1,4 +1,4 @@
-from typing import Optional, TYPE_CHECKING, Tuple
+from typing import Optional, TYPE_CHECKING, Tuple, Union
 import warnings
 
 import torch
@@ -159,9 +159,10 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             )
 
         # Update the probe
-        probe.set_data(probe_numerator / torch.sqrt(
-            probe_denominator**2 + (0.05 * probe_denominator.max()) ** 2
-        ))
+        probe.set_data(
+            probe_numerator
+            / torch.sqrt(probe_denominator**2 + (0.05 * probe_denominator.max()) ** 2)
+        )
 
         # Update the object
         self.update_object(start_pts, end_pts)
@@ -170,7 +171,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
 
     def calculate_exit_wave_chunk(
         self, start_pt: int, end_pt: int, return_obj_patches: bool = False
-    ) -> Tensor:
+    ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         object_ = self.parameter_group.object
         probe = self.parameter_group.probe
         positions = self.parameter_group.probe_positions.tensor
@@ -196,7 +197,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         y_true: Tensor,
         valid_pixel_mask: Tensor,
         dm_error_squared: Tensor,
-    ) -> Tensor:
+    ) -> Tuple[Tensor, Tensor]:
         """
         Calculate the updated exit wave according to equation (9) in
         this paper: https://doi.org/10.1016/j.ultramic.2008.12.011
@@ -247,12 +248,6 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         "Add to the running totals for the probe update numerator and denominator"
         probe_numerator += (obj_patches.conj() * self.psi[start_pt:end_pt]).sum(0)
         probe_denominator += (obj_patches.abs() ** 2).sum(0)
-
-    # def update_dm_error(self, dm_error_squared: Tensor, psi_update: Tensor) -> Tensor:
-    #     # Save the difference map error
-    #     # dm_error = (psi_update.abs() ** 2).sum().sqrt()
-    #     dm_error_squared += (psi_update.abs() ** 2).sum()
-    #     return dm_error_squared
 
     def update_object(self, start_pts: list[int], end_pts: list[int]):
         "Calculate and apply the object update."
