@@ -5,13 +5,14 @@ import torch
 from torch.utils.data import Dataset
 from torch import Tensor
 from torch.utils.data import DataLoader
+import math
 
 from ptychi.api import enums
-import ptychi.maps as maps
 from ptychi.ptychotorch.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
+    LossTracker,
 )
-from ptychi.metrics import MSELossOfSqrt
+from ptychi.api.options.dm import DMReconstructorOptions
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -19,6 +20,20 @@ if TYPE_CHECKING:
 
 
 class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
+    """
+    Difference map algorithm reconstructor class
+
+    ### On memory usage
+    The difference map algorithm takes up more memory than algorithms like LSQML
+    and PIE because the entire exit wave `self.psi` must be stored in memory.
+
+    For the least amount of memory usage, set the `chunk_length` option to 1.
+    `chunk_length` has no effect on the convergence.
+
+    ### On batching
+    The `batch_size` option is not used by this reconstructor.
+    """
+
     parameter_group: "pg.PlanarPtychographyParameterGroup"
 
     def __init__(
@@ -36,12 +51,16 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             *args,
             **kwargs,
         )
+        self.forward_model.retain_intermediates = False
+        self.options: DMReconstructorOptions = self.options
 
     def check_inputs(self, *args, **kwargs):
         if self.parameter_group.object.is_multislice:
             raise NotImplementedError("DMReconstructor only supports 2D objects.")
         if self.parameter_group.probe.has_multiple_opr_modes:
-            raise NotImplementedError("DMReconstructor does not support multiple OPR modes yet.")
+            raise NotImplementedError(
+                "DMReconstructor does not support multiple OPR modes yet."
+            )
         if (
             self.parameter_group.probe_positions.options.correction_options.correction_type
             != enums.PositionCorrectionTypes.GRADIENT
@@ -50,6 +69,20 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             raise NotImplementedError(
                 "DMReconstructor only supports gradient position correction at the moment."
             )
+        if self.options.batch_size != DMReconstructorOptions.batch_size:
+            warnings.warn(
+                """Difference map reconstruction does not support batching!""",
+                UserWarning,
+            )
+
+    def build_loss_tracker(self):
+        if self.options.displayed_loss_function is not None:
+            warnings.warn(
+                """The loss tracker is hard-coded to record the DM error. 
+                The specified metric function will not be used!""",
+                UserWarning,
+            )
+        self.loss_tracker = LossTracker(metric_function=None)
 
     def build_dataloader(self):
         """
@@ -66,54 +99,104 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.dataloader = DataLoader(**data_loader_kwargs)
         self.dataset.move_attributes_to_device(torch.get_default_device())
 
-    def build_loss_tracker(self):
-        if self.displayed_loss_function is None:
-            self.displayed_loss_function = MSELossOfSqrt()
-        return super().build_loss_tracker()
-
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
-        y_pred = self.compute_updates(*input_data, y_true, self.dataset.valid_pixel_mask)
-        self.loss_tracker.update_batch_loss_with_metric_function(y_pred, y_true)
+        dm_error_squared = self.compute_updates(y_true, self.dataset.valid_pixel_mask)
+        self.loss_tracker.update_batch_loss(loss=dm_error_squared.sqrt())
 
-    def compute_updates(
-        self,
-        indices: torch.Tensor,
-        y_true: torch.Tensor,
-        valid_pixel_mask: torch.Tensor,
-    ) -> tuple[torch.Tensor, ...]:
+    def compute_updates(self, y_true: Tensor, valid_pixel_mask: Tensor) -> Tensor:
         """
-        Calculates the updates of the object and probe according to
-        https://doi.org/10.1016/j.ultramic.2008.12.011.
+        Compute the updates to the object, probe, and exit wave using the procedure
+        described here: [Probe retrieval in ptychographic coherent diffractive imaging
+        ](https://doi.org/10.1016/j.ultramic.2008.12.011).
         """
 
         object_ = self.parameter_group.object
         probe = self.parameter_group.probe
         probe_positions = self.parameter_group.probe_positions
 
-        indices = indices.cpu()
-        positions = probe_positions.tensor[indices]
+        # Get indices used for dividing data into chunks
+        start_pts = list(
+            range(0, probe_positions.n_scan_points, self.options.chunk_length)
+        )
+        end_pts = list(
+            range(
+                self.options.chunk_length,
+                probe_positions.n_scan_points + self.options.chunk_length,
+                self.options.chunk_length,
+            )
+        )
+        n_chunks = math.ceil(probe_positions.n_scan_points / self.options.chunk_length)
 
-        obj_patches, y, psi_update = self.calculate_updated_exit_wave(
-            indices, y_true, valid_pixel_mask
+        # Initialize the exit wave
+        if self.current_epoch == 0:
+            self.psi = torch.zeros(
+                (
+                    probe_positions.n_scan_points,
+                    probe.n_modes,
+                    *probe.get_spatial_shape(),
+                ),
+                dtype=object_.data.dtype,
+            )
+            for i in range(n_chunks):
+                self.psi[start_pts[i] : end_pts[i]] = self.calculate_exit_wave_chunk(
+                    start_pts[i], end_pts[i]
+                )
+
+        # Calculate the dm exit wave and probe update in chunks
+        probe_numerator = torch.zeros_like(probe.get_opr_mode(0))
+        probe_denominator = torch.zeros_like(probe.get_opr_mode(0).abs())
+        dm_error_squared = 0
+        for i in range(n_chunks):
+            obj_patches, dm_error_squared = self.apply_dm_update_to_exit_wave_chunk(
+                start_pts[i], end_pts[i], y_true, valid_pixel_mask, dm_error_squared
+            )
+            self.add_to_probe_update_terms(
+                probe_numerator,
+                probe_denominator,
+                obj_patches,
+                start_pts[i],
+                end_pts[i],
+            )
+
+        # Update the probe
+        probe.set_data(probe_numerator / torch.sqrt(
+            probe_denominator**2 + (0.05 * probe_denominator.max()) ** 2
+        ))
+
+        # Update the object
+        self.update_object(start_pts, end_pts)
+
+        return dm_error_squared
+
+    def calculate_exit_wave_chunk(
+        self, start_pt: int, end_pt: int, return_obj_patches: bool = False
+    ) -> Tensor:
+        object_ = self.parameter_group.object
+        probe = self.parameter_group.probe
+        positions = self.parameter_group.probe_positions.tensor
+
+        obj_patches = object_.extract_patches(
+            positions[start_pt:end_pt], probe.get_spatial_shape()
+        )
+        psi = self.forward_model.propagate_through_object(
+            self.forward_model.get_probe(list(range(start_pt, end_pt))),
+            obj_patches,
+            return_slice_psis=False,
         )
 
-        # The probe update must come before the object update
-        if probe.optimization_enabled(self.current_epoch):
-            self.update_probe(obj_patches)
+        if return_obj_patches:
+            return psi, obj_patches
+        else:
+            return psi
 
-        if object_.optimization_enabled(self.current_epoch):
-            self.update_object(positions)
-
-        if probe_positions.optimization_enabled(self.current_epoch):
-            self.update_positions(indices, obj_patches, psi_update)
-
-        torch.cuda.empty_cache()
-
-        return y
-
-    def calculate_updated_exit_wave(
-        self, indices: Tensor, y_true: Tensor, valid_pixel_mask: Tensor
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+    def apply_dm_update_to_exit_wave_chunk(
+        self,
+        start_pt: int,
+        end_pt: int,
+        y_true: Tensor,
+        valid_pixel_mask: Tensor,
+        dm_error_squared: Tensor,
+    ) -> Tensor:
         """
         Calculate the updated exit wave according to equation (9) in
         this paper: https://doi.org/10.1016/j.ultramic.2008.12.011
@@ -123,53 +206,73 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         # - revised_psi --> 2 * Pi_o(psi_n)- psi_n
         # - new_psi --> Pi_o(psi_n)
 
-        if self.current_epoch == 0:
-            y = self.forward_model.forward(indices)
-            self.psi = self.forward_model.intermediate_variables["psi"]
+        probe = self.parameter_group.probe
 
-        # Calculate the new exit wave
-        if self.current_epoch != 0:
-            y = self.forward_model.forward(indices)
-        new_psi = self.forward_model.intermediate_variables["psi"]
-        obj_patches = self.forward_model.intermediate_variables["obj_patches"]
-
-        revised_psi = self.forward_model.far_field_propagator.propagate_forward(
-            2 * new_psi - self.psi
+        # Get the update exit wave
+        new_psi, obj_patches = self.calculate_exit_wave_chunk(
+            start_pt, end_pt, return_obj_patches=True
         )
+        # Propagate to detector plane
+        revised_psi = self.forward_model.far_field_propagator.propagate_forward(
+            2 * new_psi - self.psi[start_pt:end_pt]
+        )
+        # Replace intensities
         revised_psi = torch.where(
-            valid_pixel_mask.repeat(revised_psi.shape[0], self.parameter_group.probe.n_modes, 1, 1),
-            self.replace_propagated_exit_wave_magnitude(revised_psi, y_true),
+            valid_pixel_mask.repeat(revised_psi.shape[0], probe.n_modes, 1, 1),
+            self.replace_propagated_exit_wave_magnitude(
+                revised_psi, y_true[start_pt:end_pt]
+            ),
             revised_psi,
         )
-        revised_psi = self.forward_model.far_field_propagator.propagate_backward(revised_psi)
+        # Propagate back to sample plane
+        revised_psi = self.forward_model.far_field_propagator.propagate_backward(
+            revised_psi
+        )
+        # Update the exit wave
         psi_update = (revised_psi - new_psi) * self.options.exit_wave_update_relaxation
-        self.psi += psi_update
+        self.psi[start_pt:end_pt] += psi_update
 
-        # Save the difference map error
-        dm_error = (psi_update.abs() ** 2).sum().sqrt()
-        if self.current_epoch == 0:
-            self.difference_map_error = torch.tensor([dm_error])
-        else:
-            self.difference_map_error = torch.cat(
-                (self.difference_map_error, torch.tensor([dm_error]))
-            )
+        dm_error_squared += (psi_update.abs() ** 2).sum()
 
-        return obj_patches, y, psi_update
+        return obj_patches, dm_error_squared
 
-    def update_object(self, positions: Tensor):
+    def add_to_probe_update_terms(
+        self,
+        probe_numerator: Tensor,
+        probe_denominator: Tensor,
+        obj_patches: Tensor,
+        start_pt: int,
+        end_pt: int,
+    ):
+        "Add to the running totals for the probe update numerator and denominator"
+        probe_numerator += (obj_patches.conj() * self.psi[start_pt:end_pt]).sum(0)
+        probe_denominator += (obj_patches.abs() ** 2).sum(0)
+
+    # def update_dm_error(self, dm_error_squared: Tensor, psi_update: Tensor) -> Tensor:
+    #     # Save the difference map error
+    #     # dm_error = (psi_update.abs() ** 2).sum().sqrt()
+    #     dm_error_squared += (psi_update.abs() ** 2).sum()
+    #     return dm_error_squared
+
+    def update_object(self, start_pts: list[int], end_pts: list[int]):
+        "Calculate and apply the object update."
+
         object_ = self.parameter_group.object
         probe = self.parameter_group.probe
-        p = probe.get_opr_mode(0)
+        positions = self.parameter_group.probe_positions.tensor
 
+        # Calculate object update
+        p = probe.get_opr_mode(0)  # will need to update this when doing OPR
+        # Iterating over the object numerator calculation is more memory efficient
         object_numerator = torch.zeros_like(object_.get_slice(0))
-        object_numerator = self.parameter_group.object.place_patches_function(
-            object_numerator,
-            positions + object_.center_pixel,
-            (p.conj() * self.psi).sum(1),
-            "add",
-        )
+        for i in range(len(start_pts)):
+            object_numerator = object_.place_patches_function(
+                object_numerator,
+                positions[start_pts[i] : end_pts[i]] + object_.center_pixel,
+                (p.conj() * self.psi[start_pts[i] : end_pts[i]]).sum(1),
+                "add",
+            )
 
-        object_denominator = torch.zeros_like(object_.get_slice(0), dtype=object_.data.real.dtype)
         self.update_preconditioners()
         object_denominator = self.parameter_group.object.preconditioner
 
@@ -183,14 +286,14 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             updated_object[idx] / (updated_object[idx].abs())
         ) * object_.options.amplitude_clamp_limit
 
+        # Apply object update
         object_.set_data(updated_object)
 
-    def update_probe(self, obj_patches: Tensor):
-        probe_numerator = (obj_patches.conj() * self.psi).sum(0)
-        probe_denominator = (obj_patches.abs() ** 2).sum(0)
-        self.parameter_group.probe.set_data(probe_numerator / (probe_denominator + 1e-10))
+    def update_positions(
+        self, indices: Tensor, obj_patches: Tensor, exit_wave_update: Tensor
+    ):
+        "Update the probe position estimate. Only gradient based updates are allowed for now."
 
-    def update_positions(self, indices: Tensor, obj_patches: Tensor, exit_wave_update: Tensor):
         probe = self.parameter_group.probe
         probe_positions = self.parameter_group.probe_positions
 

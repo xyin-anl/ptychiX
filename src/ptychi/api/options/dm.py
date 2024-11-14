@@ -14,6 +14,10 @@ class DMReconstructorOptions(base.ReconstructorOptions):
     exit_wave_update_relaxation: float = 1
     "Relaxation multiplier for the exit wave update."
 
+    chunk_length: int = 1
+    """Number of scan points used in each chunk of the difference map exit wave update loop.
+    Smaller values are more memory efficient, but can be slower."""
+
 
 class DMObjectOptions(base.ObjectOptions):
     amplitude_clamp_limit: float = 1000
