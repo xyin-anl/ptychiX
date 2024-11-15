@@ -138,13 +138,6 @@ class PlanarObject(Object):
         center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
         self.register_buffer("center_pixel", center_pixel)
 
-        self.extract_patches_function = maps.get_patch_extractor_function_by_name(
-            self.options.patch_interpolation_method
-        )
-        self.place_patches_function = maps.get_patch_placer_function_by_name(
-            self.options.patch_interpolation_method
-        )
-
     @property
     def is_multislice(self) -> bool:
         return self.shape[0] > 1
@@ -156,6 +149,14 @@ class PlanarObject(Object):
     @property
     def lateral_shape(self):
         return self.shape[1:]
+
+    @property
+    def extract_patches_function(self) -> ip.ExtractPatchesProtocol:
+        return maps.get_patch_extractor_function_by_name(self.options.patch_interpolation_method)
+
+    @property
+    def place_patches_function(self) -> ip.PlacePatchesProtocol:
+        return maps.get_patch_placer_function_by_name(self.options.patch_interpolation_method)
 
     def get_slice(self, index):
         return self.data[index, ...]
