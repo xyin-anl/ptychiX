@@ -4,9 +4,9 @@ import torch
 
 import ptychi.api.enums as enums
 from ptychi.metrics import MSELossOfSqrt
-import ptychi.ptychotorch.reconstructors as reconstructors
+import ptychi.reconstructors as reconstructors
 import ptychi.forward_models as fm
-from ptychi.ptychotorch.reconstructors.base import Reconstructor
+from ptychi.reconstructors.base import Reconstructor
 import ptychi.image_proc as ip
 from functools import partial
 

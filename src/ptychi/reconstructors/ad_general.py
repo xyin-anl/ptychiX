@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 
 
 import ptychi.forward_models as fm
-from ptychi.ptychotorch.reconstructors.base import IterativeReconstructor, LossTracker
+from ptychi.reconstructors.base import IterativeReconstructor, LossTracker
 import ptychi.maps as maps
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg

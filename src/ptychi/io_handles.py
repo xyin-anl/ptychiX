@@ -10,7 +10,7 @@ from numpy import ndarray
 import sklearn.cluster
 import numpy as np
 
-from ptychi.ptychotorch.utils import to_tensor, to_numpy
+from ptychi.utils import to_tensor, to_numpy
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 import math
 
 from ptychi.api import enums
-from ptychi.ptychotorch.reconstructors.base import (
+from ptychi.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
     LossTracker,
 )

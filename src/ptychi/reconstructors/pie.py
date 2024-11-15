@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset
 from torch import Tensor
 
-from ptychi.ptychotorch.reconstructors.base import (
+from ptychi.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
 from ptychi.metrics import MSELossOfSqrt

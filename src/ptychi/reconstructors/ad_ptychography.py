@@ -5,8 +5,8 @@ from torch.utils.data import Dataset
 
 import ptychi.data_structures.object
 import ptychi.forward_models as fm
-from ptychi.ptychotorch.reconstructors.ad_general import AutodiffReconstructor
-from ptychi.ptychotorch.reconstructors.base import IterativePtychographyReconstructor
+from ptychi.reconstructors.ad_general import AutodiffReconstructor
+from ptychi.reconstructors.base import IterativePtychographyReconstructor
 
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg

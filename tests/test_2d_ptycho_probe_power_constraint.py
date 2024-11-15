@@ -7,7 +7,7 @@ import numpy as np
 import ptychi.api as api
 from ptychi.api.task import PtychographyTask
 from ptychi.api import LSQMLOptions, AutodiffPtychographyOptions
-import ptychi.ptychotorch.utils as utils
+import ptychi.utils as utils
 
 import test_utils as tutils
 

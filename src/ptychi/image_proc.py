@@ -7,7 +7,7 @@ from torch import Tensor
 import torch.signal
 
 import ptychi.maths as pmath
-from ptychi.ptychopack.api import ComplexTensor, RealTensor
+from ptychi.api.types import ComplexTensor, RealTensor
 
 
 class PlacePatchesProtocol(Protocol):

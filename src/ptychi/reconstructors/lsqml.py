@@ -6,13 +6,13 @@ from torch.utils.data import Dataset
 
 from ptychi import maps
 import ptychi.data_structures.object
-from ptychi.ptychotorch.reconstructors.base import (
+from ptychi.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
     LossTracker,
 )
 import ptychi.data_structures.base as ds
 import ptychi.forward_models as fm
-from ptychi.ptychotorch.utils import chunked_processing
+from ptychi.utils import chunked_processing
 import ptychi.maths as pmath
 import ptychi.api.enums as enums
 

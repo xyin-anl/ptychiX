@@ -6,7 +6,7 @@ from torch import Tensor
 
 import ptychi.image_proc as ip
 import ptychi.data_structures.base as ds
-from ptychi.ptychotorch.utils import get_default_complex_dtype, to_tensor
+from ptychi.utils import get_default_complex_dtype, to_tensor
 import ptychi.maps as maps
 
 if TYPE_CHECKING:

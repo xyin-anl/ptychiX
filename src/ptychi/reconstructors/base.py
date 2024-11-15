@@ -6,11 +6,11 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 import tqdm
 
-from ptychi.ptychotorch.utils import to_numpy, chunked_processing
+from ptychi.utils import to_numpy, chunked_processing
 import ptychi.maps as maps
 import ptychi.forward_models as fm
 import ptychi.api.enums as enums
-import ptychi.ptychotorch.io_handles as io
+import ptychi.io_handles as io
 
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg

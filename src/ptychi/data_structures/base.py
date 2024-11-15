@@ -7,7 +7,7 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 from numpy import ndarray
 
-from ptychi.ptychotorch.utils import to_tensor
+from ptychi.utils import to_tensor
 import ptychi.maps as maps
 import ptychi.api.options.base as obase
 if TYPE_CHECKING:
