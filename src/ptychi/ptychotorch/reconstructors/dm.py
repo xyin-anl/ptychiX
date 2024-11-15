@@ -64,12 +64,10 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
                 "DMReconstructor does not support multiple OPR modes yet."
             )
         if (
-            self.parameter_group.probe_positions.options.correction_options.correction_type
-            != enums.PositionCorrectionTypes.GRADIENT
-            and self.parameter_group.probe_positions.options.optimizable
+            self.parameter_group.probe_positions.options.optimizable
         ):
             raise NotImplementedError(
-                "DMReconstructor only supports gradient position correction at the moment."
+                "DMReconstructor does not support position correction yet."
             )
         if self.options.batch_size != DMReconstructorOptions.batch_size:
             logger.warning("Difference map reconstruction does not support batching!")
@@ -148,22 +146,25 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             obj_patches, dm_error_squared = self.apply_dm_update_to_exit_wave_chunk(
                 start_pts[i], end_pts[i], y_true, valid_pixel_mask, dm_error_squared
             )
-            self.add_to_probe_update_terms(
-                probe_numerator,
-                probe_denominator,
-                obj_patches,
-                start_pts[i],
-                end_pts[i],
-            )
+            if probe.optimization_enabled(self.current_epoch):
+                self.add_to_probe_update_terms(
+                    probe_numerator,
+                    probe_denominator,
+                    obj_patches,
+                    start_pts[i],
+                    end_pts[i],
+                )
 
         # Update the probe
-        probe.set_data(
-            probe_numerator
-            / torch.sqrt(probe_denominator**2 + (0.05 * probe_denominator.max()) ** 2)
-        )
+        if probe.optimization_enabled(self.current_epoch):
+            probe.set_data(
+                probe_numerator
+                / torch.sqrt(probe_denominator**2 + (0.05 * probe_denominator.max()) ** 2)
+            )
 
         # Update the object
-        self.update_object(start_pts, end_pts)
+        if object_.optimization_enabled(self.current_epoch):
+            self.update_object(start_pts, end_pts)
 
         return dm_error_squared
 
@@ -282,23 +283,23 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         # Apply object update
         object_.set_data(updated_object)
 
-    def update_positions(
-        self, indices: Tensor, obj_patches: Tensor, exit_wave_update: Tensor
-    ):
-        "Update the probe position estimate. Only gradient based updates are allowed for now."
+    # def update_positions(
+    #     self, indices: Tensor, obj_patches: Tensor, exit_wave_update: Tensor
+    # ):
+    #     "Update the probe position estimate. Only gradient based updates are allowed for now."
 
-        probe = self.parameter_group.probe
-        probe_positions = self.parameter_group.probe_positions
+    #     probe = self.parameter_group.probe
+    #     probe_positions = self.parameter_group.probe_positions
 
-        delta_pos = torch.zeros_like(probe_positions.data)
-        delta_pos[indices] = probe_positions.position_correction.get_update(
-            exit_wave_update,
-            obj_patches,
-            None,
-            probe,
-            self.parameter_group.opr_mode_weights,
-            indices,
-            None,
-        )
-        probe_positions.set_grad(-delta_pos)
-        probe_positions.optimizer.step()
+    #     delta_pos = torch.zeros_like(probe_positions.data)
+    #     delta_pos[indices] = probe_positions.position_correction.get_update(
+    #         exit_wave_update,
+    #         obj_patches,
+    #         None,
+    #         probe,
+    #         self.parameter_group.opr_mode_weights,
+    #         indices,
+    #         None,
+    #     )
+    #     probe_positions.set_grad(-delta_pos)
+    #     probe_positions.optimizer.step()
