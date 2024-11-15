@@ -696,6 +696,14 @@ def convolve1d(
     return result
 
 
+def gaussian_filter(image, sigma=1, size=3):
+    x = torch.arange(-((size - 1) / 2), -((size - 1) / 2) + size, 1)
+    gauss_1d = torch.exp(-0.5 * (x / sigma) ** 2)
+    kernel = gauss_1d[:, None] * gauss_1d[None, :]
+    kernel = kernel / torch.sum(kernel)
+    return convolve2d(image, kernel, padding="same")
+
+
 def find_cross_corr_peak(
     f: Tensor,
     g: Tensor,

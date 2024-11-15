@@ -202,7 +202,8 @@ class ProbeOptions(ParameterOptions):
     """The number of epochs between probe power constraint updates."""
 
     orthogonalize_incoherent_modes: bool = False
-    """Whether to orthogonalize incoherent probe modes. If True, the incoherent probe
+    """
+    Whether to orthogonalize incoherent probe modes. If True, the incoherent probe
     modes are orthogonalized every `orthogonalize_incoherent_modes_stride` epochs.
     """
 
@@ -215,12 +216,28 @@ class ProbeOptions(ParameterOptions):
     """The method to use for incoherent_mode orthogonalization."""
 
     orthogonalize_opr_modes: bool = False
-    """Whether to orthogonalize OPR modes. If True, the OPR modes are orthogonalized
+    """
+    Whether to orthogonalize OPR modes. If True, the OPR modes are orthogonalized
     every `orthogonalize_opr_modes_stride` epochs.
     """
 
     orthogonalize_opr_modes_stride: int = 1
     """The number of epochs between orthogonalizing the OPR modes."""
+
+    support_constraint: bool = False
+    """
+    When enabled, the probe will be shrinkwrapped every `probe_support_constraint_stride` epochs,
+    where small values are set to 0.
+    """
+    
+    support_constraint_threshold: float = 0.005
+    """
+    The threshold for the probe support constraint. The value of a pixel (x, y) is set to 0
+    if `p(x, y) < [max(blur(p)) * `support_constraint_threshold`](x, y)`.
+    """
+
+    support_constraint_stride: int = 1
+    """The number of epochs between probe support constraint updates."""
 
     def check(self):
         if not (self.initial_guess is not None and self.initial_guess.ndim == 4):

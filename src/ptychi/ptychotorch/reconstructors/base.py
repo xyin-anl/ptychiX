@@ -398,6 +398,10 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                 == 0
             ):
                 self.dataloader.batch_sampler.update_clusters(positions.data.detach().cpu())
+                
+            # Apply probe support constraint.
+            if probe.support_constraint_enabled(self.current_epoch):
+                probe.constrain_support()
 
 
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
