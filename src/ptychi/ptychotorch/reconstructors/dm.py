@@ -1,5 +1,5 @@
 from typing import Optional, TYPE_CHECKING, Tuple, Union
-import warnings
+import logging
 
 import torch
 from torch.utils.data import Dataset
@@ -17,6 +17,8 @@ from ptychi.api.options.dm import DMReconstructorOptions
 if TYPE_CHECKING:
     import ptychi.api as api
     import ptychi.data_structures.parameter_group as pg
+
+logger = logging.getLogger(__name__)
 
 
 class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
@@ -70,17 +72,13 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
                 "DMReconstructor only supports gradient position correction at the moment."
             )
         if self.options.batch_size != DMReconstructorOptions.batch_size:
-            warnings.warn(
-                """Difference map reconstruction does not support batching!""",
-                UserWarning,
-            )
+            logger.warning("Difference map reconstruction does not support batching!")
 
     def build_loss_tracker(self):
         if self.options.displayed_loss_function is not None:
-            warnings.warn(
-                """The loss tracker is hard-coded to record the DM error. 
-                The specified metric function will not be used!""",
-                UserWarning,
+            logger.warning(
+                "The loss tracker is hard-coded to record the DM error. "
+                "The specified metric function will not be used!"
             )
         self.loss_tracker = LossTracker(metric_function=None)
 
