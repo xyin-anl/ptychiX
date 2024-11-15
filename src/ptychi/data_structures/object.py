@@ -344,6 +344,7 @@ class PlanarObject(Object):
                     weight_map=w_phase,
                     fourier_shift_step=0.5,
                     image_grad_method=self.options.multislice_regularization_unwrap_image_grad_method,
+                    image_integration_method=self.options.multislice_regularization_unwrap_image_integration_method,
                 )
                 for i_slice in range(self.n_slices)
             ]

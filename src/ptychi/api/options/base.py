@@ -11,15 +11,22 @@ from ptychi.api.options.plan import OptimizationPlan
 
 @dataclasses.dataclass
 class Options:
-
     def uninherited_fields(self) -> dict:
         """
         Find fields that are not inherited from the generic options parent
         class (typically the direct subclass of `ParameterOptions` or
         `Options`), and return them as a dictionary.
         """
-        parent_classes = [ObjectOptions, ProbeOptions, ReconstructorOptions, ProbePositionOptions, OPRModeWeightsOptions]
-        parent_class = [parent_class for parent_class in parent_classes if isinstance(self, parent_class)][0]
+        parent_classes = [
+            ObjectOptions,
+            ProbeOptions,
+            ReconstructorOptions,
+            ProbePositionOptions,
+            OPRModeWeightsOptions,
+        ]
+        parent_class = [
+            parent_class for parent_class in parent_classes if isinstance(self, parent_class)
+        ][0]
         if parent_class == object:
             return self.__dict__
         parent_fields = [f.name for f in dataclasses.fields(parent_class)]
@@ -32,7 +39,6 @@ class Options:
 
 @dataclasses.dataclass
 class ParameterOptions(Options):
-
     optimizable: bool = True
     """
     Whether the parameter is optimizable.
@@ -59,7 +65,7 @@ class ParameterOptions(Options):
     Settings for the optimizer of the parameter. For additional information on
     optimizer parameters, see: https://pytorch.org/docs/stable/optim.html
     """
-    
+
     def get_non_data_fields(self) -> dict:
         d = self.__dict__.copy()
         return d
@@ -67,7 +73,6 @@ class ParameterOptions(Options):
 
 @dataclasses.dataclass
 class ObjectOptions(ParameterOptions):
-
     initial_guess: Union[ndarray, Tensor] = None
     """A (h, w) complex tensor of the object initial guess."""
 
@@ -100,41 +105,43 @@ class ObjectOptions(ParameterOptions):
 
     smoothness_constraint_stride: int = 1
     """The number of epochs between smoothness constraint updates."""
-    
+
     total_variation_weight: float = 0
     """The weight of the total variation constraint. Disabled if equal or less than 0."""
 
     total_variation_stride: int = 1
     """The number of epochs between total variation constraint updates."""
-    
+
     remove_grid_artifacts: bool = False
     """Whether to remove grid artifacts in the object's phase at the end of an epoch."""
-    
+
     remove_grid_artifacts_period_x_m: float = 1e-7
     """The horizontal period of grid artifacts in meters."""
-    
+
     remove_grid_artifacts_period_y_m: float = 1e-7
     """The vertical period of grid artifacts in meters."""
-    
+
     remove_grid_artifacts_window_size: int = 5
     """The window size for grid artifact removal in pixels."""
-    
+
     remove_grid_artifacts_direction: enums.Directions = enums.Directions.XY
     """The direction of grid artifact removal."""
-    
+
     remove_grid_artifacts_stride: int = 1
     """The number of epochs between grid artifact removal updates."""
-    
+
     multislice_regularization_weight: float = 0
     """
     The weight for multislice regularization. Disabled if 0, or if `type != ObjectTypes.MULTISLICE`. 
     When enabled, multislice objects are regularized using cross-slice smoothing.
     """
-    
+
     multislice_regularization_unwrap_phase: bool = True
     """Whether to unwrap the phase of the object during multislice regularization."""
-    
-    multislice_regularization_unwrap_image_grad_method: enums.ImageGradientMethods = enums.ImageGradientMethods.FOURIER_SHIFT
+
+    multislice_regularization_unwrap_image_grad_method: enums.ImageGradientMethods = (
+        enums.ImageGradientMethods.FOURIER_SHIFT
+    )
     """
     The method for calculating the phase gradient during phase unwrapping.
     
@@ -142,13 +149,26 @@ class ObjectOptions(ParameterOptions):
         - NEAREST: Use nearest neighbor to perform shift.
         - FOURIER_DIFFERENTIATION: Use Fourier differentiation.
     """
+
+    multislice_regularization_unwrap_image_integration_method: enums.ImageIntegrationMethods = (
+        enums.ImageIntegrationMethods.DECONVOLUTION
+    )
+    """
+    The method for integrating the phase gradient during phase unwrapping.
     
+        - FOURIER: Use Fourier integration as implemented in PtychoShelves.
+        - DECONVOLUTION: Deconvolve a ramp filter.
+        - DISCRETE: Use cumulative sum.
+    """
+
     multislice_regularization_stride: int = 1
     """The number of epochs between multislice regularization updates."""
 
-    patch_interpolation_method: enums.PatchInterpolationMethods = enums.PatchInterpolationMethods.FOURIER
+    patch_interpolation_method: enums.PatchInterpolationMethods = (
+        enums.PatchInterpolationMethods.FOURIER
+    )
     """The interpolation method used for extracting and updating patches of the object."""
-    
+
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
         del d["initial_guess"]
@@ -163,7 +183,7 @@ class ProbeOptions(ParameterOptions):
     The first OPR mode of all incoherent modes are always optimized aslong as
     `optimizable` is `True`. In addition to thtat, eigenmodes (of the first
     incoherent mode) are optimized when:
-    
+
     - The probe has multiple OPR modes;
     - `OPRModeWeightsConfig` is given.
     """
@@ -189,7 +209,9 @@ class ProbeOptions(ParameterOptions):
     orthogonalize_incoherent_modes_stride: int = 1
     """The number of epochs between orthogonalizing the incoherent probe modes."""
 
-    orthogonalize_incoherent_modes_method: enums.OrthogonalizationMethods = enums.OrthogonalizationMethods.GS
+    orthogonalize_incoherent_modes_method: enums.OrthogonalizationMethods = (
+        enums.OrthogonalizationMethods.GS
+    )
     """The method to use for incoherent_mode orthogonalization."""
 
     orthogonalize_opr_modes: bool = False
@@ -202,7 +224,7 @@ class ProbeOptions(ParameterOptions):
 
     def check(self):
         if not (self.initial_guess is not None and self.initial_guess.ndim == 4):
-            raise ValueError('Probe initial_guess must be a (n_opr_modes, n_modes, h, w) tensor.')
+            raise ValueError("Probe initial_guess must be a (n_opr_modes, n_modes, h, w) tensor.")
 
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
@@ -249,7 +271,7 @@ class ProbePositionOptions(ParameterOptions):
     """
     Detailed options for position correction.
     """
-    
+
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
         del d["position_x_px"]
@@ -259,7 +281,6 @@ class ProbePositionOptions(ParameterOptions):
 
 @dataclasses.dataclass
 class OPRModeWeightsOptions(ParameterOptions):
-
     initial_weights: Union[ndarray] = None
     """
     The initial weight(s) of the eigenmode(s). Acceptable values include the following:
@@ -288,10 +309,12 @@ class OPRModeWeightsOptions(ParameterOptions):
     def check(self):
         if self.optimizable:
             if not (self.optimize_intensity_variation or self.optimize_eigenmode_weights):
-                raise ValueError('When OPRModeWeights is optimizable, at least 1 of '
-                                 'optimize_intensity_variation and optimize_eigenmode_weights '
-                                 'should be set to True.')
-                
+                raise ValueError(
+                    "When OPRModeWeights is optimizable, at least 1 of "
+                    "optimize_intensity_variation and optimize_eigenmode_weights "
+                    "should be set to True."
+                )
+
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
         del d["initial_weights"]
@@ -300,14 +323,13 @@ class OPRModeWeightsOptions(ParameterOptions):
 
 @dataclasses.dataclass
 class ReconstructorOptions(Options):
-
     # This should be superseded by CorrectionPlan in ParameterConfig when it is there.
     num_epochs: int = 100
     """The number of epochs to run."""
 
     batch_size: int = 1
     """The number of data to process in each minibatch."""
-    
+
     batching_mode: enums.BatchingModes = enums.BatchingModes.RANDOM
     """
     The batching mode to use. 
@@ -316,13 +338,13 @@ class ReconstructorOptions(Options):
     - `enums.BatchingModes.COMPACT`: load a spatially close cluster of data in each minibatch.
       This is equivalent to the compact mode in PtychoSheleves.
     """
-    
+
     compact_mode_update_clustering: bool = False
     """
     If True, clusters are updated after each probe position update when `batching_mode` is
     `COMPACT`.
     """
-    
+
     compact_mode_update_clustering_stride: int = 1
     """
     The number of epochs between updating clusters when `batching_mode` is `COMPACT` and
@@ -344,7 +366,7 @@ class ReconstructorOptions(Options):
     argument in some reconstructors, this function is only used for cost displaying
     and is not involved in the reconstruction math.
     """
-    
+
     use_low_memory_forward_model: bool = False
     """
     If True, forward propagation of ptychography will be done using less vectorized code.
@@ -357,5 +379,4 @@ class ReconstructorOptions(Options):
 
 @dataclasses.dataclass
 class TaskOptions(Options):
-
     pass

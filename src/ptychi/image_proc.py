@@ -490,8 +490,8 @@ def integrate_image_2d_fourier(grad_y: Tensor, grad_x: Tensor) -> Tensor:
     f = torch.fft.fft2(grad_x + 1j * grad_y)
     y, x = torch.fft.fftfreq(shape[0]), torch.fft.fftfreq(shape[1])
 
-    r = torch.exp(2j * torch.pi * (x[:, None] + y))
-    r = r / (2j * torch.pi * (x[:, None] + 1j * y))
+    r = torch.exp(2j * torch.pi * (x + y[:, None]))
+    r = r / (2j * torch.pi * (x + 1j * y[:, None]))
     r[0, 0] = 0
     integrated_image = f * r
     integrated_image = torch.fft.ifft2(integrated_image)
@@ -1011,9 +1011,13 @@ def unwrap_phase_2d(
     image_grad_method: Literal[
         "fourier_shift", "fourier_differentiation", "nearest"
     ] = "fourier_shift",
+    image_integration_method: Literal[
+        "fourier", "discrete", "deconvolution"
+    ] = "deconvolution",
     weight_map: Optional[Tensor] = None,
     flat_region_mask: Optional[Tensor] = None,
     deramp_polyfit_order: int = 1,
+    return_phase_grads: bool = False,
     eps: float = 1e-6,
 ):
     """
@@ -1026,11 +1030,16 @@ def unwrap_phase_2d(
     fourier_shift_step : float
         The finite-difference step size used to calculate the gradient,
         if the Fourier shift method is used.
-    finite_diff_method : str
+    image_grad_method : str
         The method used to calculate the phase gradient.
             - "fourier_shift": Use Fourier shift to perform shift.
             - "nearest": Use nearest neighbor to perform shift.
             - "fourier_differentiation": Use Fourier differentiation.
+    image_integration_method : str
+        The method used to integrate the image back from gradients.
+            - "fourier": Use Fourier integration as implemented in PtychoShelves.
+            - "deconvolution": Deconvolve ramp filter.
+            - "discrete": Use cumulative sum.
     weight_map : Optional[Tensor]
         A weight map multiplied to the input image.
     flat_region_mask : Optional[Tensor]
@@ -1039,6 +1048,8 @@ def unwrap_phase_2d(
         ramps in the image. If None, de-ramping will not be done.
     deramp_polyfit_order : int
         The order of the polynomal fit used to de-ramp the phase.
+    return_phase_grads : bool
+        Whether to return the phase gradient.
     eps : float
         A small number to avoid division by zero.
 
@@ -1080,12 +1091,19 @@ def unwrap_phase_2d(
     if torch.any(torch.tensor(padding) > 0):
         gy = gy[padding[0] : -padding[0], padding[1] : -padding[1]]
         gx = gx[padding[0] : -padding[0], padding[1] : -padding[1]]
-    # phase = torch.real(integrate_image_2d(gy, gx, bc_center=bc_center))
-    phase = torch.real(integrate_image_2d_deconvolution(gy, gx, bc_center=bc_center))
+    if image_integration_method == "discrete":
+        phase = torch.real(integrate_image_2d(gy, gx, bc_center=bc_center))
+    elif image_integration_method == "fourier":
+        phase = torch.real(integrate_image_2d_fourier(gy, gx))
+    elif image_integration_method == "deconvolution":
+        phase = torch.real(integrate_image_2d_deconvolution(gy, gx, bc_center=bc_center))
+    else:
+        raise ValueError(f"Unknown integration method: {image_integration_method}")
 
     if flat_region_mask is not None:
         phase = remove_polynomial_background(
             phase, flat_region_mask, polyfit_order=deramp_polyfit_order
         )
-
+    if return_phase_grads:
+        return phase, (gy, gx)
     return phase

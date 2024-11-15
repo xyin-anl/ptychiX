@@ -77,6 +77,12 @@ class ImageGradientMethods(StrEnum):
     FOURIER_DIFFERENTIATION = auto()
     FOURIER_SHIFT = auto()
     NEAREST = auto()
+    
+    
+class ImageIntegrationMethods(StrEnum):
+    FOURIER = auto()
+    DECONVOLUTION = auto()
+    DISCRETE = auto()
 
 
 class PatchInterpolationMethods(StrEnum):
