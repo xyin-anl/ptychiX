@@ -151,11 +151,11 @@ class PlanarObject(Object):
         return self.shape[1:]
 
     @property
-    def extract_patches_function(self) -> ip.ExtractPatchesProtocol:
+    def extract_patches_function(self) -> "ip.ExtractPatchesProtocol":
         return maps.get_patch_extractor_function_by_name(self.options.patch_interpolation_method)
 
     @property
-    def place_patches_function(self) -> ip.PlacePatchesProtocol:
+    def place_patches_function(self) -> "ip.PlacePatchesProtocol":
         return maps.get_patch_placer_function_by_name(self.options.patch_interpolation_method)
 
     def get_slice(self, index):

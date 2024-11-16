@@ -71,7 +71,7 @@ def get_dtype_by_enum(key: enums.Dtypes) -> torch.dtype:
 
 def get_patch_placer_function_by_name(
     key: enums.PatchInterpolationMethods,
-) -> ip.PlacePatchesProtocol:
+) -> "ip.PlacePatchesProtocol":
     return {
         enums.PatchInterpolationMethods.FOURIER: ip.place_patches_fourier_shift,
         enums.PatchInterpolationMethods.BILINEAR: partial(
@@ -85,7 +85,7 @@ def get_patch_placer_function_by_name(
 
 def get_patch_extractor_function_by_name(
     key: enums.PatchInterpolationMethods,
-) -> ip.ExtractPatchesProtocol:
+) -> "ip.ExtractPatchesProtocol":
     return {
         enums.PatchInterpolationMethods.FOURIER: ip.extract_patches_fourier_shift,
         enums.PatchInterpolationMethods.BILINEAR: partial(
