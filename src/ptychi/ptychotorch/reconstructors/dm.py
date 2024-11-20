@@ -63,12 +63,12 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             raise NotImplementedError(
                 "DMReconstructor does not support multiple OPR modes yet."
             )
-        if (
-            self.parameter_group.probe_positions.options.optimizable
-        ):
-            raise NotImplementedError(
-                "DMReconstructor does not support position correction yet."
-            )
+        # if (
+        #     self.parameter_group.probe_positions.options.optimizable
+        # ):
+        #     raise NotImplementedError(
+        #         "DMReconstructor does not support position correction yet."
+        #     )
         if self.options.batch_size != DMReconstructorOptions.batch_size:
             logger.warning("Difference map reconstruction does not support batching!")
 
@@ -141,9 +141,10 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         # Calculate the dm exit wave and probe update in chunks
         probe_numerator = torch.zeros_like(probe.get_opr_mode(0))
         probe_denominator = torch.zeros_like(probe.get_opr_mode(0).abs())
+        delta_pos = torch.zeros_like(probe_positions.data)
         dm_error_squared = 0
         for i in range(n_chunks):
-            obj_patches, dm_error_squared = self.apply_dm_update_to_exit_wave_chunk(
+            obj_patches, dm_error_squared, new_psi = self.apply_dm_update_to_exit_wave_chunk(
                 start_pts[i], end_pts[i], y_true, valid_pixel_mask, dm_error_squared
             )
             if probe.optimization_enabled(self.current_epoch):
@@ -153,6 +154,12 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
                     obj_patches,
                     start_pts[i],
                     end_pts[i],
+                )
+            if probe_positions.optimization_enabled(self.current_epoch):
+                delta_pos[start_pts[i] : end_pts[i]] = self.get_positions_update_chunk(
+                    indices=list(range(start_pts[i], end_pts[i])),
+                    obj_patches=obj_patches,
+                    chi=self.psi[start_pts[i] : end_pts[i]] - new_psi,
                 )
 
         # Update the probe
@@ -165,6 +172,10 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         # Update the object
         if object_.optimization_enabled(self.current_epoch):
             self.update_object(start_pts, end_pts)
+
+        if probe_positions.optimization_enabled(self.current_epoch):
+            probe_positions.set_grad(-delta_pos)
+            probe_positions.optimizer.step()
 
         return dm_error_squared
 
@@ -196,7 +207,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         y_true: Tensor,
         valid_pixel_mask: Tensor,
         dm_error_squared: Tensor,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor, Tensor]:
         """
         Calculate the updated exit wave according to equation (9) in
         this paper: https://doi.org/10.1016/j.ultramic.2008.12.011
@@ -234,7 +245,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         dm_error_squared += (psi_update.abs() ** 2).sum()
 
-        return obj_patches, dm_error_squared
+        return obj_patches, dm_error_squared, new_psi
 
     def add_to_probe_update_terms(
         self,
@@ -283,23 +294,22 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         # Apply object update
         object_.set_data(updated_object)
 
-    # def update_positions(
-    #     self, indices: Tensor, obj_patches: Tensor, exit_wave_update: Tensor
-    # ):
-    #     "Update the probe position estimate. Only gradient based updates are allowed for now."
+    def get_positions_update_chunk(
+        self, indices: Tensor, obj_patches: Tensor, chi: Tensor
+    ) -> Tensor:
+        "Calculate the probe position update. Only gradient based updates are allowed for now."
 
-    #     probe = self.parameter_group.probe
-    #     probe_positions = self.parameter_group.probe_positions
+        probe = self.parameter_group.probe
+        probe_positions = self.parameter_group.probe_positions
 
-    #     delta_pos = torch.zeros_like(probe_positions.data)
-    #     delta_pos[indices] = probe_positions.position_correction.get_update(
-    #         exit_wave_update,
-    #         obj_patches,
-    #         None,
-    #         probe,
-    #         self.parameter_group.opr_mode_weights,
-    #         indices,
-    #         None,
-    #     )
-    #     probe_positions.set_grad(-delta_pos)
-    #     probe_positions.optimizer.step()
+        delta_pos = probe_positions.position_correction.get_update(
+            chi,
+            obj_patches,
+            None,
+            probe,
+            self.parameter_group.opr_mode_weights,
+            indices,
+            None,
+        )
+
+        return delta_pos
