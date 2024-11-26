@@ -60,15 +60,12 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         if self.parameter_group.object.is_multislice:
             raise NotImplementedError("DMReconstructor only supports 2D objects.")
         if self.parameter_group.probe.has_multiple_opr_modes:
-            raise NotImplementedError(
-                "DMReconstructor does not support multiple OPR modes yet."
-            )
-        # if (
-        #     self.parameter_group.probe_positions.options.optimizable
-        # ):
-        #     raise NotImplementedError(
-        #         "DMReconstructor does not support position correction yet."
-        #     )
+            raise NotImplementedError("DMReconstructor does not support multiple OPR modes yet.")
+        if (
+            self.parameter_group.probe_positions.position_correction.correction_type
+            is api.enums.PositionCorrectionTypes.GRADIENT
+        ):
+            raise NotImplementedError("DMReconstructor only supports gradient position correction.")
         if self.options.batch_size != DMReconstructorOptions.batch_size:
             logger.warning("Difference map reconstruction does not support batching!")
 
