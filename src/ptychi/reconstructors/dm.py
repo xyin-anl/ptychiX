@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 import math
 
 from ptychi.api import enums
+import ptychi.api as api
 from ptychi.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
     LossTracker,
@@ -15,7 +16,6 @@ from ptychi.reconstructors.base import (
 from ptychi.api.options.dm import DMReconstructorOptions
 
 if TYPE_CHECKING:
-    import ptychi.api as api
     import ptychi.data_structures.parameter_group as pg
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
             raise NotImplementedError("DMReconstructor does not support multiple OPR modes yet.")
         if (
             self.parameter_group.probe_positions.position_correction.correction_type
-            is api.enums.PositionCorrectionTypes.GRADIENT
+            is not api.enums.PositionCorrectionTypes.GRADIENT
         ):
             raise NotImplementedError("DMReconstructor only supports gradient position correction.")
         if self.options.batch_size != DMReconstructorOptions.batch_size:
@@ -108,9 +108,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         probe_positions = self.parameter_group.probe_positions
 
         # Get indices used for dividing data into chunks
-        start_pts = list(
-            range(0, probe_positions.n_scan_points, self.options.chunk_length)
-        )
+        start_pts = list(range(0, probe_positions.n_scan_points, self.options.chunk_length))
         end_pts = list(
             range(
                 self.options.chunk_length,
@@ -183,9 +181,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         probe = self.parameter_group.probe
         positions = self.parameter_group.probe_positions.tensor
 
-        obj_patches = object_.extract_patches(
-            positions[start_pt:end_pt], probe.get_spatial_shape()
-        )
+        obj_patches = object_.extract_patches(positions[start_pt:end_pt], probe.get_spatial_shape())
         psi = self.forward_model.propagate_through_object(
             self.forward_model.get_probe(list(range(start_pt, end_pt))),
             obj_patches,
@@ -227,15 +223,11 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         # Replace intensities
         revised_psi = torch.where(
             valid_pixel_mask.repeat(revised_psi.shape[0], probe.n_modes, 1, 1),
-            self.replace_propagated_exit_wave_magnitude(
-                revised_psi, y_true[start_pt:end_pt]
-            ),
+            self.replace_propagated_exit_wave_magnitude(revised_psi, y_true[start_pt:end_pt]),
             revised_psi,
         )
         # Propagate back to sample plane
-        revised_psi = self.forward_model.far_field_propagator.propagate_backward(
-            revised_psi
-        )
+        revised_psi = self.forward_model.far_field_propagator.propagate_backward(revised_psi)
         # Update the exit wave
         psi_update = (revised_psi - new_psi) * self.options.exit_wave_update_relaxation
         self.psi[start_pt:end_pt] += psi_update
