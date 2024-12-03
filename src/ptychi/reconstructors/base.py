@@ -1,4 +1,5 @@
 from typing import Optional, Tuple, Sequence, TYPE_CHECKING
+import logging
 
 import pandas as pd
 import torch
@@ -15,6 +16,8 @@ import ptychi.io_handles as io
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg
     import ptychi.api as api
+
+logger = logging.getLogger(__name__)
 
 
 class LossTracker:
@@ -123,7 +126,7 @@ class LossTracker:
         print(self.table)
 
     def print_latest(self) -> None:
-        print(
+        logger.info(
             "Epoch: {}, Loss: {}".format(int(self.table.iloc[-1].epoch), self.table.iloc[-1].loss)
         )
 
@@ -272,7 +275,7 @@ class IterativeReconstructor(Reconstructor):
         if self.current_epoch == 0:
             self.run_pre_run_hooks()
         n_epochs = n_epochs if n_epochs is not None else self.n_epochs
-        for _ in tqdm.trange(n_epochs):
+        for _ in tqdm.trange(n_epochs, disable=logger.level > logging.INFO):
             self.run_pre_epoch_hooks()
             self.current_minibatch = 0
             for batch_data in self.dataloader:
