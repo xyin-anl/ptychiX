@@ -44,7 +44,6 @@ def test_2d_ptycho_probe_power_constraint_lsqml(pytestconfig, generate_gold=Fals
     
     options.probe_position_options.position_x_px = positions_px[:, 1]
     options.probe_position_options.position_y_px = positions_px[:, 0]
-    options.probe_position_options.pixel_size_m = pixel_size_m
     options.probe_position_options.update_magnitude_limit = 1.0
     options.probe_position_options.optimizable = True
     options.probe_position_options.optimizer = api.Optimizers.ADAM
@@ -112,7 +111,6 @@ def test_2d_ptycho_probe_power_constraint_ad(pytestconfig, generate_gold=False, 
     
     options.probe_position_options.position_x_px = positions_px[:, 1]
     options.probe_position_options.position_y_px = positions_px[:, 0]
-    options.probe_position_options.pixel_size_m = pixel_size_m
     options.probe_position_options.update_magnitude_limit = 1.0
     options.probe_position_options.optimizable = True
     options.probe_position_options.optimizer = api.Optimizers.ADAM

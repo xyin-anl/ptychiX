@@ -11,6 +11,14 @@ from ptychi.api.options.plan import OptimizationPlan
 
 @dataclasses.dataclass
 class Options:
+    
+    def __setattr__(self, name, value):
+        # Check if the attribute already exists in the class fields.
+        if name not in {f.name for f in dataclasses.fields(self)}:
+            raise AttributeError(f"{name} is not a valid field in {self.__class__.__name__}.")
+        # If it exists, allow setting the value.
+        super().__setattr__(name, value)
+    
     def uninherited_fields(self) -> dict:
         """
         Find fields that are not inherited from the generic options parent
