@@ -49,7 +49,7 @@ def test_2d_ptycho_probe_power_constraint_lsqml(pytestconfig, generate_gold=Fals
     options.probe_position_options.optimizer = api.Optimizers.ADAM
     options.probe_position_options.step_size = 1e-1
     
-    options.opr_mode_weight_options.initial_weights = np.array([1, 0.1, 0.1, 0.1])
+    options.opr_mode_weight_options.initial_weights = np.array([1, 1e-6, 1e-6, 1e-6])
     options.opr_mode_weight_options.optimize_intensity_variation = True
     options.opr_mode_weight_options.optimizable = True
     
@@ -113,14 +113,14 @@ def test_2d_ptycho_probe_power_constraint_ad(pytestconfig, generate_gold=False, 
     options.probe_position_options.position_y_px = positions_px[:, 0]
     options.probe_position_options.update_magnitude_limit = 1.0
     options.probe_position_options.optimizable = True
-    options.probe_position_options.optimizer = api.Optimizers.ADAM
+    options.probe_position_options.optimizer = api.Optimizers.SGD
     options.probe_position_options.step_size = 1e-1
     
-    options.opr_mode_weight_options.initial_weights = np.array([1, 0.1, 0.1, 0.1])
+    options.opr_mode_weight_options.initial_weights = np.array([1, 1e-6, 1e-6, 1e-6])
     options.opr_mode_weight_options.optimize_intensity_variation = True
     options.opr_mode_weight_options.optimizable = True
-    options.opr_mode_weight_options.optimizer = api.Optimizers.ADAM
-    options.opr_mode_weight_options.step_size = 1e-2
+    options.opr_mode_weight_options.optimizer = api.Optimizers.SGD
+    options.opr_mode_weight_options.step_size = 1e-3
     
     options.reconstructor_options.num_epochs = 4
     options.reconstructor_options.batch_size = 40
@@ -149,6 +149,6 @@ if __name__ == '__main__':
     parser.add_argument('--high-tol', action='store_true')
     args = parser.parse_args()
 
-    test_2d_ptycho_probe_power_constraint_lsqml(None, generate_gold=args.generate_gold, debug=True, high_tol=args.high_tol)
+    # test_2d_ptycho_probe_power_constraint_lsqml(None, generate_gold=args.generate_gold, debug=True, high_tol=args.high_tol)
     test_2d_ptycho_probe_power_constraint_ad(None, generate_gold=args.generate_gold, debug=True, high_tol=args.high_tol)
     
