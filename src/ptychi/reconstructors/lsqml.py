@@ -289,7 +289,10 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         ):
             self._apply_object_update(None, None)
 
-        self.update_variable_probe(indices, chi, delta_p_i, delta_p_hat, obj_patches) #FIXME
+        if not self.parameter_group.opr_mode_weights.is_dummy:
+            self.parameter_group.opr_mode_weights.update_variable_probe(
+                self, indices, chi, delta_p_i, obj_patches
+            )
 
         delta_o_patches = self.alpha_object_all_slices[0] * delta_o_i
         return delta_o_patches

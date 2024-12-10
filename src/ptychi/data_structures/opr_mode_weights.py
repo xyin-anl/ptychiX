@@ -6,6 +6,7 @@ from torch import Tensor
 import ptychi.data_structures.base as ds
 from ptychi.reconstructors.base import AnalyticalIterativePtychographyReconstructor
 import ptychi.maths as pmath
+
 if TYPE_CHECKING:
     import ptychi.api as api
 
@@ -72,7 +73,6 @@ class OPRModeWeights(ds.ReconstructParameter):
         enabled = super().optimization_enabled(epoch)
         return enabled and self.optimize_intensity_variation
 
-
     def update_variable_probe(
         self,
         reconstructor: AnalyticalIterativePtychographyReconstructor,
@@ -82,9 +82,7 @@ class OPRModeWeights(ds.ReconstructParameter):
         obj_patches: Tensor,
     ):
         if reconstructor.parameter_group.probe.has_multiple_opr_modes and (
-            reconstructor.parameter_group.probe.optimization_enabled(
-                reconstructor.current_epoch
-            )
+            reconstructor.parameter_group.probe.optimization_enabled(reconstructor.current_epoch)
             or (self.eigenmode_weight_optimization_enabled(reconstructor.current_epoch))
         ):
             self.update_opr_probe_modes_and_weights(
@@ -157,9 +155,7 @@ class OPRModeWeights(ds.ReconstructParameter):
 
         if reconstructor.parameter_group.probe.optimization_enabled(reconstructor.current_epoch):
             reconstructor.parameter_group.probe.set_data(probe)
-        if self.eigenmode_weight_optimization_enabled(
-            reconstructor.current_epoch
-        ):
+        if self.eigenmode_weight_optimization_enabled(reconstructor.current_epoch):
             self.set_data(weights)
 
     def _update_first_eigenmode_and_weight(
