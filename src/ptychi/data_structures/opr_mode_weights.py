@@ -136,7 +136,6 @@ class OPRModeWeights(ds.ReconstructParameter):
             )
             weights_i = self.get_weights(indices)[:, i_opr_mode]
             eigenmode_i, weights_i = self._update_first_eigenmode_and_weight(
-                reconstructor,
                 residue_update,
                 eigenmode_i,
                 weights_i,
@@ -170,7 +169,6 @@ class OPRModeWeights(ds.ReconstructParameter):
 
     def _update_first_eigenmode_and_weight(
         self,
-        reconstructor: AnalyticalIterativePtychographyReconstructor,
         residue_update: Tensor,
         eigenmode_i: Tensor,
         weights_i: Tensor,

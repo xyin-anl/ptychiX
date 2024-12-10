@@ -18,10 +18,7 @@ def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=Fa
     
     tutils.setup(name, cpu_only=False, gpu_indices=[0])
     
-    data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=2)
-
-    # probe = orthogonalize_gs(torch.tensor(probe), (-1, -2), 1)
-    # probe = rescale_probe(probe[0], data)[None]
+    data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=3)
         
     options = api.EPIEOptions()
     options.data_options.data = data
@@ -38,7 +35,7 @@ def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=Fa
     options.probe_options.optimizer = api.Optimizers.SGD
     options.probe_options.step_size = 0.1
     options.probe_options.alpha = 1
-    options.probe_options.eigenmode_update_relaxation = 0.1 # !
+    options.probe_options.eigenmode_update_relaxation = 0.1
 
     options.probe_position_options.position_x_px = positions_px[:, 1]
     options.probe_position_options.position_y_px = positions_px[:, 0]
@@ -46,10 +43,10 @@ def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=Fa
 
     options.opr_mode_weight_options.initial_weights = generate_initial_opr_mode_weights(len(positions_px), probe.shape[0], eigenmode_weight=0.1)
     options.opr_mode_weight_options.optimizable = True
-    options.opr_mode_weight_options.update_relaxation = 0.1 # !
+    options.opr_mode_weight_options.update_relaxation = 0.1
     
     options.reconstructor_options.batch_size = 96
-    options.reconstructor_options.num_epochs = 32
+    options.reconstructor_options.num_epochs = 8
     
     task = PtychographyTask(options)
     task.run()
