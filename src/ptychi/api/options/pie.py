@@ -30,6 +30,8 @@ class PIEProbeOptions(base.ProbeOptions):
     Multiplier for the update to the probe, as defined in table 1 of Maiden (2017).
     """
 
+    eigenmode_update_relaxation: float = 0.1
+
 
 @dataclasses.dataclass
 class PIEProbePositionOptions(base.ProbePositionOptions):
@@ -38,7 +40,7 @@ class PIEProbePositionOptions(base.ProbePositionOptions):
 
 @dataclasses.dataclass
 class PIEOPRModeWeightsOptions(base.OPRModeWeightsOptions):
-    pass
+    update_relaxation: float = 0.1
 
 
 @dataclasses.dataclass
