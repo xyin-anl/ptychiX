@@ -247,6 +247,12 @@ class ProbeOptions(ParameterOptions):
     support_constraint_stride: int = 1
     """The number of epochs between probe support constraint updates."""
 
+
+    eigenmode_update_relaxation: float = 1.0
+    """
+    A separate step size for eigenmode update.
+    """
+
     def check(self):
         if not (self.initial_guess is not None and self.initial_guess.ndim == 4):
             raise ValueError("Probe initial_guess must be a (n_opr_modes, n_modes, h, w) tensor.")
@@ -344,7 +350,11 @@ class OPRModeWeightsOptions(ParameterOptions):
     """
     The degree of the polynomial used for smoothing OPR mode weights.
     """
-    
+
+    update_relaxation: float = 1.0
+    """
+    A separate step size for eigenmode weight update.
+    """
 
     def check(self):
         if self.optimizable:
