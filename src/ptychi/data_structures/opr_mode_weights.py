@@ -82,26 +82,21 @@ class OPRModeWeights(ds.ReconstructParameter):
         obj_patches: Tensor,
     ):
         if reconstructor.parameter_group.probe.has_multiple_opr_modes and (
-            reconstructor.parameter_group.probe.optimization_enabled(reconstructor.current_epoch)
-            or (
-                not self.is_dummy
-                and self.eigenmode_weight_optimization_enabled(
-                    reconstructor.current_epoch
-                )
+            reconstructor.parameter_group.probe.optimization_enabled(
+                reconstructor.current_epoch
             )
+            or (self.eigenmode_weight_optimization_enabled(reconstructor.current_epoch))
         ):
             self.update_opr_probe_modes_and_weights(
                 reconstructor, indices, chi, delta_p_i, obj_patches
             )
 
-        if (
-            not self.is_dummy
-            and self.intensity_variation_optimization_enabled(
-                reconstructor.current_epoch
-            )
-        ):
+        if self.intensity_variation_optimization_enabled(reconstructor.current_epoch):
             delta_weights_int = self._calculate_intensity_variation_update_direction(
-                reconstructor, indices, chi, obj_patches,
+                reconstructor,
+                indices,
+                chi,
+                obj_patches,
             )
             self._apply_variable_intensity_updates(delta_weights_int)
 

@@ -128,11 +128,12 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         delta_p_i = None
         if probe.optimization_enabled(self.current_epoch):
             step_weight = self.calculate_probe_step_weight(obj_patches)
-            delta_p_i = step_weight * (psi_prime - psi)   # get delta p at each position
+            delta_p_i = step_weight * (psi_prime - psi) # get delta p at each position
 
-        opr_mode_weights.update_variable_probe(
-            self, indices, psi_prime - psi, delta_p_i, obj_patches
-        )
+        if not self.parameter_group.opr_mode_weights.is_dummy:
+            opr_mode_weights.update_variable_probe(
+                self, indices, psi_prime - psi, delta_p_i, obj_patches
+            )
 
         return (delta_o, delta_p_i, delta_pos), y
 
