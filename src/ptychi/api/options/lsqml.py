@@ -74,13 +74,6 @@ class LSQMLObjectOptions(base.ObjectOptions):
 
 @dataclasses.dataclass
 class LSQMLProbeOptions(base.ProbeOptions):
-    
-    eigenmode_update_relaxation: float = 1.0
-    """
-    A separate step size for eigenmode update. For now, this is only used by 
-    LSQMLReconstructor.
-    """
-    
     optimal_step_size_scaler: float = 0.9
     """
     A scaler for the solved optimal step size (beta_LSQ in PtychoShelves).
@@ -94,13 +87,8 @@ class LSQMLProbePositionOptions(base.ProbePositionOptions):
 
 @dataclasses.dataclass
 class LSQMLOPRModeWeightsOptions(base.OPRModeWeightsOptions):
-    
-    update_relaxation: float = 1.0
-    """
-    A separate step size for eigenmode weight update. For now, this is only used by
-    LSQMLReconstructor.
-    """
-    
+    pass
+
 
 @dataclasses.dataclass
 class LSQMLOptions(task_options.PtychographyTaskOptions):
@@ -114,4 +102,3 @@ class LSQMLOptions(task_options.PtychographyTaskOptions):
     probe_position_options: LSQMLProbePositionOptions = field(default_factory=LSQMLProbePositionOptions)
     
     opr_mode_weight_options: LSQMLOPRModeWeightsOptions = field(default_factory=LSQMLOPRModeWeightsOptions)
-        
