@@ -193,7 +193,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.alpha_object_all_slices[0] += pmath.trim_mean(alpha_o_i)
 
         if self.parameter_group.probe.optimization_enabled(self.current_epoch):
-            self._apply_probe_update(alpha_p_i, delta_p_hat)
+            self.parameter_group.probe.apply_probe_update(delta_p_hat, alpha_p_i)
 
         if (
             self.parameter_group.object.optimization_enabled(self.current_epoch)
@@ -278,7 +278,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                     )
 
                 if self.parameter_group.probe.optimization_enabled(self.current_epoch):
-                    self._apply_probe_update(alpha_p_i, delta_p_hat)
+                    self.parameter_group.probe.apply_probe_update(delta_p_hat, alpha_p_i)
                     
             self.alpha_object_all_slices[i_slice] += pmath.trim_mean(alpha_o_i)
             chi = delta_p_i
@@ -471,31 +471,31 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         delta_p_hat = delta_p_hat / delta_p.shape[0]
         return delta_p_hat
 
-    def _apply_probe_update(self, alpha_p_i, delta_p_hat):
-        """
-        Eq. 27a of Odstrcil, 2018.
-        """
-        # Shape of alpha_p_i:        (batch_size,)
-        # Shape of delta_p_hat:      (n_probe_modes, h, w)
-        # PtychoShelves code simply multiplies delta_p_hat with averaged step size.
-        # This is different from the paper which does the following:
-        #     update_vec = delta_p_hat * obj_patches[:, None, :, :].abs() ** 2
-        #     update_vec = update_vec * alpha_p_i[:, None, None, None]
-        #     update_vec = update_vec / ((obj_patches.abs() ** 2).sum(0) + delta)
+    # def _apply_probe_update(self, alpha_p_i, delta_p_hat):
+    #     """
+    #     Eq. 27a of Odstrcil, 2018.
+    #     """
+    #     # Shape of alpha_p_i:        (batch_size,)
+    #     # Shape of delta_p_hat:      (n_probe_modes, h, w)
+    #     # PtychoShelves code simply multiplies delta_p_hat with averaged step size.
+    #     # This is different from the paper which does the following:
+    #     #     update_vec = delta_p_hat * obj_patches[:, None, :, :].abs() ** 2
+    #     #     update_vec = update_vec * alpha_p_i[:, None, None, None]
+    #     #     update_vec = update_vec / ((obj_patches.abs() ** 2).sum(0) + delta)
 
-        # Just apply the update to the main OPR mode of each incoherent mode.
-        # To do this, we pad the update vector with zeros in the OPR mode dimension.
-        delta_p_hat = delta_p_hat[None, :, :, :]
-        if self.parameter_group.probe.has_multiple_opr_modes:
-            delta_p_hat = torch.nn.functional.pad(
-                delta_p_hat,
-                pad=(0, 0, 0, 0, 0, 0, 0, self.parameter_group.probe.n_opr_modes - 1),
-                mode="constant",
-                value=0.0,
-            )
+    #     # Just apply the update to the main OPR mode of each incoherent mode.
+    #     # To do this, we pad the update vector with zeros in the OPR mode dimension.
+    #     delta_p_hat = delta_p_hat[None, :, :, :]
+    #     if self.parameter_group.probe.has_multiple_opr_modes:
+    #         delta_p_hat = torch.nn.functional.pad(
+    #             delta_p_hat,
+    #             pad=(0, 0, 0, 0, 0, 0, 0, self.parameter_group.probe.n_opr_modes - 1),
+    #             mode="constant",
+    #             value=0.0,
+    #         )
 
-        self.parameter_group.probe.set_grad(-delta_p_hat * torch.mean(alpha_p_i))
-        self.parameter_group.probe.optimizer.step()
+    #     self.parameter_group.probe.set_grad(-delta_p_hat * torch.mean(alpha_p_i))
+    #     self.parameter_group.probe.optimizer.step()
 
     def _calculate_object_patch_update_direction(self, indices, chi, psi_im1=None):
         r"""

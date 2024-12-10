@@ -128,8 +128,9 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         delta_p_i = None
         if probe.optimization_enabled(self.current_epoch):
             step_weight = self.calculate_probe_step_weight(obj_patches)
-            delta_p_i = step_weight * (psi_prime - psi) # get delta p at each position
+            delta_p_i = step_weight * (psi_prime - psi)  # get delta p at each position
 
+        # Calculate and apply opr mode updates
         if not self.parameter_group.opr_mode_weights.is_dummy:
             opr_mode_weights.update_variable_probe(
                 self, indices, psi_prime - psi, delta_p_i, obj_patches
@@ -204,24 +205,11 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             object_.optimizer.step()
 
         if delta_p_i is not None:
-            self.apply_probe_update(delta_p_i)
+            probe.apply_probe_update(delta_p_i.mean(0))
 
         if delta_pos is not None:
             probe_positions.set_grad(-delta_pos)
             probe_positions.optimizer.step()
-
-    def apply_probe_update(self, delta_p_i: Tensor):
-        probe = self.parameter_group.probe
-        delta_p = delta_p_i.mean(0, keepdims=True)
-        if probe.has_multiple_opr_modes:
-            delta_p = torch.nn.functional.pad(
-                delta_p,
-                pad=(0, 0, 0, 0, 0, 0, 0, probe.n_opr_modes - 1),
-                mode="constant",
-                value=0.0,
-            )
-        probe.set_grad(-delta_p)  # average over all positions
-        probe.optimizer.step()
 
 
 class EPIEReconstructor(PIEReconstructor):

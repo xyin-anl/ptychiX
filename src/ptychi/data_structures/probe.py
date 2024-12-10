@@ -194,6 +194,44 @@ class Probe(ds.ReconstructParameter):
                 unique_probe = p_orig[:, 0, ...]
         return unique_probe
 
+    def apply_probe_update(
+        self, delta_p_hat: torch.Tensor, alpha_p_i: Optional[torch.Tensor] = None
+    ):
+        """
+        Eq. 27a of Odstrcil, 2018.
+
+        Parameters
+        ----------
+        delta_p_hat : Tensor
+            A (n_probe_modes, h, w) tensor of the probe update direction.
+        alpha_p_i : Tensor
+            An optional (batch_size,) tensor of the probe update step size.
+        """
+        # Shape of alpha_p_i:        (batch_size,)
+        # Shape of delta_p_hat:      (n_probe_modes, h, w)
+        # PtychoShelves code simply multiplies delta_p_hat with averaged step size.
+        # This is different from the paper which does the following:
+        #     update_vec = delta_p_hat * obj_patches[:, None, :, :].abs() ** 2
+        #     update_vec = update_vec * alpha_p_i[:, None, None, None]
+        #     update_vec = update_vec / ((obj_patches.abs() ** 2).sum(0) + delta)
+
+        # Just apply the update to the main OPR mode of each incoherent mode.
+        # To do this, we pad the update vector with zeros in the OPR mode dimension.
+        delta_p_hat = delta_p_hat[None, :, :, :]
+        if self.has_multiple_opr_modes:
+            delta_p_hat = torch.nn.functional.pad(
+                delta_p_hat,
+                pad=(0, 0, 0, 0, 0, 0, 0, self.n_opr_modes - 1),
+                mode="constant",
+                value=0.0,
+            )
+        if alpha_p_i is None:
+            alpha_p = 1
+        else:
+            alpha_p = torch.mean(torch.mean(alpha_p_i))
+        self.set_grad(-delta_p_hat * alpha_p)
+        self.optimizer.step()
+
     def incoherent_mode_orthogonality_constraint_enabled(self, current_epoch: int) -> bool:
         if (
             self.has_multiple_incoherent_modes
