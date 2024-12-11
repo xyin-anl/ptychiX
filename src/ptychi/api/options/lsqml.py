@@ -55,12 +55,6 @@ class LSQMLProbeOptions(base.ProbeOptions):
     no upper bound is used.
     """
     
-    eigenmode_update_relaxation: float = 0.1
-    """
-    A separate step size for eigenmode update. For now, this is only used by 
-    LSQMLReconstructor.
-    """
-    
     
 @dataclasses.dataclass
 class LSQMLProbePositionOptions(base.ProbePositionOptions):
@@ -69,13 +63,8 @@ class LSQMLProbePositionOptions(base.ProbePositionOptions):
 
 @dataclasses.dataclass
 class LSQMLOPRModeWeightsOptions(base.OPRModeWeightsOptions):
-    
-    update_relaxation: float = 0.1
-    """
-    A separate step size for eigenmode weight update. For now, this is only used by
-    LSQMLReconstructor.
-    """
-    
+    pass
+
 
 @dataclasses.dataclass
 class LSQMLOptions(task_options.PtychographyTaskOptions):
@@ -89,4 +78,3 @@ class LSQMLOptions(task_options.PtychographyTaskOptions):
     probe_position_options: LSQMLProbePositionOptions = field(default_factory=LSQMLProbePositionOptions)
     
     opr_mode_weight_options: LSQMLOPRModeWeightsOptions = field(default_factory=LSQMLOPRModeWeightsOptions)
-        
