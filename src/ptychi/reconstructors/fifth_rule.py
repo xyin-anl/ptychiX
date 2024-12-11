@@ -37,6 +37,9 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
             *args,
             **kwargs,
         )
+        # !!!!!!!!!!!! it is better to return to normalized ffts as default, otherwise there is a lose f precision
+        self.forward_model.far_field_propagator.norm='ortho'
+
         # temp object to work with patches
         self.object_tmp = copy.deepcopy(self.parameter_group.object)
         # intermeadiate variables for the conjugate gradient directions
