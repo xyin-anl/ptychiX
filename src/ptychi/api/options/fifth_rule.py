@@ -20,6 +20,7 @@ class FifthRuleObjectOptions(base.ObjectOptions):
 
 @dataclasses.dataclass
 class FifthRuleProbeOptions(base.ProbeOptions):
+    rho: float = 10
     pass
     
 
