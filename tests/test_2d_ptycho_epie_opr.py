@@ -10,7 +10,7 @@ from ptychi.maths import orthogonalize_gs
 import test_utils as tutils
 
 
-def test_2d_ptycho_epie_mixed_states(pytestconfig, generate_gold=False, debug=False, high_tol=False):
+def test_2d_ptycho_epie_opr(pytestconfig, generate_gold=False, debug=False, high_tol=False):
     if pytestconfig is not None:
         high_tol = pytestconfig.getoption("high_tol")
 
@@ -67,5 +67,5 @@ if __name__ == '__main__':
     parser.add_argument('--high-tol', action='store_true')
     args = parser.parse_args()
 
-    test_2d_ptycho_epie_mixed_states(None, generate_gold=args.generate_gold, debug=True, high_tol=args.high_tol)
+    test_2d_ptycho_epie_opr(None, generate_gold=args.generate_gold, debug=True, high_tol=args.high_tol)
     
