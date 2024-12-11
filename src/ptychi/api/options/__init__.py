@@ -4,3 +4,4 @@ from .lsqml import *
 from .pie import *
 from .plan import *
 from .dm import *
+from .fifth_rule import *
