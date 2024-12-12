@@ -19,6 +19,7 @@ class DMReconstructorOptions(base.ReconstructorOptions):
     Smaller values are more memory efficient, but can be slower."""
 
 
+@dataclasses.dataclass
 class DMObjectOptions(base.ObjectOptions):
     amplitude_clamp_limit: float = 1000
     """Maximum allowed amplitude for the object reconstruction. Values above this will be clamped 
