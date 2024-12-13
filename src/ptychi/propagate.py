@@ -7,6 +7,8 @@ import cmath
 import torch
 from torch.fft import fft2, fftfreq, ifft2
 
+import ptychi.maths as pmath
+
 BooleanTensor: TypeAlias = torch.Tensor
 ComplexTensor: TypeAlias = torch.Tensor
 RealTensor: TypeAlias = torch.Tensor
@@ -118,10 +120,10 @@ class FourierPropagator(WavefieldPropagator):
         self.norm = norm
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return fft2(wavefield, norm=self.norm)
+        return pmath.fft2_precise(wavefield, norm=self.norm)
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        return ifft2(wavefield, norm=self.norm)
+        return pmath.ifft2_precise(wavefield, norm=self.norm)
 
 
 class AngularSpectrumPropagator(WavefieldPropagator):
@@ -155,11 +157,11 @@ class AngularSpectrumPropagator(WavefieldPropagator):
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         tf = self._transfer_function_real + 1j * self._transfer_function_imag
-        return ifft2(tf * fft2(wavefield))
+        return pmath.ifft2_precise(tf * pmath.fft2_precise(wavefield))
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         tf = self._transfer_function_real + 1j * self._transfer_function_imag
-        return ifft2(fft2(wavefield) / tf)
+        return pmath.ifft2_precise(pmath.fft2_precise(wavefield) / tf)
 
 
 class FresnelTransformPropagator(WavefieldPropagator):
@@ -180,11 +182,11 @@ class FresnelTransformPropagator(WavefieldPropagator):
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         A = self._C2 * self._C1 * self._C0
-        return A * fft2(wavefield * self._B)
+        return A * pmath.fft2_precise(wavefield * self._B)
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         A = self._C2 * self._C1 / self._C0
-        return self._B * ifft2(wavefield * A)
+        return self._B * pmath.ifft2_precise(wavefield * A)
 
 
 class FraunhoferPropagator(WavefieldPropagator):
@@ -203,8 +205,8 @@ class FraunhoferPropagator(WavefieldPropagator):
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         A = self._C2 * self._C1 * self._C0
-        return A * fft2(wavefield)
+        return A * pmath.fft2_precise(wavefield)
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         A = self._C2 * self._C1 / self._C0
-        return ifft2(wavefield * A)
+        return pmath.ifft2_precise(wavefield * A)

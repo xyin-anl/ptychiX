@@ -242,3 +242,17 @@ def polyfit(x: torch.Tensor, y: torch.Tensor, deg: int = 1):
     """
     x_powers = x[:, None] ** torch.arange(deg, -1, -1)
     return torch.linalg.lstsq(x_powers, y, rcond=None)[0]
+
+
+def fft2_precise(x, norm=None):
+    """
+    2D FFT with double precision.
+    """
+    return torch.fft.fft2(x.type(torch.complex128), norm=norm).type(x.dtype)
+
+
+def ifft2_precise(x, norm=None):
+    """
+    2D FFT with double precision.
+    """
+    return torch.fft.ifft2(x.type(torch.complex128), norm=norm).type(x.dtype)
