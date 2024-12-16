@@ -125,6 +125,7 @@ class PlanarObject(Object):
         if (
             self.options.slice_spacings_m is not None
             and len(self.options.slice_spacings_m) != self.n_slices - 1
+            and self.n_slices > 1
         ):
             raise ValueError("The number of slice spacings must be n_slices - 1.")
 
