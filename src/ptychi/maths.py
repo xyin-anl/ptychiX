@@ -244,6 +244,25 @@ def polyfit(x: torch.Tensor, y: torch.Tensor, deg: int = 1):
     return torch.linalg.lstsq(x_powers, y, rcond=None)[0]
 
 
+def polyval(x: torch.Tensor, coeffs: torch.Tensor):
+    """
+    Evaluate a polynomial at the given points.
+    
+    Parameters
+    ----------
+    x : torch.Tensor
+        The independent variable.
+    coeffs : torch.Tensor
+        The coefficients of the polynomial from high to low order.
+    
+    Returns
+    -------
+    torch.Tensor
+        The values of the polynomial at the given points.
+    """
+    return (coeffs * x.view(-1, 1) ** torch.arange(len(coeffs) - 1, -1, -1)).sum(1)
+
+
 def fft2_precise(x, norm=None):
     """
     2D FFT with double precision.

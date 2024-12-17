@@ -910,6 +910,29 @@ def remove_grid_artifacts(
     return img_new
 
 
+def median_filter_1d(x: Tensor, window_size: int = 5):
+    """
+    Apply a median filter to a 1D array.
+
+    Parameters
+    ----------
+    x : Tensor
+        A (..., N) tensor.
+    window_size : int
+        The size of the window.
+
+    Returns
+    -------
+    Tensor
+        The filtered array.
+    """
+    y = x.detach().clone()
+    rad = window_size // 2
+    for i in range(rad, x.shape[-1] - rad):
+        y[..., i] = torch.median(x[..., i - rad : i - rad + window_size], dim=-1).values
+    return y
+
+
 def vignett(img: Tensor, margin: int = 20, sigma: float = 1.0):
     """
     Vignett an image so that it gradually decays near the boundary.

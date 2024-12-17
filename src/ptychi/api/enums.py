@@ -89,3 +89,8 @@ class PatchInterpolationMethods(StrEnum):
     FOURIER = auto()
     BILINEAR = auto()
     NEAREST = auto()
+
+
+class OPRWeightSmoothingMethods(StrEnum):
+    MEDIAN = auto()
+    POLYNOMIAL = auto()

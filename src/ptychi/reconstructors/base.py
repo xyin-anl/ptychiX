@@ -408,6 +408,12 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             # Apply probe support constraint.
             if probe.support_constraint_enabled(self.current_epoch):
                 probe.constrain_support()
+                
+            # Smooth OPR weights.
+            if not self.parameter_group.opr_mode_weights.is_dummy:
+                if self.parameter_group.opr_mode_weights.weight_smoothing_enabled(self.current_epoch):
+                    self.parameter_group.opr_mode_weights.smooth_weights()
+                self.parameter_group.opr_mode_weights.remove_outliers()
 
 
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
