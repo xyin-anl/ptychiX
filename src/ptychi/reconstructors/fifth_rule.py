@@ -104,14 +104,13 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
         else:
             grad_p = torch.zeros_like(p)
         
-        # if self.current_epoch==0:
-        eta_o = -grad_o
-        eta_p = -grad_p
-        ### IF CG:
-        # else:
-        #     beta = self.calc_beta(o,p,grad_o,grad_p,eta_o,eta_p,d,gradF)
-        #     eta_o = -grad_o+beta*eta_o
-        #     eta_p = -grad_p+beta*eta_p
+        if self.current_epoch==0 or self.options.method=='GD':
+            eta_o = -grad_o
+            eta_p = -grad_p
+        else:
+            beta = self.calc_beta(o,p,grad_o,grad_p,eta_o,eta_p,d,gradF)
+            eta_o = -grad_o+beta*eta_o
+            eta_p = -grad_p+beta*eta_p
         
         # The step size is for both object and probe
         alpha,_,_ = self.calc_alpha(o,p,grad_o,grad_p,eta_o,eta_p,d,gradF)                               

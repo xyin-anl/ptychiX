@@ -9,6 +9,8 @@ import ptychi.api.enums as enums
 @dataclasses.dataclass
 class FifthRuleReconstructorOptions(base.ReconstructorOptions):
     
+    method: str = 'CG'
+
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.FIFTH_RULE
 
@@ -20,7 +22,7 @@ class FifthRuleObjectOptions(base.ObjectOptions):
 
 @dataclasses.dataclass
 class FifthRuleProbeOptions(base.ProbeOptions):
-    rho: float = 10
+    rho: float = 0.1
     pass
     
 
