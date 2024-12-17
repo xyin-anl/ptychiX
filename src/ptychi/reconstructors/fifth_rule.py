@@ -37,9 +37,6 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
             *args,
             **kwargs,
         )
-        # !!!!!!!!!!!! it is better to return to normalized ffts as default, otherwise there is a lose f precision
-        self.forward_model.far_field_propagator.norm='ortho'
-
         # temp object to work with patches
         self.object_tmp = copy.deepcopy(self.parameter_group.object)
         # intermeadiate variables for the conjugate gradient directions
@@ -63,6 +60,9 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
         )
         self.apply_updates(delta_o, delta_p, delta_pos)
         self.loss_tracker.update_batch_loss_with_metric_function(y_pred, y_true)
+        # self.loss_tracker.to_csv('fifth_rule')
+        # self.loss_tracker.print()
+        
         
     def compute_updates(
         self, indices: torch.Tensor, y_true: torch.Tensor, valid_pixel_mask: torch.Tensor
@@ -78,20 +78,20 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.indices = indices.cpu()
         self.positions = probe_positions.tensor[indices]
 
-        y = self.forward_model.forward(indices)
+        y = self.forward_model.forward(indices)        
 
         # intermediate variables for the CG
         eta_o = self.forward_model.intermediate_variables["eta_o"]
         eta_p = self.forward_model.intermediate_variables["eta_p"]
         
         # take current object and probe
-        p = probe.get_opr_mode(0)
+        p = probe.get_opr_mode(0) # to do for multi modes
         o = object_.get_slice(0)
-        
+                   
         # sqrt of data
-        d = torch.sqrt(y_true)[:,torch.newaxis]        
+        d = torch.sqrt(y_true)[:,torch.newaxis]      
 
-        # Gradient for the Gaussian model
+        # Gradient for the Gaussian model        
         gradF = self.gradientF(o,p,d)    
 
         # Gradients for the object and probe
@@ -104,14 +104,14 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
         else:
             grad_p = torch.zeros_like(p)
         
-        if self.current_epoch==0:
-            eta_o = -grad_o
-            eta_p = -grad_p
-        else:
-            # CG direction
-            beta = self.calc_beta(o,p,grad_o,grad_p,eta_o,eta_p,d,gradF)
-            eta_o = -grad_o+beta*eta_o
-            eta_p = -grad_p+beta*eta_p
+        # if self.current_epoch==0:
+        eta_o = -grad_o
+        eta_p = -grad_p
+        ### IF CG:
+        # else:
+        #     beta = self.calc_beta(o,p,grad_o,grad_p,eta_o,eta_p,d,gradF)
+        #     eta_o = -grad_o+beta*eta_o
+        #     eta_p = -grad_p+beta*eta_p
         
         # The step size is for both object and probe
         alpha,_,_ = self.calc_alpha(o,p,grad_o,grad_p,eta_o,eta_p,d,gradF)                               
@@ -120,8 +120,8 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
         if object_.optimization_enabled(self.current_epoch):             
             delta_o = alpha*eta_o      
             delta_o = delta_o.unsqueeze(0)
-            self.forward_model.record_intermediate_variable('eta_o',eta_o)
-            
+            self.forward_model.record_intermediate_variable('eta_o',eta_o)                 
+
         delta_p_all_modes = None
         if probe.optimization_enabled(self.current_epoch):
             delta_p = self.parameter_group.probe.options.rho*alpha*eta_p
@@ -133,6 +133,7 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
             print('WARNING: positions update is not implemented yet for the fifth rule method')
        
         return (delta_o, delta_p_all_modes, delta_pos), y
+  
 
     def extract_patches(self,o):
         '''Extract patches from the object, short version'''
@@ -153,21 +154,12 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
             )       
         return o  
     
-    def reprod(self,a,b):
-        '''Real part of product of vector a and conjugate of vector b '''
-        return a.real*b.real+a.imag*b.imag
-
-    def redot(self,a,b,axis=None):    
-        '''Real part of dot product of vector a and conjugate of vector b '''
-        res = torch.sum(self.reprod(a,b),axis=axis)        
-        return res        
-    
     def gradientF(self,o,p,d):     
         '''Gradient for the Guassian model'''
         op = p*self.extract_patches(o)
         Lo = self.forward_model.far_field_propagator.propagate_forward(op)
         td = d*(Lo/(torch.abs(Lo)+1e-7))
-        res = 2*self.forward_model.far_field_propagator.propagate_backward(Lo-td)        
+        res = 2*self.forward_model.far_field_propagator.propagate_backward(Lo-td)*torch.numel(p)
         return res
 
     def hessianF(self,o,o1,o2,data):
@@ -191,20 +183,6 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
         '''Gradient with respect to the probe'''
         patches = self.extract_patches(o)                             
         return torch.sum(torch.conj(patches)*gradF,axis=0)    
-    
-    def DM(self,o,p,do,dp):
-        '''First differential to compute the Hessian in the bilinear form'''
-        patches = self.extract_patches(o)
-        patches1 = self.extract_patches(do)
-        res = dp*patches+p*patches1
-        return res   
-    
-    def D2M(self,do1,dp1,do2,dp2):    
-        '''Second differential to compute the Hessian in the bilinear form'''
-        patches1 = self.extract_patches(do1)
-        patches2 = self.extract_patches(do2)
-        res = dp1*patches2 + dp2*patches1
-        return res
     
     def calc_alpha(self,o,p,do1,dp1,do2,dp2,d,gradF):    
         '''Step length for the object and probe update'''        
@@ -233,7 +211,27 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
         bottom = self.redot(gradF,d2m2)    
         bottom += self.hessianF(op, dm2, dm2,d)
         return top/bottom 
-                    
+
+    # supplementary functions
+    def reprod(self,a,b):
+        '''Real part of product of vector a and conjugate of vector b '''
+        return a.real*b.real+a.imag*b.imag
+
+    def redot(self,a,b,axis=None):    
+        '''Real part of dot product of vector a and conjugate of vector b '''
+        res = torch.sum(self.reprod(a,b),axis=axis)        
+        return res 
+    
+    def DM(self,o,p,do,dp):
+        '''First differential to compute the Hessian in the bilinear form'''
+        res = dp*self.extract_patches(o)+p*self.extract_patches(do)
+        return res   
+    
+    def D2M(self,do1,dp1,do2,dp2):    
+        '''Second differential to compute the Hessian in the bilinear form'''
+        res = dp1*self.extract_patches(do2) + dp2*self.extract_patches(do1)
+        return res          
+    
     def apply_updates(self, delta_o, delta_p, delta_pos, *args, **kwargs):
         """
         Apply updates to optimizable parameters given the updates calculated by self.compute_updates.
@@ -263,3 +261,59 @@ class FifthRuleReconstructor(AnalyticalIterativePtychographyReconstructor):
             probe_positions.set_grad(-delta_pos)
             probe_positions.optimizer.step()
            
+
+
+
+
+
+
+    # def Seop(self,psi,ishifts):
+    #     n = psi.shape[-1]
+    #     stx = n//2-ishifts[0]-256//2-self.extra
+    #     endx = stx+256+2*self.extra
+    #     sty = n//2-ishifts[1]-256//2-self.extra
+    #     endy = sty+256+2*self.extra
+    #     return psi[sty:endy,stx:endx]
+
+    # def SeTop(self,psi,psir,ishifts):
+    #     n = psi.shape[-1]
+    #     stx = n//2-ishifts[0]-256//2-self.extra
+    #     endx = stx+256+2*self.extra
+    #     sty = n//2-ishifts[1]-256//2-self.extra
+    #     endy = sty+256+2*self.extra
+    #     psi[sty:endy,stx:endx] += psir
+    #     return psi
+
+    # def extract_patches(self,psi):
+    #     positions = -self.positions.flip([1])
+    #     ishifts = positions.to(torch.int32)
+    #     shifts = positions-positions.to(torch.int32)
+    #     # print(shifts.shape[0])
+    #     data = torch.zeros((961, 256, 256), dtype=torch.complex64)
+    #     for j in range(shifts.shape[0]):
+    #         psir = self.Seop(psi,ishifts[j])
+    #         shiftsr = shifts[j]
+    #         x = torch.fft.fftfreq(256+2*self.extra).to(torch.float32)
+    #         [y, x] = torch.meshgrid(x, x)
+    #         pp = torch.exp(-2*torch.pi*1j * (y*shiftsr[1, None, None]+x*shiftsr[0, None, None]))
+    #         psir = torch.fft.ifft2(pp*torch.fft.fft2(psir))
+    #         data[j] = psir[self.extra:self.extra+256,self.extra:self.extra+256]
+    #     return data[:,torch.newaxis]
+
+    # def place_patches(self,data):
+    #     positions = -self.positions.flip([1])
+    #     ishifts = positions.to(torch.int32)
+    #     shifts = positions-positions.to(torch.int32)
+    #     data=data[:,0]
+    #     psi = torch.zeros(self.object_tmp.get_slice(0).shape, dtype=torch.complex64)
+    #     for j in range(shifts.shape[0]):
+    #         datar = data[j]
+    #         shiftsr = shifts[j]
+    #         psir = torch.nn.functional.pad(datar,((self.extra,self.extra,self.extra,self.extra)))     
+    #         # print(psir.shape)
+    #         x = torch.fft.fftfreq(256+2*self.extra).to(torch.float32)
+    #         [y, x] = torch.meshgrid(x, x)
+    #         pp = torch.exp(2*torch.pi*1j * (y*shiftsr[1, None, None]+x*shiftsr[0, None, None]))
+    #         psir = torch.fft.ifft2(pp*torch.fft.fft2(psir))            
+    #         self.SeTop(psi,psir,ishifts[j])
+    #     return psi    

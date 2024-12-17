@@ -27,7 +27,7 @@ def test_2d_ptycho_fifth_rule(generate_gold=False, debug=False):
     
     options.probe_options.initial_guess = probe
     options.probe_options.optimizable = True
-    options.probe_options.rho = 10
+    options.probe_options.rho = 0.1
 
     # Not implemented:
     options.probe_position_options.position_x_px = positions_px[:, 1]
