@@ -576,7 +576,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                         torch.concat([torch.zeros([1]), torch.log(corr_level)], dim=0).reshape(-1),
                         deg=1
                     )
-                    friction = 0.5 * (-p[0]).clip(0, 2)
+                    friction = 0.5 * (-p[0]).clip(0.1, 2)
                     
                     self.probe_momentum_params["velocity_map"][i_mode] = (
                         (1 - friction) * self.probe_momentum_params["velocity_map"][i_mode] + friction * delta_p_hat[i_mode]
@@ -831,7 +831,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                         torch.tensor([0, *torch.log(corr_level)], device=delta_o_hat.device),
                         deg=1
                     )
-                    friction = 0.5 * (-p[0]).clip(0, 2)
+                    friction = 0.5 * (-p[0]).clip(0.1, 2)
                     
                     w = object_.preconditioner / (0.1 * object_.preconditioner.max() + object_.preconditioner)
                     self.object_momentum_params["velocity_map"][i_slice] = (
