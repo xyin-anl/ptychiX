@@ -313,4 +313,4 @@ class BoundingBox(torch.nn.Module):
         return bbox
 
     def get_slicer(self) -> slice:
-        return (slice(self.sy, self.ey), slice(self.sx, self.ex))
+        return (slice(int(self.sy), int(self.ey)), slice(int(self.sx), int(self.ex)))

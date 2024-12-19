@@ -806,7 +806,10 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             self.object_momentum_params["update_direction_history"] = []
             self.object_momentum_params["velocity_map"] = torch.zeros_like(object_.data)
         
+        object_roi_bbox = self.parameter_group.object.roi_bbox.get_bbox_with_top_left_origin()
+        object_roi_slicer = object_roi_bbox.get_slicer()
         upd = delta_o_hat * alpha_o_mean_all_slices[:, None, None]
+        upd = upd[:, *object_roi_slicer]
         upd = upd / pmath.mnorm(upd, dim=(-1, -2), keepdims=True)
         self.object_momentum_params["update_direction_history"].append(upd)
         
@@ -833,6 +836,9 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                         torch.tensor([0, *torch.log(corr_level)], device=delta_o_hat.device),
                         deg=1
                     )
+                    # If correlation drops fast as one goes away from the current epoch, p[0]
+                    # is more negative, and friction is larger. Accumulated velocity is weighted
+                    # less to allow the update direction to change more quickly.
                     friction = 0.5 * (-p[0]).clip(0.1, 2)
                     
                     w = object_.preconditioner / (0.1 * object_.preconditioner.max() + object_.preconditioner)
