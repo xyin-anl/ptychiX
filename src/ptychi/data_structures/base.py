@@ -10,9 +10,10 @@ from numpy import ndarray
 from ptychi.utils import to_tensor
 import ptychi.maps as maps
 import ptychi.api.options.base as obase
+
 if TYPE_CHECKING:
     import ptychi.api as api
-    
+
 logger = logging.getLogger(__name__)
 
 
@@ -181,7 +182,9 @@ class ReconstructParameter(Module):
             var = var[..., dev_id]
         return var
 
-    def set_data(self, data, slicer: Optional[Union[slice, int] | tuple[Union[slice, int], ...]] = None):
+    def set_data(
+        self, data, slicer: Optional[Union[slice, int] | tuple[Union[slice, int], ...]] = None
+    ):
         if slicer is None:
             slicer = (slice(None),)
         elif not isinstance(slicer, Sequence):
@@ -274,15 +277,40 @@ class DummyParameter(ReconstructParameter):
 
 
 class BoundingBox(torch.nn.Module):
-    def __init__(self, sy, ey, sx, ex, device=None):
+    def __init__(self, sy, ey, sx, ex, origin=(0, 0)):
         super().__init__()
-        tensor = torch.tensor([sy, ey, sx, ex], device=device)
+        tensor = to_tensor([sy, ey, sx, ex])
+        origin = to_tensor(origin)
         self.register_buffer("tensor", tensor)
-    
-    def get_tensor_with_top_left_origin(self, center_pixel: torch.Tensor):
+        self.register_buffer("origin", origin)
+
+    def __repr__(self):
+        return __class__.__name__ + "(sy={}, ey={}, sx={}, ex={}, origin={})".format(
+            self.sy, self.ey, self.sx, self.ex, self.origin
+        )
+
+    @property
+    def sy(self):
+        return self.tensor[0]
+
+    @property
+    def ey(self):
+        return self.tensor[1]
+
+    @property
+    def sx(self):
+        return self.tensor[2]
+
+    @property
+    def ex(self):
+        return self.tensor[3]
+
+    def get_bbox_with_top_left_origin(self) -> "BoundingBox":
         """
-        Get a tensor of the bounds, where the coordinates are in the frame
-        with top-left origin. The returned tensor is in the format of 
-        `[start_y, end_y, start_x, end_x]`. 
+        Get a new bounding box with the top left origin.
         """
-        return center_pixel.repeat_interleave(2) + self.tensor
+        bbox = BoundingBox(*(self.origin.repeat_interleave(2) + self.tensor), origin=(0, 0))
+        return bbox
+
+    def get_slicer(self) -> slice:
+        return (slice(self.sy, self.ey), slice(self.sx, self.ex))

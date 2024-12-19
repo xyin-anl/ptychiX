@@ -6,7 +6,7 @@ from torch import Tensor
 
 import ptychi.image_proc as ip
 import ptychi.data_structures.base as ds
-from ptychi.utils import get_default_complex_dtype, to_tensor
+from ptychi.utils import get_default_complex_dtype, to_tensor, to_numpy
 import ptychi.maps as maps
 
 if TYPE_CHECKING:
@@ -107,13 +107,14 @@ class Object(ds.ReconstructParameter):
         raise NotImplementedError
     
     def build_roi_bounding_box(self, positions: "ProbePositions"):
-        self.roi_bbox = positions.get_bounds()
-        
-    def get_roi_bounding_box_tensor(self):
-        return self.roi_bbox.tensor
-    
-    def get_roi_bounding_box_tensor_with_top_left_origin(self):
-        return self.roi_bbox.get_tensor_with_top_left_origin(self.center_pixel)
+        pos = positions.data
+        self.roi_bbox = ds.BoundingBox(
+            sy=pos[:, 0].min(),
+            ey=pos[:, 0].max(),
+            sx=pos[:, 1].min(),
+            ex=pos[:, 1].max(),
+            origin=tuple(to_numpy(self.center_pixel)),
+        )
     
     def get_object_in_roi(self):
         raise NotImplementedError
@@ -252,9 +253,8 @@ class PlanarObject(Object):
         return image
     
     def get_object_in_roi(self):
-        bbox = self.get_roi_bounding_box_tensor_with_top_left_origin().long()
-        return self.data[:, bbox[0]:bbox[1], bbox[2]:bbox[3]]
-        
+        bbox = self.roi_bbox.get_bbox_with_top_left_origin()
+        return self.data[:, int(bbox.sy):int(bbox.ey), int(bbox.sx):int(bbox.ex)]
 
     def constrain_smoothness(self) -> None:
         """
