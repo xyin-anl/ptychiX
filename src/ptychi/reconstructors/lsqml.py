@@ -943,10 +943,6 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         coord_ramp = torch.fft.fftfreq(probe.shape[-1])
         delta_p_x = torch.ifft2(2 * torch.pi * coord_ramp[None, :] * 1j * f_probe)
-
-    def _apply_variable_intensity_updates(self, delta_weights_int):
-        weights = self.parameter_group.opr_mode_weights
-        weights.set_data(weights.data + 0.1 * delta_weights_int)
         
     def _update_accumulated_intensities(self, y_true, y_pred):
         self.accumulated_true_intensity = self.accumulated_true_intensity + torch.sum(y_true)
