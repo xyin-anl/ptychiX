@@ -316,7 +316,7 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                 self.parameter_group.probe_positions.data.cpu(), self.batch_size
             )
         return super().build_dataloader(batch_sampler=batch_sampler)
-    
+
     def update_preconditioners(self, use_all_probe_modes_for_object_preconditioner=False):
         # Update preconditioner of the object only if the probe has been updated in the previous
         # epoch, or when the preconditioner is None.
@@ -353,6 +353,13 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             chunk_size=64,
         )
         self.parameter_group.object.preconditioner = probe_sq_map
+
+    def run_pre_run_hooks(self) -> None:
+        self.prepare_data()
+
+    def prepare_data(self, *args, **kwargs):
+        self.parameter_group.probe.normalize_eigenmodes()
+        logger.info("Probe eigenmodes normalized.")
 
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():

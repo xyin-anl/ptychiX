@@ -114,10 +114,6 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             size=(self.parameter_group.probe_positions.shape[0],), fill_value=0.5
         )
 
-    def prepare_data(self, *args, **kwargs):
-        self.parameter_group.probe.normalize_eigenmodes()
-        logger.info("Probe eigenmodes normalized.")
-
     def get_psi_far_step_size(self, y_pred, y_true, indices, eps=1e-5):
         if isinstance(self.noise_model, fm.PtychographyGaussianNoiseModel):
             alpha = torch.tensor(0.5, device=y_pred.device)  # Eq. 16
@@ -299,12 +295,6 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         delta_o_patches = mean_alpha_o_all_slices[0] * delta_o_i
         return delta_o_patches
-    
-    def _get_probe_mode_slicer(self, mode_index=None):
-        if mode_index is None:
-            return slice(None)
-        else:
-            return slice(mode_index, mode_index + 1)
 
     def _get_slice_psi_or_probe(self, i_slice, indices):
         r"""
@@ -987,9 +977,6 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         super().update_object_preconditioner(use_all_modes)
         # PtychoShelves devides the preconditioner by 2 so we do the same here.
         self.parameter_group.object.preconditioner = self.parameter_group.object.preconditioner / 2.0
-
-    def run_pre_run_hooks(self) -> None:
-        self.prepare_data()
 
     def run_pre_epoch_hooks(self) -> None:
         self.update_preconditioners()
