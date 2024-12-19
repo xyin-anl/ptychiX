@@ -271,3 +271,18 @@ class DummyParameter(ReconstructParameter):
 
     def optimization_enabled(self, *args, **kwargs):
         return False
+
+
+class BoundingBox(torch.nn.Module):
+    def __init__(self, sy, ey, sx, ex, device=None):
+        super().__init__()
+        tensor = torch.tensor([sy, ey, sx, ex], device=device)
+        self.register_buffer("tensor", tensor)
+    
+    def get_tensor_with_top_left_origin(self, center_pixel: torch.Tensor):
+        """
+        Get a tensor of the bounds, where the coordinates are in the frame
+        with top-left origin. The returned tensor is in the format of 
+        `[start_y, end_y, start_x, end_x]`. 
+        """
+        return center_pixel.repeat_interleave(2) + self.tensor

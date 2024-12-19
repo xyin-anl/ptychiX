@@ -11,6 +11,7 @@ import ptychi.maps as maps
 
 if TYPE_CHECKING:
     import ptychi.api as api
+    from ptychi.data_structures.probe_positions import ProbePositions
     
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class Object(ds.ReconstructParameter):
         self.total_variation_weight = options.total_variation_weight
         self.total_variation_stride = options.total_variation_stride
         center_pixel = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
+        self.roi_bbox: ds.BoundingBox = None
 
         self.register_buffer("center_pixel", center_pixel)
 
@@ -102,6 +104,18 @@ class Object(ds.ReconstructParameter):
             return False
 
     def remove_grid_artifacts(self, *args, **kwargs):
+        raise NotImplementedError
+    
+    def build_roi_bounding_box(self, positions: "ProbePositions"):
+        self.roi_bbox = positions.get_bounds()
+        
+    def get_roi_bounding_box_tensor(self):
+        return self.roi_bbox.tensor
+    
+    def get_roi_bounding_box_tensor_with_top_left_origin(self):
+        return self.roi_bbox.get_tensor_with_top_left_origin(self.center_pixel)
+    
+    def get_object_in_roi(self):
         raise NotImplementedError
 
 
@@ -236,6 +250,11 @@ class PlanarObject(Object):
         )
         image = self.place_patches_function(image, positions, patches, op="add")
         return image
+    
+    def get_object_in_roi(self):
+        bbox = self.get_roi_bounding_box_tensor_with_top_left_origin().long()
+        return self.data[:, bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        
 
     def constrain_smoothness(self) -> None:
         """

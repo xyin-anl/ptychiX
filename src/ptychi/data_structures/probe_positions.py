@@ -40,3 +40,14 @@ class ProbePositions(ds.ReconstructParameter):
         data = self.data
         data = data - data.mean(0)
         self.set_data(data)
+        
+    def get_bounds(self) -> ds.BoundingBox:
+        pos = self.data
+        bbox = ds.BoundingBox(
+            sy=pos[:, 0].min(),
+            ey=pos[:, 0].max(),
+            sx=pos[:, 1].min(),
+            ex=pos[:, 1].max(),
+            device=self.data.device
+        )
+        return bbox

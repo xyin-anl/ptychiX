@@ -178,6 +178,10 @@ class PtychographyReconstructor(Reconstructor):
         **kwargs,
     ) -> None:
         super().__init__(parameter_group, options=options, *args, **kwargs)
+        
+        self.parameter_group.object.build_roi_bounding_box(
+            self.parameter_group.probe_positions
+        )
 
 
 class IterativeReconstructor(Reconstructor):
