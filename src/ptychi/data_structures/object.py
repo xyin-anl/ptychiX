@@ -335,14 +335,14 @@ class PlanarObject(Object):
         # During phase unwrapping, if the phase gradient is calculated using finite difference
         # with Fourier shift, these values can dangle around 0, causing the phase of the
         # complex gradient to flip between pi and -pi.
-        w_phase = torch.clip(10 * (self.preconditioner / self.preconditioner.max()), max=1, min=0.1)
-        w_phase = torch.where(w_phase < 1e-3, 0, w_phase)
+        w_phase = torch.clip(10 * (self.preconditioner / self.preconditioner.max()), max=1)
+        w_phase_clipped = torch.clip(w_phase, min=0.1)
 
         if self.options.multislice_regularization_unwrap_phase:
             pobj = [
                 ip.unwrap_phase_2d(
                     obj[i_slice],
-                    weight_map=w_phase,
+                    weight_map=w_phase_clipped,
                     fourier_shift_step=0.5,
                     image_grad_method=self.options.multislice_regularization_unwrap_image_grad_method,
                     image_integration_method=self.options.multislice_regularization_unwrap_image_integration_method,

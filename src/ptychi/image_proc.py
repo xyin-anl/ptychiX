@@ -384,9 +384,8 @@ def fourier_gradient(image: Tensor) -> Tensor:
     """
     u, v = torch.fft.fftfreq(image.shape[-2]), torch.fft.fftfreq(image.shape[-1])
     u, v = torch.meshgrid(u, v, indexing="ij")
-    f_image = torch.fft.fft2(image)
-    grad_y = torch.fft.ifft2(f_image * (2j * torch.pi) * u)
-    grad_x = torch.fft.ifft2(f_image * (2j * torch.pi) * v)
+    grad_y = torch.fft.ifft(torch.fft.fft(image, dim=-2) * (2j * torch.pi) * u, dim=-2)
+    grad_x = torch.fft.ifft(torch.fft.fft(image, dim=-1) * (2j * torch.pi) * v, dim=-1)
     return grad_y, grad_x
 
 
@@ -1049,7 +1048,7 @@ def unwrap_phase_2d(
     flat_region_mask: Optional[Tensor] = None,
     deramp_polyfit_order: int = 1,
     return_phase_grads: bool = False,
-    eps: float = 1e-6,
+    eps: float = 1e-9,
 ):
     """
     Unwrap phase of 2D image.
@@ -1112,14 +1111,7 @@ def unwrap_phase_2d(
         img, fourier_shift_step=fourier_shift_step, image_grad_method=image_grad_method
     )
 
-    # The result of `integrate_image_2d_fourier`, which integrates the image using
-    # Fourier differentiation and is what's used in fold_slice `get_img_int_2D.m`,
-    # looks weird. Therefore, we use `integrate_image_2d`, which first integrates
-    # the left boundary using grad_y and then integrates the entire image using
-    # grad_x with the left boundary as the boundary condition. Also, to avoid the
-    # numerical precision-related artifacts at the boundary of the padded image
-    # resulting from `get_phase_gradient`, we remove the padding first.
-    if torch.any(torch.tensor(padding) > 0):
+    if image_integration_method == "discrete" and torch.any(torch.tensor(padding) > 0):
         gy = gy[padding[0] : -padding[0], padding[1] : -padding[1]]
         gx = gx[padding[0] : -padding[0], padding[1] : -padding[1]]
     if image_integration_method == "discrete":
@@ -1130,6 +1122,11 @@ def unwrap_phase_2d(
         phase = torch.real(integrate_image_2d_deconvolution(gy, gx, bc_center=bc_center))
     else:
         raise ValueError(f"Unknown integration method: {image_integration_method}")
+    
+    if image_integration_method != "discrete" and torch.any(torch.tensor(padding) > 0):
+        gy = gy[padding[0] : -padding[0], padding[1] : -padding[1]]
+        gx = gx[padding[0] : -padding[0], padding[1] : -padding[1]]
+        phase = phase[padding[0] : -padding[0], padding[1] : -padding[1]]
 
     if flat_region_mask is not None:
         phase = remove_polynomial_background(
