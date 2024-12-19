@@ -206,7 +206,9 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             object_.optimizer.step()
 
         if delta_p_i is not None:
-            probe._apply_probe_update(delta_p_i.mean(0))
+            mode_slicer = self.parameter_group.probe._get_probe_mode_slicer(None)
+            self.parameter_group.probe.set_grad(-delta_p_i.mean(0), slicer=(0, mode_slicer))
+            self.parameter_group.probe.optimizer.step()
 
         if delta_pos is not None:
             probe_positions.set_grad(-delta_pos)

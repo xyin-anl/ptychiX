@@ -271,7 +271,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                 )
 
             if i_slice == 0 and self.parameter_group.probe.optimization_enabled(self.current_epoch):
-                self.parameter_group.probe._apply_probe_update(delta_p_hat, alpha_p_i, self.options.batching_mode, self.dataloader)
+                self._apply_probe_update(alpha_p_i, delta_p_hat)
 
             self.alpha_object_all_pos_all_slices[indices, i_slice] = alpha_o_i
             self.alpha_probe_all_pos[indices] = alpha_p_i
@@ -508,12 +508,36 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         delta_p_hat = delta_p_hat / delta_p.shape[0]
         return delta_p_hat
 
+    def _apply_probe_update(self, alpha_p_i, delta_p_hat, probe_mode_index=None):
+        """
+        Eq. 27a of Odstrcil, 2018.
+        """
+        # Shape of alpha_p_i:        (batch_size,)
+        # Shape of delta_p_hat:      (n_probe_modes, h, w)
+        # PtychoShelves code simply multiplies delta_p_hat with averaged step size.
+        # This is different from the paper which does the following:
+        #     update_vec = delta_p_hat * obj_patches[:, None, :, :].abs() ** 2
+        #     update_vec = update_vec * alpha_p_i[:, None, None, None]
+        #     update_vec = update_vec / ((obj_patches.abs() ** 2).sum(0) + delta)
+
+        # Just apply the update to the main OPR mode of each incoherent mode.
+        # To do this, we pad the update vector with zeros in the OPR mode dimension.
+        mode_slicer = self.parameter_group.probe._get_probe_mode_slicer(probe_mode_index)
+
+        if self.options.batching_mode == enums.BatchingModes.COMPACT:
+            # In compact mode, object is updated only once per epoch. To match the probe to this,
+            # we divide the probe step size by the number of minibatches before each probe update.
+            alpha_p_i = alpha_p_i / len(self.dataloader)
+        alpha_p_mean = torch.mean(alpha_p_i)
+        self.parameter_group.probe.set_grad(-delta_p_hat * alpha_p_mean, slicer=(0, mode_slicer))
+        self.parameter_group.probe.optimizer.step()
+
     def _apply_probe_momentum(self, alpha_p_mean, delta_p_hat):
         """
         Apply momentum acceleration to the probe (only the first OPR mode). This is a
         special momentum acceleration used in PtychoShelves, which behaves somewhat
         differently from the momentum in `torch.optim.SGD`.
-        
+
         Parameters
         ----------
         alpha_p_mean: float

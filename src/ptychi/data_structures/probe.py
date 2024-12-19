@@ -195,47 +195,6 @@ class Probe(ds.ReconstructParameter):
                 unique_probe = p_orig
         return unique_probe
 
-    def _apply_probe_update(
-        self,
-        delta_p_hat: torch.Tensor,
-        alpha_p_i: Optional[torch.Tensor] = None,
-        batching_mode: Optional["api.enums.BatchingModes"] = None,
-        dataloader: Optional["api.enums.BatchingModes"] = None,
-        probe_mode_index: Optional[int] = None,
-    ):
-        """
-        Eq. 27a of Odstrcil, 2018.
-
-        Parameters
-        ----------
-        delta_p_hat : Tensor
-            A (n_probe_modes, h, w) tensor of the probe update direction.
-        alpha_p_i : Tensor
-            An optional (batch_size,) tensor of the probe update step size.
-        """
-        # Shape of alpha_p_i:        (batch_size,)
-        # Shape of delta_p_hat:      (n_probe_modes, h, w)
-        # PtychoShelves code simply multiplies delta_p_hat with averaged step size.
-        # This is different from the paper which does the following:
-        #     update_vec = delta_p_hat * obj_patches[:, None, :, :].abs() ** 2
-        #     update_vec = update_vec * alpha_p_i[:, None, None, None]
-        #     update_vec = update_vec / ((obj_patches.abs() ** 2).sum(0) + delta)
-
-        # Just apply the update to the main OPR mode of each incoherent mode.
-        # To do this, we pad the update vector with zeros in the OPR mode dimension.
-        mode_slicer = self._get_probe_mode_slicer(probe_mode_index)
-
-        if alpha_p_i is not None:
-            if batching_mode is enums.BatchingModes.COMPACT: #"compact": # fix later with an actual enum
-                # In compact mode, object is updated only once per epoch. To match the probe to this,
-                # we divide the probe step size by the number of minibatches before each probe update.
-                alpha_p_i = alpha_p_i / len(dataloader)
-            alpha_p_mean = torch.mean(alpha_p_i)
-        else:
-            alpha_p_mean = 1
-        self.set_grad(-delta_p_hat * alpha_p_mean, slicer=(0, mode_slicer))
-        self.optimizer.step()
-
     def _get_probe_mode_slicer(self, mode_index=None):
         if mode_index is None:
             return slice(None)
