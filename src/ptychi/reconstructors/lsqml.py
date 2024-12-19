@@ -578,8 +578,10 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                     )
                     friction = 0.5 * (-p[0]).clip(0.1, 2)
                     
+                    m = self.options.momentum_acceleration_gradient_mixing_factor
+                    m = friction if m is None else m
                     self.probe_momentum_params["velocity_map"][i_mode] = (
-                        (1 - friction) * self.probe_momentum_params["velocity_map"][i_mode] + friction * delta_p_hat[i_mode]
+                        (1 - friction) * self.probe_momentum_params["velocity_map"][i_mode] + m * delta_p_hat[i_mode]
                     )
                     probe.set_data(
                         probe.data[0, i_mode] + self.options.momentum_acceleration_gain * self.probe_momentum_params["velocity_map"][i_mode], 
@@ -834,8 +836,10 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                     friction = 0.5 * (-p[0]).clip(0.1, 2)
                     
                     w = object_.preconditioner / (0.1 * object_.preconditioner.max() + object_.preconditioner)
+                    m = self.options.momentum_acceleration_gradient_mixing_factor
+                    m = friction if m is None else m
                     self.object_momentum_params["velocity_map"][i_slice] = (
-                        (1 - friction) * self.object_momentum_params["velocity_map"][i_slice] + friction * delta_o_hat[i_slice]
+                        (1 - friction) * self.object_momentum_params["velocity_map"][i_slice] + m * delta_o_hat[i_slice]
                     )
                     object_.set_data(
                         object_.data[i_slice] + w * self.options.momentum_acceleration_gain * self.object_momentum_params["velocity_map"][i_slice], 
