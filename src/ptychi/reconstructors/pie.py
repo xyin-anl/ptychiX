@@ -63,6 +63,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
                 )
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
+        self.parameter_group.probe.initialize_grad()
         (delta_o, delta_p_i, delta_pos), y_pred = self.compute_updates(
             *input_data, y_true, self.dataset.valid_pixel_mask
         )

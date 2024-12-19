@@ -184,7 +184,6 @@ class OPRModeWeights(ds.ReconstructParameter):
                     residue_update, eigenmode_i, dim=(-2, -1)
                 )
 
-            # Is the view of probe data unintentionally being updated here? Check later
             probe[i_opr_mode, 0, :, :] = eigenmode_i
             weights[indices, i_opr_mode] = weights_i
 
@@ -271,7 +270,6 @@ class OPRModeWeights(ds.ReconstructParameter):
 
     def _apply_variable_intensity_updates(self, delta_weights_int: Tensor):
         self.set_data(self.data + 0.1 * delta_weights_int)
-
     
     def weight_smoothing_enabled(self, epoch: int):
         return self.optimization_enabled(epoch) and self.options.smoothing_method is not None
