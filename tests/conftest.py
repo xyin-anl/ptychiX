@@ -2,15 +2,25 @@ import pytest
 
 
 def pytest_addoption(parser):
-    parser.addoption("--high-tol", action="store_true", help='Use high tolerance for certain tests.')
-    parser.addoption("--all", action="store_true", help='Run all tests.')
-    parser.addoption("--local-only", action="store_true", help='Just run local-only test cases.')
-    
-    
+    parser.addoption(
+        "--high-tol", action="store_true", help="Use high tolerance for certain tests."
+    )
+    parser.addoption("--all", action="store_true", help="Run all tests.")
+    parser.addoption("--local-only", action="store_true", help="Just run local-only test cases.")
+    parser.addoption(
+        "--action",
+        default="all",
+        help="Select the action to run. Can be: "
+             "\"generate\" - just generate outputs and store them; "
+             "\"compare\" - just run comparison with reference data; "
+             "\"all\" - run everything.",
+    )
+
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "local: mark test as local-only")
 
-    
+
 def pytest_collection_modifyitems(config, items):
     if config.getoption("--all"):
         return

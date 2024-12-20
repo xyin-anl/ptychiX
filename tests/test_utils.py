@@ -5,9 +5,50 @@ import datetime
 import torch
 import h5py
 import numpy as np
+import pytest
 
 from ptychi.utils import rescale_probe, add_additional_opr_probe_modes_to_probe, set_default_complex_dtype, to_tensor
 
+
+class BaseTester:
+        
+    def setup_method(self, name="", generate_data=False, generate_gold=False, debug=False, action=None, pytestconfig=None):
+        """
+        A Pytest hook that sets instance attributes before running each test method. 
+        If the script is executed with `python`, this method will not run automatically
+        before calling a test method. Therefore, it can be used to set instance attributes
+        for all methods in a code snippet if that snippet is intended to be executed
+        with `python`.
+
+        Parameters
+        ----------
+        name : str, optional
+            The name of the tester.
+        generate_data : bool
+            Whether to generate test data. 
+        generate_gold : bool
+            Whether to generate gold data. 
+        debug : bool, optional
+            Switches debug mode.
+        """
+        self.name = name
+        self.generate_data = generate_data
+        self.generate_gold = generate_gold
+        self.debug = debug
+        if pytestconfig is not None:
+            self.high_tol = pytestconfig.getoption("high_tol")
+            self.action = pytestconfig.getoption("action")
+        else:
+            self.high_tol = False
+            self.action = action
+    
+    @pytest.fixture(autouse=True)
+    def inject_config(self, pytestconfig):
+        self.pytestconfig = pytestconfig
+        self.setup_method(
+            name="", generate_data=False, generate_gold=False, debug=False, action=None, pytestconfig=pytestconfig
+        )
+        
 
 def get_timestamp():
     return datetime.datetime.now().strftime('%Y%m%d%H%M')
