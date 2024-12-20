@@ -354,13 +354,6 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
         )
         self.parameter_group.object.preconditioner = probe_sq_map
 
-    def run_pre_run_hooks(self) -> None:
-        self.prepare_data()
-
-    def prepare_data(self, *args, **kwargs):
-        self.parameter_group.probe.normalize_eigenmodes()
-        logger.info("Probe eigenmodes normalized.")
-
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
             probe = self.parameter_group.probe
@@ -553,6 +546,13 @@ class AnalyticalIterativePtychographyReconstructor(
             # Apply object L1-norm constraint.
             if object_.l1_norm_constraint_enabled(self.current_epoch):
                 object_.constrain_l1_norm()
+
+    def run_pre_run_hooks(self) -> None:
+        self.prepare_data()
+
+    def prepare_data(self, *args, **kwargs):
+        self.parameter_group.probe.normalize_eigenmodes()
+        logger.info("Probe eigenmodes normalized.")
 
     @staticmethod
     def replace_propagated_exit_wave_magnitude(
