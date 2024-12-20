@@ -238,7 +238,14 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             if i_slice == 0:
                 if not self.parameter_group.opr_mode_weights.is_dummy:
                     self.parameter_group.opr_mode_weights.update_variable_probe(
-                        self, indices, chi, delta_p_i, obj_patches, probe_mode_index=0
+                        self.parameter_group.probe,
+                        indices,
+                        chi,
+                        delta_p_i,
+                        delta_p_hat,
+                        obj_patches,
+                        self.current_epoch,
+                        probe_mode_index=0,
                     )
                 self._update_momentum_buffers(delta_p_hat)
             
@@ -521,65 +528,6 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         alpha_p_mean = torch.mean(alpha_p_i)
         self.parameter_group.probe.set_grad(-delta_p_hat * alpha_p_mean, slicer=(0, mode_slicer))
         self.parameter_group.probe.optimizer.step()
-
-    def _apply_probe_momentum(self, alpha_p_mean, delta_p_hat):
-        """
-        Apply momentum acceleration to the probe (only the first OPR mode). This is a
-        special momentum acceleration used in PtychoShelves, which behaves somewhat
-        differently from the momentum in `torch.optim.SGD`.
-
-        Parameters
-        ----------
-        alpha_p_mean: float
-            A scalar giving the mean probe step size.
-        delta_p_hat: torch.Tensor
-            A (n_probe_modes, h, w) tensor giving the accumulated probe update direction
-            of the first OPR mode.
-        """
-        
-        probe = self.parameter_group.probe
-        if "update_direction_history" not in self.probe_momentum_params.keys():
-            self.probe_momentum_params["update_direction_history"] = []
-            self.probe_momentum_params["velocity_map"] = torch.zeros_like(delta_p_hat)
-        
-        upd = delta_p_hat * alpha_p_mean
-        upd = upd / pmath.mnorm(upd, dim=(-1, -2), keepdims=True)
-        self.probe_momentum_params["update_direction_history"].append(upd)
-        
-        momentum_memory = 3
-        
-        if len(self.probe_momentum_params["update_direction_history"]) > momentum_memory + 1:
-            # Remove the oldest momentum update.
-            self.probe_momentum_params["update_direction_history"].pop(0)
-            for i_mode in range(probe.n_modes):
-                # Project older updates to the latest one, ordered from recent to old.
-                projected_updates = [
-                    (self.probe_momentum_params["update_direction_history"][i][i_mode] * 
-                    self.probe_momentum_params["update_direction_history"][-1][i_mode].conj()) 
-                    for i in range(len(self.probe_momentum_params["update_direction_history"]) - 1)
-                ][::-1]
-                # Shape of corr_level: (momentum_memory, n_probe_modes)
-                corr_level = [torch.mean(projected_updates[k]).real for k in range(len(projected_updates))]
-                corr_level = torch.tensor(corr_level, device=delta_p_hat.device)
-                
-                if self._fourier_error_ok() and torch.all(corr_level > 0):
-                    # Estimate optimal friction.
-                    p = pmath.polyfit(
-                        torch.arange(0.0, momentum_memory + 1),
-                        torch.concat([torch.zeros([1]), torch.log(corr_level)], dim=0).reshape(-1),
-                        deg=1
-                    )
-                    friction = 0.5 * (-p[0]).clip(0, 2)
-                    
-                    self.probe_momentum_params["velocity_map"][i_mode] = (
-                        (1 - friction) * self.probe_momentum_params["velocity_map"][i_mode] + delta_p_hat[i_mode]
-                    )
-                    probe.set_data(
-                        probe.data[0, i_mode] + self.options.momentum_acceleration_gain * self.probe_momentum_params["velocity_map"][i_mode], 
-                        slicer=(0, i_mode)
-                    )
-                else:
-                    self.probe_momentum_params["velocity_map"][i_mode] = self.probe_momentum_params["velocity_map"][i_mode] / 2.0
 
     def _apply_probe_momentum(self, alpha_p_mean, delta_p_hat):
         """
