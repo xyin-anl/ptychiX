@@ -8,8 +8,6 @@ from ptychi.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
 from ptychi.metrics import MSELossOfSqrt
-import ptychi.maths as pmath
-import ptychi.data_structures as ds
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -134,7 +132,14 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         # Calculate and apply opr mode updates
         if not self.parameter_group.opr_mode_weights.is_dummy:
             opr_mode_weights.update_variable_probe(
-                self, indices, psi_prime - psi, delta_p_i, obj_patches, probe_mode_index=0
+                probe,
+                indices,
+                psi_prime - psi,
+                delta_p_i,
+                delta_p_i.mean(0),
+                obj_patches,
+                self.current_epoch,
+                probe_mode_index=0,
             )
 
         return (delta_o, delta_p_i, delta_pos), y
