@@ -50,7 +50,7 @@ def test_2d_ptycho_lsqml_compact(pytestconfig, generate_gold=False, debug=False,
     
     recon = task.get_data_to_cpu('object', as_numpy=True)[0]
 
-    if debug:
+    if debug and not generate_gold:
         tutils.plot_complex_image(recon)
     if generate_gold:
         tutils.save_gold_data(name, recon)
@@ -99,7 +99,7 @@ def test_2d_ptycho_lsqml_compact_multislice(pytestconfig, generate_gold=False, d
     
     recon = task.get_data_to_cpu('object', as_numpy=True)
 
-    if debug:
+    if debug and not generate_gold:
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(1, 2)
         ax[0].imshow(np.angle(recon[0]))
