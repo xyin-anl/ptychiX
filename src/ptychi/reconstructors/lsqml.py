@@ -920,13 +920,18 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         10-th percentile trimmed mean of the step sizes for each minibatch. We then take the 
         minimum of the step sizes across all minibatches for each slice to use as the step size 
         for updating the object.
+        
+        Returns
+        -------
+        Tensor
+            A (n_slices,) tensor giving the final step size for each slice.
         """
         alpha_object_all_minibatches = []
         for inds in self.indices:
             alpha_current_batch = pmath.trim_mean(self.alpha_object_all_pos_all_slices[inds], 0.1, dim=0, keepdim=False)
             alpha_object_all_minibatches.append(alpha_current_batch)
         alpha_object_all_minibatches = torch.stack(alpha_object_all_minibatches, dim=0)
-        alpha_object_all_slices = torch.min(alpha_object_all_minibatches, dim=0, keepdim=True).values
+        alpha_object_all_slices = torch.min(alpha_object_all_minibatches, dim=0, keepdim=False).values
         return alpha_object_all_slices
         
     def _update_accumulated_intensities(self, y_true, y_pred):
