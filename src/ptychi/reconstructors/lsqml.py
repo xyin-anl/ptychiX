@@ -70,6 +70,8 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.alpha_object_all_pos_all_slices = torch.ones([self.parameter_group.probe_positions.shape[0], self.parameter_group.object.n_slices], device=torch.get_default_device())
         self.alpha_probe_all_pos = torch.ones(self.parameter_group.probe_positions.shape[0], device=torch.get_default_device())
         
+        self.indices = []
+        
         self.object_momentum_params = {}
         self.probe_momentum_params = {}
         
@@ -908,6 +910,25 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         coord_ramp = torch.fft.fftfreq(probe.shape[-1])
         delta_p_x = torch.ifft2(2 * torch.pi * coord_ramp[None, :] * 1j * f_probe)
         
+    def _calculate_final_object_update_step_size(self):
+        """
+        Given the patch-wise step sizes, calculate the final step size for the whole object used
+        in compact-mode update.
+    
+        This routine follows the same logic as in PtychoSheleves. With the `(n_pos, n_slices)`
+        tensor that sotres the step sizes for all object patches and all slices, we take the 
+        10-th percentile trimmed mean of the step sizes for each minibatch. We then take the 
+        minimum of the step sizes across all minibatches for each slice to use as the step size 
+        for updating the object.
+        """
+        alpha_object_all_minibatches = []
+        for inds in self.indices:
+            alpha_current_batch = pmath.trim_mean(self.alpha_object_all_pos_all_slices[inds], 0.1, dim=0, keepdim=False)
+            alpha_object_all_minibatches.append(alpha_current_batch)
+        alpha_object_all_minibatches = torch.stack(alpha_object_all_minibatches, dim=0)
+        alpha_object_all_slices = torch.min(alpha_object_all_minibatches, dim=0, keepdim=True).values
+        return alpha_object_all_slices
+        
     def _update_accumulated_intensities(self, y_true, y_pred):
         self.accumulated_true_intensity = self.accumulated_true_intensity + torch.sum(y_true)
         self.accumulated_pred_intensity = self.accumulated_pred_intensity + torch.sum(y_pred)
@@ -928,9 +949,13 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         # PtychoShelves devides the preconditioner by 2 so we do the same here.
         self.parameter_group.object.preconditioner = self.parameter_group.object.preconditioner / 2.0
 
+    def run_pre_run_hooks(self) -> None:
+        self.prepare_data()
+        
     def run_pre_epoch_hooks(self) -> None:
         self.update_preconditioners()
         self.accumulated_fourier_error = 0.0
+        self.indices = []
 
     def run_post_epoch_hooks(self) -> None:
         if self.current_epoch > 0:
@@ -940,7 +965,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             ):
                 # Take the 10-th percentile of the object step sizes across all minibatches for
                 # each slice to use as the step size for updating the object.
-                alpha_object_all_slices = torch.quantile(self.alpha_object_all_pos_all_slices, 0.1, dim=0, keepdim=False)
+                alpha_object_all_slices = self._calculate_final_object_update_step_size()
                 delta_o_hat_full = self._precondition_accumulated_object_update_direction()
                 self._apply_object_update(alpha_object_all_slices, delta_o_hat_full)
                 
@@ -960,6 +985,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs) -> None:
         indices = input_data[0]
+        self.indices.append(indices)
         y_pred = self.forward_model(*input_data)
         self.update_fourier_error(y_pred, y_true)
         if self.current_epoch == 0:

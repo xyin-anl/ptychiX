@@ -3,7 +3,12 @@ from typing import Literal, Optional, Tuple, Union
 import torch
 
 
-def trim_mean(x: torch.Tensor, fraction: float = 0.1, dim: Optional[Union[int, Tuple[int, ...]]] = None) -> torch.Tensor:
+def trim_mean(
+    x: torch.Tensor, 
+    fraction: float = 0.1, 
+    dim: Optional[Union[int, Tuple[int, ...]]] = None,
+    keepdim: bool = False
+) -> torch.Tensor:
     """
     Calculate the mean of a tensor after removing a certain percentage of the
     lowest and highest values.
@@ -31,9 +36,9 @@ def trim_mean(x: torch.Tensor, fraction: float = 0.1, dim: Optional[Union[int, T
     if mask_check:
         x = x.clone()
         x[~mask] = torch.nan
-        return torch.nanmean(x, dim=dim)
+        return torch.nanmean(x, dim=dim, keepdim=keepdim)
     else:
-        return torch.mean(x, dim=dim)
+        return torch.mean(x, dim=dim, keepdim=keepdim)
     
     
 def angle(x: torch.Tensor, eps=1e-5) -> torch.Tensor:
