@@ -1,6 +1,7 @@
 import argparse
 
 import torch
+import numpy as np
 
 import ptychi.api as api
 from ptychi.api.task import PtychographyTask
@@ -9,13 +10,13 @@ from ptychi.utils import get_suggested_object_size, get_default_complex_dtype, g
 import test_utils as tutils
 
 
-class TestMultislicePtychoLsqmlJointStepSize(tutils.BaseTester):
-    def test_multislice_ptycho_lsqml_joint_step_size(self):
-        name = 'test_multislice_ptycho_lsqml_joint_step_size'
-        
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
+class TestMultislicePtychoLsqmlJointStepSize(tutils.TungstenDataTester):
 
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true', additional_opr_modes=3)
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_multislice_ptycho_lsqml_joint_step_size')
+    def test_multislice_ptycho_lsqml_joint_step_size(self):
+        self.setup_ptychi(cpu_only=False)
+
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(pos_type='true', additional_opr_modes=3)
         
         options = api.LSQMLOptions()
         options.data_options.data = data
@@ -47,12 +48,8 @@ class TestMultislicePtychoLsqmlJointStepSize(tutils.BaseTester):
         task = PtychographyTask(options)
         task.run()
         
-        recon = task.get_data_to_cpu('object', as_numpy=True)[0]
-
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon, high_tol=self.high_tol)
+        recon = task.get_data_to_cpu('object', as_numpy=True)
+        return recon[0]
     
     
 if __name__ == '__main__':

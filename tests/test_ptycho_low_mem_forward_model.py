@@ -10,13 +10,13 @@ from ptychi.utils import get_suggested_object_size, get_default_complex_dtype, g
 import test_utils as tutils
 
 
-class TestPtychoLowMemForwardModel(tutils.BaseTester):
+class TestPtychoLowMemForwardModel(tutils.TungstenDataTester):
     def test_ptycho_low_mem_forward_model(self):
         name = 'test_ptycho_low_mem_forward_model'
         
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
+        self.setup_ptychi(cpu_only=False)
         
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true')
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(pos_type='true')
 
         options = api.LSQMLOptions()
         options.data_options.data = data

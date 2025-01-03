@@ -12,14 +12,13 @@ import ptychi.utils as utils
 import test_utils as tutils
 
 
-class Test2dPtychoOptPlan(tutils.BaseTester):
+class Test2dPtychoOptPlan(tutils.TungstenDataTester):
 
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_opt_plan')
     def test_2d_ptycho_opt_plan(self):
-        name = 'test_2d_ptycho_opt_plan'
-        
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
+        self.setup_ptychi(cpu_only=False)
 
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true', additional_opr_modes=3)
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(pos_type='true', additional_opr_modes=3)
         object_init = torch.ones(
             [1, *utils.get_suggested_object_size(positions_px, probe.shape[-2:], extra=100)], 
             dtype=utils.get_default_complex_dtype()
@@ -60,17 +59,11 @@ class Test2dPtychoOptPlan(tutils.BaseTester):
         options.reconstructor_options.default_device = api.Devices.GPU
         options.reconstructor_options.displayed_loss_function = api.LossFunctions.MSE_SQRT
         
-        with PtychographyTask(options) as task:
-            task.run()
+        task = PtychographyTask(options)
+        task.run()
             
-            recon = task.get_data_to_cpu(name='object', as_numpy=True)[0]
-            
-            if self.debug and not self.generate_gold:
-                tutils.plot_complex_image(recon)
-            if self.generate_gold:
-                tutils.save_gold_data(name, recon)
-            else:
-                tutils.run_comparison(name, recon, high_tol=self.high_tol)
+        recon = task.get_data_to_cpu(name='object', as_numpy=True)[0]
+        return recon
     
     
 if __name__ == '__main__':

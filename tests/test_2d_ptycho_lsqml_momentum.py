@@ -9,14 +9,13 @@ from ptychi.utils import get_suggested_object_size, get_default_complex_dtype, g
 import test_utils as tutils
 
 
-class Test2DPtychoLSQMLMomentum(tutils.BaseTester):
+class Test2DPtychoLSQMLMomentum(tutils.TungstenDataTester):
     
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_lsqml_momentum')
     def test_2d_ptycho_lsqml_momentum(self):
-        name = 'test_2d_ptycho_lsqml_momentum'
-        
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
+        self.setup_ptychi(cpu_only=False)
 
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true')
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(pos_type='true')
         
         options = api.LSQMLOptions()
         options.data_options.data = data
@@ -45,11 +44,7 @@ class Test2DPtychoLSQMLMomentum(tutils.BaseTester):
         task.run()
         
         recon = task.get_data_to_cpu('object', as_numpy=True)[0]
-
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon, high_tol=self.high_tol)
+        return recon
     
     
 if __name__ == '__main__':

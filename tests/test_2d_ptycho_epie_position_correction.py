@@ -9,14 +9,13 @@ from ptychi.utils import get_suggested_object_size, get_default_complex_dtype
 import test_utils as tutils
 
 
-class Test2DEPIEPositionCorrection(tutils.BaseTester):
+class Test2DEPIEPositionCorrection(tutils.TungstenDataTester):
 
-    def test_2d_ptycho_epie_position_correction(self):
-        name = 'test_2d_ptycho_epie_position_correction'
+    @tutils.BaseTester.wrap_recon_tester(name='test_2d_ptycho_epie_position_correction')
+    def test_2d_ptycho_epie_position_correction(self):        
+        self.setup_ptychi(cpu_only=False)
         
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
-        
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(additional_opr_modes=0)
         probe = probe[:, [0], :, :]
         
         options = api.EPIEOptions()
@@ -50,13 +49,7 @@ class Test2DEPIEPositionCorrection(tutils.BaseTester):
         task.run()
 
         recon = task.get_data_to_cpu('object', as_numpy=True)[0]
-        
-        if self.debug and not self.generate_gold:
-            tutils.plot_complex_image(recon)
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon, high_tol=self.high_tol)
+        return recon
     
     
 if __name__ == '__main__':

@@ -10,13 +10,13 @@ from ptychi.utils import get_suggested_object_size, get_default_complex_dtype, g
 import test_utils as tutils
 
 
-class Test2DPtychoLSQMLCompact(tutils.BaseTester):
-    def test_2d_ptycho_lsqml_compact(self):            
-        name = 'test_2d_ptycho_lsqml_compact'
-        
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
+class Test2DPtychoLSQMLCompact(tutils.TungstenDataTester):
+    
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_lsqml_compact')
+    def test_2d_ptycho_lsqml_compact(self):                    
+        self.setup_ptychi(cpu_only=False)
 
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true')
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(pos_type='true')
         
         options = api.LSQMLOptions()
         options.data_options.data = data
@@ -47,20 +47,13 @@ class Test2DPtychoLSQMLCompact(tutils.BaseTester):
         task.run()
         
         recon = task.get_data_to_cpu('object', as_numpy=True)[0]
+        return recon
 
-        if self.debug and not self.generate_gold:
-            tutils.plot_complex_image(recon)
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon, high_tol=self.high_tol)
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_lsqml_compact_multislice')
+    def test_2d_ptycho_lsqml_compact_multislice(self):        
+        self.setup_ptychi(cpu_only=False)
 
-    def test_2d_ptycho_lsqml_compact_multislice(self):
-        name = 'test_2d_ptycho_lsqml_compact_multislice'
-        
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
-
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(pos_type='true')
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(pos_type='true')
         
         options = api.LSQMLOptions()
         options.data_options.data = data
@@ -92,17 +85,7 @@ class Test2DPtychoLSQMLCompact(tutils.BaseTester):
         task.run()
         
         recon = task.get_data_to_cpu('object', as_numpy=True)
-
-        if self.debug and not self.generate_gold:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(1, 2)
-            ax[0].imshow(np.angle(recon[0]))
-            ax[1].imshow(np.angle(recon[1]))
-            plt.show()
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon, high_tol=self.high_tol)
+        return recon
     
     
 if __name__ == '__main__':

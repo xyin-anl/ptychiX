@@ -9,14 +9,13 @@ from ptychi.utils import get_suggested_object_size, get_default_complex_dtype
 import test_utils as tutils
 
 
-class Test2DPtychoMPIE(tutils.BaseTester):
+class Test2DPtychoMPIE(tutils.TungstenDataTester):
 
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_mpie')
     def test_2d_ptycho_mpie(self):
-        name = 'test_2d_ptycho_mpie'
+        self.setup_ptychi(cpu_only=False)
         
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
-        
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(additional_opr_modes=0)
         probe = probe[:, [0], :, :]
         
         options = api.RPIEOptions()
@@ -49,13 +48,7 @@ class Test2DPtychoMPIE(tutils.BaseTester):
         task.run()
 
         recon = task.get_data_to_cpu('object', as_numpy=True)[0]
-        
-        if self.debug and not self.generate_gold:
-            tutils.plot_complex_image(recon)
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon, high_tol=True)
+        return recon
     
     
 if __name__ == '__main__':

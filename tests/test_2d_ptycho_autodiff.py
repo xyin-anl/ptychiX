@@ -9,14 +9,13 @@ from ptychi.utils import get_suggested_object_size, get_default_complex_dtype, g
 import test_utils as tutils
 
 
-class Test2dPtychoAutodiff(tutils.BaseTester):
+class Test2dPtychoAutodiff(tutils.TungstenDataTester):
 
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_autodiff')
     def test_2d_ptycho_autodiff(self):
-        name = 'test_2d_ptycho_autodiff'
+        self.setup_ptychi(cpu_only=False)
         
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
-        
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(additional_opr_modes=0)
         
         options = api.AutodiffPtychographyOptions()
         options.data_options.data = data
@@ -43,18 +42,14 @@ class Test2dPtychoAutodiff(tutils.BaseTester):
         task.run()
         
         recon = task.get_data_to_cpu('object', as_numpy=True)[0]
-        
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon)
+        return recon
             
+    
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_autodiff_l1')
     def test_2d_ptycho_autodiff_l1(self):
-        name = 'test_2d_ptycho_autodiff_l1'
+        self.setup_ptychi(cpu_only=False)
         
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
-        
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=0)
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(additional_opr_modes=0)
         
         options = api.AutodiffPtychographyOptions()
         options.data_options.data = data
@@ -82,19 +77,14 @@ class Test2dPtychoAutodiff(tutils.BaseTester):
         task.run()
         
         recon = task.get_data_to_cpu('object', as_numpy=True)[0]
-        
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon)
+        return recon
             
-            
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_autodiff_opr')
     def test_2d_ptycho_autodiff_opr(self):
-        name = 'test_2d_ptycho_autodiff_opr'
         
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
+        self.setup_ptychi(cpu_only=False)
         
-        data, probe, pixel_size_m, positions_px = tutils.load_tungsten_data(additional_opr_modes=3)
+        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(additional_opr_modes=3)
         
         options = api.AutodiffPtychographyOptions()
         options.data_options.data = data
@@ -126,11 +116,7 @@ class Test2dPtychoAutodiff(tutils.BaseTester):
         task.run()
         
         recon = task.get_data_to_cpu('object', as_numpy=True)[0]
-        
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon)
+        return recon
     
     
 if __name__ == '__main__':

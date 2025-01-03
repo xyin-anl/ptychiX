@@ -11,13 +11,13 @@ import test_utils as tutils
 
 
 class TestMultislicePtychoAutodiff(tutils.BaseTester):
+
+    @tutils.BaseTester.wrap_recon_tester(name='test_multislice_ptycho_autodiff')
     def test_multislice_ptycho_autodiff(self):
-        name = 'test_multislice_ptycho_autodiff'
+        self.setup_ptychi(cpu_only=False)
         
-        tutils.setup(name, cpu_only=False, gpu_indices=[0])
-        
-        data, probe, pixel_size_m, positions_px = tutils.load_data_ptychodus(
-            *tutils.get_default_input_data_file_paths('multislice_ptycho_AuNi'),
+        data, probe, pixel_size_m, positions_px = self.load_data_ptychodus(
+            *self.get_default_input_data_file_paths('multislice_ptycho_AuNi'),
             subtract_position_mean=True
         )
         wavelength_m = 1.03e-10
@@ -57,11 +57,7 @@ class TestMultislicePtychoAutodiff(tutils.BaseTester):
         task.run()
 
         recon = task.get_data_to_cpu('object', as_numpy=True)
-        
-        if self.generate_gold:
-            tutils.save_gold_data(name, recon)
-        else:
-            tutils.run_comparison(name, recon)
+        return recon
         
     
 if __name__ == '__main__':
