@@ -1151,6 +1151,7 @@ def find_center_of_mass(img: Tensor):
     Tensor
         A (N, 2) or (2,) tensor giving the centers of mass.
     """
+    orig_ndim = img.ndim
     if img.ndim == 2:
         img = img[None]
     
@@ -1163,4 +1164,6 @@ def find_center_of_mass(img: Tensor):
     x = x.to(img.device)
     r = torch.stack((y, x), dim=-1)
     com = (r[None] * img[..., None]).sum(dim=(-3, -2)) / img.sum(dim=(-2, -1))[..., None]
+    if orig_ndim == 2:
+        return com[0]
     return com

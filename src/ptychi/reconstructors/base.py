@@ -413,6 +413,10 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             if probe.support_constraint_enabled(self.current_epoch):
                 probe.constrain_support()
                 
+            # Apply probe center constraint.
+            if probe.center_constraint_enabled(self.current_epoch):
+                probe.center_probe()
+                
             # Smooth OPR weights.
             if not self.parameter_group.opr_mode_weights.is_dummy:
                 if self.parameter_group.opr_mode_weights.weight_smoothing_enabled(self.current_epoch):
