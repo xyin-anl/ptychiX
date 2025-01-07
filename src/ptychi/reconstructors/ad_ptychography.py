@@ -34,6 +34,7 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
         if self.parameter_group.object.is_multislice:
             if "wavelength_m" not in self.forward_model_params.keys():
                 self.forward_model_params["wavelength_m"] = self.dataset.wavelength_m
+        self.forward_model_params["detector_size"] = tuple(self.dataset.patterns.shape[-2:])
         return super().build_forward_model()
 
     def run_pre_epoch_hooks(self) -> None:

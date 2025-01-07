@@ -542,7 +542,10 @@ class AnalyticalIterativePtychographyReconstructor(
 
     def build_forward_model(self):
         self.forward_model = fm.PlanarPtychographyForwardModel(
-            self.parameter_group, retain_intermediates=True, wavelength_m=self.dataset.wavelength_m
+            parameter_group=self.parameter_group, 
+            retain_intermediates=True,
+            detector_size=tuple(self.dataset.patterns.shape[-2:]),
+            wavelength_m=self.dataset.wavelength_m
         )
 
     def run_post_epoch_hooks(self) -> None:
