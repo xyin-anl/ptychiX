@@ -21,7 +21,7 @@ class PtychographyDataset(Dataset):
         patterns: Union[Tensor, ndarray],
         valid_pixel_mask: Optional[Union[Tensor, ndarray]] = None,
         wavelength_m: float = None,
-        propagation_distance_m: float = 1.0,
+        free_space_propagation_distance_m: float = 1.0,
         fft_shift: bool = True,
         *args,
         **kwargs,
@@ -37,7 +37,7 @@ class PtychographyDataset(Dataset):
         self.valid_pixel_mask = to_tensor(valid_pixel_mask, device="cpu", dtype=torch.bool)
 
         self.wavelength_m = wavelength_m
-        self.propagation_distance_m = propagation_distance_m
+        self.free_space_propagation_distance_m = free_space_propagation_distance_m
 
     def __getitem__(self, index):
         if not isinstance(index, torch.Tensor):

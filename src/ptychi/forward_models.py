@@ -75,6 +75,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         retain_intermediates: bool = False,
         detector_size: Optional[tuple[int, int]] = None,
         wavelength_m: Optional[float] = None,
+        free_space_propagation_distance_m: Optional[float] = torch.inf,
         low_memory_mode: bool = False,
         *args,
         **kwargs,
@@ -94,6 +95,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
             the size of the probe, the probe is cropped to the detector size.
         wavelength_m : float, optional
             The wavelength of the probe in meters.
+        free_space_propagation_distance_m : float, optional
+            The free-space propagation distance in meters, or `inf` for far-field.
         low_memory_mode : bool
             If True, incoherent probe modes are propagated sequentially rather than in parallel
             which reduces the memory usage.
@@ -104,8 +107,6 @@ class PlanarPtychographyForwardModel(ForwardModel):
         )
         self.low_mem_mode = low_memory_mode
 
-        self.far_field_propagator = FourierPropagator()
-
         # This step is essential as it sets the variables to be attributes of
         # the forward modelobject. Only with this can these buffers be copied
         # to the correct devices in DataParallel.
@@ -115,10 +116,16 @@ class PlanarPtychographyForwardModel(ForwardModel):
         self.opr_mode_weights = parameter_group.opr_mode_weights
 
         self.wavelength_m = wavelength_m
-        self.prop_params = None
+        self.free_space_propagation_distance_m = free_space_propagation_distance_m
+        
+        # Build free space propagator.
+        self.free_space_propagator = None
+        self.build_free_space_propagator()
 
-        self.near_field_propagator = None
-        self.build_propagator()
+        # Build in-object (multislice) propagator.
+        self.in_object_propagator = None
+        self.in_object_prop_params = None
+        self.build_in_object_propagator()
 
         # Intermediate variables. Only used if retain_intermediate is True.
         self.intermediate_variables = {
@@ -140,10 +147,10 @@ class PlanarPtychographyForwardModel(ForwardModel):
             if self.wavelength_m is None:
                 raise ValueError("Wavelength must be given when the object is multislice.")
 
-    def build_propagator(self):
+    def build_in_object_propagator(self):
         if not self.object.is_multislice:
             return
-        self.prop_params = WavefieldPropagatorParameters.create_simple(
+        self.in_object_prop_params = WavefieldPropagatorParameters.create_simple(
             wavelength_m=self.wavelength_m,
             width_px=self.probe.shape[-1],
             height_px=self.probe.shape[-2],
@@ -151,7 +158,23 @@ class PlanarPtychographyForwardModel(ForwardModel):
             pixel_height_m=self.object.pixel_size_m,
             propagation_distance_m=self.object.slice_spacings_m[0],
         )
-        self.near_field_propagator = AngularSpectrumPropagator(self.prop_params)
+        self.in_object_propagator = AngularSpectrumPropagator(self.in_object_prop_params)
+        
+    def build_free_space_propagator(self):
+        if self.free_space_propagation_distance_m == torch.inf:
+            self.free_space_propagator = FourierPropagator()
+        else:
+            params = WavefieldPropagatorParameters.create_simple(
+                wavelength_m=self.wavelength_m,
+                width_px=self.probe.shape[-1],
+                height_px=self.probe.shape[-2],
+                pixel_width_m=self.object.pixel_size_m,
+                pixel_height_m=self.object.pixel_size_m,
+                propagation_distance_m=self.free_space_propagation_distance_m,
+            )
+            # TODO: AngularSpectrumPropagator uses analytical transfer function. Using the FFT
+            # of real-space impulse response might offer better sampling for large propagation distances.
+            self.free_space_propagator = AngularSpectrumPropagator(params)
 
     def get_probe(self, indices: Tensor) -> Tensor:
         """
@@ -271,7 +294,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         Tensor
             A (batch_size, n_probe_modes, h, w) tensor of far field waves.
         """
-        psi_far = self.far_field_propagator.propagate_forward(psi)
+        psi_far = self.free_space_propagator.propagate_forward(psi)
         self.record_intermediate_variable("psi_far", psi_far)
         return psi_far
 
@@ -293,7 +316,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         Tensor
             The wavefield propagated to the next slice.
         """
-        self.prop_params = WavefieldPropagatorParameters.create_simple(
+        self.in_object_prop_params = WavefieldPropagatorParameters.create_simple(
             wavelength_m=self.wavelength_m,
             width_px=self.probe.shape[-1],
             height_px=self.probe.shape[-2],
@@ -301,8 +324,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
             pixel_height_m=self.object.pixel_size_m,
             propagation_distance_m=self.object.slice_spacings_m[slice_index],
         )
-        self.near_field_propagator.update(self.prop_params)
-        slice_psi_prop = self.near_field_propagator.propagate_forward(psi)
+        self.in_object_propagator.update(self.in_object_prop_params)
+        slice_psi_prop = self.in_object_propagator.propagate_forward(psi)
         return slice_psi_prop
 
     def propagate_to_previous_slice(self, psi: Tensor, slice_index: int):
@@ -325,7 +348,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         """
         if slice_index == 0:
             return psi
-        self.prop_params = WavefieldPropagatorParameters.create_simple(
+        self.in_object_prop_params = WavefieldPropagatorParameters.create_simple(
             wavelength_m=self.wavelength_m,
             width_px=self.probe.shape[-1],
             height_px=self.probe.shape[-2],
@@ -333,8 +356,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
             pixel_height_m=self.object.pixel_size_m,
             propagation_distance_m=self.object.slice_spacings_m[slice_index - 1],
         )
-        self.near_field_propagator.update(self.prop_params)
-        slice_psi_prop = self.near_field_propagator.propagate_backward(psi)
+        self.in_object_propagator.update(self.in_object_prop_params)
+        slice_psi_prop = self.in_object_propagator.propagate_backward(psi)
         return slice_psi_prop
 
     def forward(self, indices: Tensor, return_object_patches: bool = False) -> Tensor:
@@ -425,7 +448,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             if slice_psis_current_mode is not None:
                 slice_psis.append(slice_psis_current_mode)
             
-            psi_far = self.far_field_propagator.propagate_forward(exit_psi)
+            psi_far = self.free_space_propagator.propagate_forward(exit_psi)
             self.record_intermediate_variable("psi_far", psi_far)
             
             y = y + psi_far[..., 0, :, :].abs() ** 2
@@ -454,7 +477,9 @@ class PlanarPtychographyForwardModel(ForwardModel):
         nothing is done. If the normalization is "backward" (default in `torch.fft`),
         all gradients are scaled by 1 / sqrt(N).
         """
-        if self.far_field_propagator.norm == "backward" or self.far_field_propagator.norm is None:
+        if not isinstance(self.free_space_propagator, FourierPropagator):
+            return
+        if self.free_space_propagator.norm == "backward" or self.free_space_propagator.norm is None:
             factor = self.probe.shape[-2] * self.probe.shape[-1]
             for var in self.optimizable_parameters:
                 if var.get_grad() is not None:

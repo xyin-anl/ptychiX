@@ -149,7 +149,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.alpha_psi_far = self.get_psi_far_step_size(y_pred, y_true, indices)
         psi_far = psi_far_0 - self.alpha_psi_far.view(-1, 1, 1, 1) * dl_dpsi_far  # Eq. 14
 
-        psi_opt = self.forward_model.far_field_propagator.propagate_backward(psi_far)
+        psi_opt = self.forward_model.free_space_propagator.propagate_backward(psi_far)
         return psi_opt
 
     def run_real_space_step(self, psi_opt, indices):
