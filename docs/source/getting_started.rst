@@ -32,6 +32,8 @@ algorithm. A few key points:
   calling ``api.LSQMLOptions()``, you are selecting the LSQML algorithm.
 - Data options, object options, probe positions, probe position options, and 
   reconstructor options are mandated.
+- Pty-Chi does not generate initial guesses for the object, probe, or OPR mode weights.
+  You can either generate them yourself, or create the initial guesses using Ptychodus.
 - OPR mode weight options are optional and is used when multiple orthogonal probe relaxation 
   (OPR) modes are used.
 - Use enumerations to set multiple-choice options, like ``api.Optimizers.SGD``.

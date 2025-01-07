@@ -1,9 +1,7 @@
-API Reference
+Using Pty-chi
 =============
 
 .. toctree::
    :maxdepth: 2
 
-   options
-   enums 
-   task
+   data_structures

@@ -1,5 +1,5 @@
 Welcome to Pty-chi's documentation!
-=================================
+====================================
 
 .. image:: img/logo.png
    :alt: Pty-chi Logo
@@ -13,6 +13,7 @@ Pty-chi is a PyTorch-based ptychography reconstruction library.
    :caption: Contents:
 
    getting_started
+   using_pty_chi/index
    api/index
 
 Indices and tables

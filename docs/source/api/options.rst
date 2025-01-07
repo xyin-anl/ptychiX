@@ -4,7 +4,7 @@ Options
 The following classes define the configuration options for Pty-chi reconstructions.
 
 Base Options
------------
+------------
 
 .. autoclass:: ptychi.api.options.base.Options
    :members:
@@ -17,7 +17,7 @@ Base Options
    :show-inheritance:
 
 Data Options
------------
+------------
 
 .. autoclass:: ptychi.api.options.data.PtychographyDataOptions
    :members:
@@ -25,7 +25,7 @@ Data Options
    :show-inheritance:
 
 Difference Map (DM) Options
--------------------------
+---------------------------
 
 .. autoclass:: ptychi.api.options.dm.DMOptions
    :members:
@@ -58,7 +58,7 @@ Difference Map (DM) Options
    :show-inheritance:
 
 PIE Options
-----------
+-----------
 
 .. autoclass:: ptychi.api.options.pie.PIEOptions
    :members:
@@ -91,7 +91,7 @@ PIE Options
    :show-inheritance:
 
 LSQML Options
-------------
+-------------
 
 .. autoclass:: ptychi.api.options.lsqml.LSQMLOptions
    :members:
@@ -124,7 +124,7 @@ LSQML Options
    :show-inheritance:
 
 Autodiff Ptychography Options
----------------------------
+-----------------------------
 
 .. autoclass:: ptychi.api.options.ad_ptychography.AutodiffPtychographyOptions
    :members:
