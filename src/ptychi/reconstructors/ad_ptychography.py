@@ -39,7 +39,7 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
     def run_pre_epoch_hooks(self) -> None:
         if (
             self.parameter_group.object.is_multislice
-            and self.parameter_group.object.options.multislice_regularization_weight > 0
+            and self.parameter_group.object.options.multislice_regularization.weight > 0
         ):
             self.update_preconditioners()
         return super().run_pre_epoch_hooks()
@@ -81,10 +81,10 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
         super().apply_regularizers()
 
         object_ = self.parameter_group.object
-        if object_.l1_norm_constraint_enabled(self.current_epoch):
+        if object_.options.l1_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
             # object.data returns a copy, so we directly access the tensor here.
             obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]
-            reg = object_.l1_norm_constraint_weight * obj_data.abs().sum()
+            reg = object_.options.l1_norm_constraint.weight * obj_data.abs().sum()
             reg.backward()
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):

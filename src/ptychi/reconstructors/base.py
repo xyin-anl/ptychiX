@@ -365,37 +365,39 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             positions = self.parameter_group.probe_positions
 
             # Apply probe power constraint.
-            if probe.probe_power_constraint_enabled(self.current_epoch):
+            if probe.options.power_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 probe.constrain_probe_power(
                     self.parameter_group.object, self.parameter_group.opr_mode_weights
                 )
 
             # Apply incoherent mode orthogonality constraint.
-            if probe.incoherent_mode_orthogonality_constraint_enabled(self.current_epoch):
+            if probe.options.orthogonalize_incoherent_modes.is_enabled_on_this_epoch(
+                self.current_epoch
+            ):
                 probe.constrain_incoherent_modes_orthogonality()
 
             # Apply OPR orthogonality constraint.
-            if probe.opr_mode_orthogonalization_enabled(self.current_epoch):
-                weights = self.parameter_group.opr_mode_weights
-                weights_data = probe.constrain_opr_mode_orthogonality(weights)
-                weights.set_data(weights_data)
+            if probe.options.orthogonalize_opr_modes.is_enabled_on_this_epoch(self.current_epoch):
+                probe.constrain_opr_mode_orthogonality(
+                    self.parameter_group.opr_mode_weights, update_weights_in_place=True
+                )
 
             # Regularize multislice reconstruction.
-            if object_.is_multislice and object_.multislice_regularization_enabled(
+            if object_.options.multislice_regularization.is_enabled_on_this_epoch(
                 self.current_epoch
             ):
                 object_.regularize_multislice()
 
             # Apply smoothness constraint.
-            if object_.smoothness_constraint_enabled(self.current_epoch):
+            if object_.options.smoothness_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_smoothness()
 
             # Apply total variation constraint.
-            if object_.total_variation_enabled(self.current_epoch):
+            if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_total_variation()
 
             # Remove grid artifacts.
-            if object_.remove_grid_artifacts_enabled(self.current_epoch):
+            if object_.options.remove_grid_artifacts.is_enabled_on_this_epoch(self.current_epoch):
                 object_.remove_grid_artifacts()
 
             # Apply position constraint.
@@ -414,18 +416,19 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                 self.dataloader.batch_sampler.update_clusters(positions.data.detach().cpu())
                 
             # Apply probe support constraint.
-            if probe.support_constraint_enabled(self.current_epoch):
+            if probe.options.support_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 probe.constrain_support()
                 
             # Apply probe center constraint.
-            if probe.center_constraint_enabled(self.current_epoch):
+            if probe.options.center_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 probe.center_probe()
                 
             # Smooth OPR weights.
-            if not self.parameter_group.opr_mode_weights.is_dummy:
-                if self.parameter_group.opr_mode_weights.weight_smoothing_enabled(self.current_epoch):
-                    self.parameter_group.opr_mode_weights.smooth_weights()
-                self.parameter_group.opr_mode_weights.remove_outliers()
+            opr_mode_weights = self.parameter_group.opr_mode_weights
+            if not opr_mode_weights.is_dummy:
+                if opr_mode_weights.options.smoothing.is_enabled_on_this_epoch(self.current_epoch):
+                    opr_mode_weights.smooth_weights()
+                opr_mode_weights.remove_outliers()
 
 
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
@@ -556,7 +559,7 @@ class AnalyticalIterativePtychographyReconstructor(
             object_ = self.parameter_group.object
 
             # Apply object L1-norm constraint.
-            if object_.l1_norm_constraint_enabled(self.current_epoch):
+            if object_.options.l1_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_l1_norm()
 
     def run_pre_run_hooks(self) -> None:
