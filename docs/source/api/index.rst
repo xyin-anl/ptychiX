@@ -7,3 +7,4 @@ API Reference
    options
    enums 
    task
+   utils

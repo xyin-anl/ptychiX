@@ -1,8 +1,8 @@
 Getting Started
-==============
+===============
 
 Installation
------------
+------------
 
 Clone the repository to your workspace, and create a new conda environment::
 
@@ -13,7 +13,7 @@ Then install the package using::
     pip install -e .
 
 Basic Usage
-----------
+-----------
 
 Using Pty-Chi with Ptychodus
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -41,9 +41,15 @@ algorithm. A few key points:
 
 .. code-block:: python
 
+    import torch
     import ptychi.api as api
     from ptychi.api.task import PtychographyTask
     from ptychi.utils import get_suggested_object_size, get_default_complex_dtype, generate_initial_opr_mode_weights
+
+
+    torch.set_default_device('cpu' if cpu_only else 'cuda')
+    torch.set_default_dtype(torch.float32)
+    set_default_complex_dtype(torch.complex64)
 
     data, probe, pixel_size_m, positions_px = your_data_loading_function()
 

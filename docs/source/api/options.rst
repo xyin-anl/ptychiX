@@ -16,6 +16,26 @@ Base Options
    :undoc-members:
    :show-inheritance:
 
+.. autoclass:: ptychi.api.options.base.ObjectOptions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: ptychi.api.options.base.ProbeOptions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: ptychi.api.options.base.ProbePositionOptions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: ptychi.api.options.base.OPRModeWeightsOptions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Data Options
 ------------
 

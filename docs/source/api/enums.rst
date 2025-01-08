@@ -1,5 +1,5 @@
 Enumerations
-===========
+============
 
 .. automodule:: ptychi.api.enums
    :members:

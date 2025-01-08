@@ -83,7 +83,11 @@ def orthogonalize_initial_probe(
     Parameters
     ----------
     probe : Tensor
-        A (n_opr_modes, n_modes, h, w) tensor of the probe.
+        A (n_opr_modes, n_modes, h, w) tensor of the probe. This function only generates
+        incoherent modes; OPR modes are kept as they are. Only the first incoherent mode
+        of the input probe is used. As such, the rest of the incoherent modes can be
+        arbotrarily initialized, but the shape of the input probe should be indicate the
+        number of incoherent modes intended to be generated.
     secondary_mode_energy : float, optional
         The energy of the secondary mode relative to the principal mode, which is
         always 1.0.
@@ -197,6 +201,25 @@ def generate_initial_object(shape: tuple[int, ...], method: Literal["random"] = 
 def add_additional_opr_probe_modes_to_probe(
     probe: Tensor, n_opr_modes_to_add: int, normalize: bool = True
 ) -> Tensor:
+    """
+    Add additional OPR modes to the probe.
+    
+    Parameters
+    ----------
+    probe : Tensor
+        A (n_opr_modes, n_modes, h, w) tensor of the probe.
+    n_opr_modes_to_add : int
+        The number of OPR modes to add.
+    normalize : bool, optional
+        Whether to normalize the OPR modes using `mnorm` so that the power
+        of each mode is the number of pixels in a mode.
+    
+    Returns
+    -------
+    Tensor
+        A (n_opr_modes + n_opr_modes_to_add, n_modes, h, w) tensor of the probe 
+        with additional OPR modes.
+    """
     if probe.ndim != 4:
         raise ValueError("probe must be a (n_opr_modes, n_modes, h, w) tensor.")
     n_modes = probe.shape[1]
