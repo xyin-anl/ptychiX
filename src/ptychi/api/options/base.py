@@ -520,7 +520,10 @@ class ReconstructorOptions(Options):
     
     - `enums.BatchingModes.RANDOM`: load a random set of data in each minibatch.
     - `enums.BatchingModes.COMPACT`: load a spatially close cluster of data in each minibatch.
-      This is equivalent to the compact mode in PtychoSheleves.
+      This is equivalent to the "compact" mode in PtychoShelves.
+    - `enums.BatchingModes.UNIFORM`: load a random set of data in each minibatch, but the
+      indices across batches are manipulated so that points in each batch are more uniformly
+      spread out in the scan space. This is equivalent to the "sparse" mode in PtychoShelves.
     """
 
     compact_mode_update_clustering: bool = False

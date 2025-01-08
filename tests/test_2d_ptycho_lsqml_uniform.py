@@ -10,10 +10,10 @@ from ptychi.utils import get_suggested_object_size, get_default_complex_dtype
 import test_utils as tutils
 
 
-class Test2DPtychoLSQMLPseudorandom(tutils.TungstenDataTester):
+class Test2DPtychoLSQMLUniform(tutils.TungstenDataTester):
     
-    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_lsqml_pseudorandom')
-    def test_2d_ptycho_lsqml_pseudorandom(self):                    
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_lsqml_uniform')
+    def test_2d_ptycho_lsqml_uniform(self):                    
         self.setup_ptychi(cpu_only=False)
 
         data, probe, pixel_size_m, positions_px = self.load_tungsten_data(pos_type='true')
@@ -40,7 +40,7 @@ class Test2DPtychoLSQMLPseudorandom(tutils.TungstenDataTester):
         options.reconstructor_options.batch_size = 96
         options.reconstructor_options.noise_model = api.NoiseModels.GAUSSIAN
         options.reconstructor_options.num_epochs = 8
-        options.reconstructor_options.batching_mode = api.BatchingModes.PSEUDORANDOM
+        options.reconstructor_options.batching_mode = api.BatchingModes.UNIFORM
         options.reconstructor_options.compact_mode_update_clustering = True
         
         task = PtychographyTask(options)
@@ -55,6 +55,6 @@ if __name__ == '__main__':
     parser.add_argument('--generate-gold', action='store_true')
     args = parser.parse_args()
 
-    tester = Test2DPtychoLSQMLPseudorandom()
+    tester = Test2DPtychoLSQMLUniform()
     tester.setup_method(name="", generate_data=False, generate_gold=args.generate_gold, debug=True)
-    tester.test_2d_ptycho_lsqml_pseudorandom()
+    tester.test_2d_ptycho_lsqml_uniform()

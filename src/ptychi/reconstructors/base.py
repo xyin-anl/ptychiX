@@ -315,8 +315,8 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             batch_sampler = io.PtychographyCompactBatchSampler(
                 self.parameter_group.probe_positions.data.cpu(), self.batch_size
             )
-        elif self.options.batching_mode == enums.BatchingModes.PSEUDORANDOM:
-            batch_sampler = io.PtychographyPseudorandomBatchSampler(
+        elif self.options.batching_mode == enums.BatchingModes.UNIFORM:
+            batch_sampler = io.PtychographyUniformBatchSampler(
                 self.parameter_group.probe_positions.data.cpu(), self.batch_size
             )
         return super().build_dataloader(batch_sampler=batch_sampler)

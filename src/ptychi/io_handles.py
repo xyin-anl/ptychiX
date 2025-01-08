@@ -97,7 +97,7 @@ class PtychographyCompactBatchSampler(torch.utils.data.Sampler):
             yield self.clusters_of_indices[i_batch]
 
 
-class PtychographyPseudorandomBatchSampler(torch.utils.data.Sampler):
+class PtychographyUniformBatchSampler(torch.utils.data.Sampler):
     def __init__(self, positions, batch_size, *args, **kwargs):
         """A batch sampler that returns minibatches of indices that are random,
         but modified to be spread out over the space as uniformly as possible.

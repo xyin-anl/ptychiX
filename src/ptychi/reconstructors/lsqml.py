@@ -280,7 +280,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             
             # In compact batching mode, object is updated at the end of an epoch using gradients
             # accumulated over all minibatches.
-            if self.options.batching_mode in [enums.BatchingModes.RANDOM, enums.BatchingModes.PSEUDORANDOM]:
+            if self.options.batching_mode in [enums.BatchingModes.RANDOM, enums.BatchingModes.UNIFORM]:
                 self._record_object_slice_gradient(
                     i_slice, delta_o_precond, add_to_existing=False
                 )
@@ -295,7 +295,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         mean_alpha_o_all_slices = pmath.trim_mean(self.alpha_object_all_pos_all_slices[indices], 0.1, dim=0)
         if (
             self.parameter_group.object.optimization_enabled(self.current_epoch)
-            and self.options.batching_mode in [enums.BatchingModes.RANDOM, enums.BatchingModes.PSEUDORANDOM]
+            and self.options.batching_mode in [enums.BatchingModes.RANDOM, enums.BatchingModes.UNIFORM]
         ):
             self._apply_object_update(mean_alpha_o_all_slices, None)
 
@@ -723,11 +723,11 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
     def _initialize_object_gradient(self):
         """
         Initialize object gradient with zeros. This method is called at the beginning of the
-        real-space step of a minibatch. If batching mode is "(pseudo)random", the gradient is always
+        real-space step of a minibatch. If batching mode is "random/uniform", the gradient is always
         re-initialized when this method is called. If batching mode is "compact", gradient
         is only initialized if the current minibatch is the first in the current epoch.
         """
-        if self.options.batching_mode in [enums.BatchingModes.RANDOM, enums.BatchingModes.PSEUDORANDOM]:
+        if self.options.batching_mode in [enums.BatchingModes.RANDOM, enums.BatchingModes.UNIFORM]:
             self.parameter_group.object.initialize_grad()
         else:
             if self.current_minibatch == 0:
