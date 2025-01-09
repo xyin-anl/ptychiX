@@ -26,7 +26,8 @@ def extract_patches_fourier_shift(
     image: Tensor, positions: Tensor, shape: Tuple[int, int]
 ) -> Tensor:
     """
-    Extract patches from 2D object.
+    Extract patches from 2D object. If a patch's footprint goes outside the image,
+    the image is padded with zeros to account for the missing pixels.
 
     Parameters
     ----------
@@ -47,13 +48,15 @@ def extract_patches_fourier_shift(
     sys_float = positions[:, 0] - (shape[0] - 1.0) / 2.0
     sxs_float = positions[:, 1] - (shape[1] - 1.0) / 2.0
 
-    # Crop one more pixel each side for Fourier shift
-    sys = sys_float.floor().int() - 1
-    eys = sys + shape[0] + 2
-    sxs = sxs_float.floor().int() - 1
-    exs = sxs + shape[1] + 2
+    patch_padding = 1
 
-    fractional_shifts = torch.stack([sys_float - sys - 1.0, sxs_float - sxs - 1.0], -1)
+    # Crop one more pixel each side for Fourier shift
+    sys = sys_float.floor().int() - patch_padding
+    eys = sys + shape[0] + 2 * patch_padding
+    sxs = sxs_float.floor().int() - patch_padding
+    exs = sxs + shape[1] + 2 * patch_padding
+
+    fractional_shifts = torch.stack([sys_float - sys - patch_padding, sxs_float - sxs - patch_padding], -1)
 
     pad_lengths = [
         max(-sxs.min(), 0),
@@ -75,15 +78,20 @@ def extract_patches_fourier_shift(
 
     # Apply Fourier shift to account for fractional shifts
     patches = fourier_shift(patches, -fractional_shifts)
-    patches = patches[:, 1:-1, 1:-1]
+    patches = patches[:, patch_padding:-patch_padding, patch_padding:-patch_padding]
     return patches
 
 
 def place_patches_fourier_shift(
-    image: Tensor, positions: Tensor, patches: Tensor, op: Literal["add", "set"] = "add"
+    image: Tensor, 
+    positions: Tensor, 
+    patches: Tensor, 
+    op: Literal["add", "set"] = "add",
+    adjoint_mode: bool = True,
 ) -> Tensor:
     """
-    Place patches into a 2D object.
+    Place patches into a 2D object. If a patch's footprint goes outside the image,
+    the image is padded with zeros to account for the missing pixels.
 
     Parameters
     ----------
@@ -94,6 +102,19 @@ def place_patches_fourier_shift(
         The origin of the given positions are assumed to be the TOP LEFT corner of the image.
     patches : Tensor
         A (N, H, W) or (H, W) tensor of image patches.
+    op : Literal["add", "set"]
+        The operation to perform. "add" adds the patches to the image, 
+        "set" sets the patches to the image replacing the existing values.
+    adjoint_mode : bool
+        If True, this function performs the exact adjoint operation of `extract_patches_fourier_shift`.
+        This means it will run the adjoint operation of every step of the extraction 
+        function in reverse order: it first zero-pads the patches, shifts them back, 
+        and puts them back into the image. Turn it on if this function is used in
+        backpropagating the gradient. Note that due to the zero-padding, ripple
+        artifacts may appear around the borders of each patch, so it is not suitable
+        for placing patches that are not gradients. In that case, set this to False,
+        and it will skip the zero-padding and crop the patches before placing them
+        to remove Fourier shift wrap-arounds.
 
     Returns
     -------
@@ -106,19 +127,23 @@ def place_patches_fourier_shift(
         patches = patches[None].expand(len(positions), -1, -1)
 
     shape = patches.shape[-2:]
+    
+    if adjoint_mode:
+        patch_padding = 1
+        patches = torch.nn.functional.pad(patches, [patch_padding] * 4)
+    else:
+        patch_padding = -1
 
-    # Floating point ranges over which interpolations should be done. +1 to shrink
-    # patches by 1 pixel
-    sys_float = (positions[:, 0] - (shape[0] - 1.0) / 2.0) + 1
-    sxs_float = (positions[:, 1] - (shape[1] - 1.0) / 2.0) + 1
+    sys_float = positions[:, 0] - (shape[0] - 1.0) / 2.0
+    sxs_float = positions[:, 1] - (shape[1] - 1.0) / 2.0
 
     # Crop one more pixel each side for Fourier shift
-    sys = sys_float.floor().int()
-    eys = sys + shape[0] - 2
-    sxs = sxs_float.floor().int()
-    exs = sxs + shape[1] - 2
+    sys = sys_float.floor().int() - patch_padding
+    eys = sys + shape[0] + 2 * patch_padding
+    sxs = sxs_float.floor().int() - patch_padding
+    exs = sxs + shape[1] + 2 * patch_padding
 
-    fractional_shifts = torch.stack([sys_float - sys, sxs_float - sxs], -1)
+    fractional_shifts = torch.stack([sys_float - sys - patch_padding, sxs_float - sxs - patch_padding], -1)
 
     pad_lengths = [
         max(-sxs.min(), 0),
@@ -133,7 +158,8 @@ def place_patches_fourier_shift(
     exs = exs + pad_lengths[0]
 
     patches = fourier_shift(patches, fractional_shifts)
-    patches = patches[:, 1:-1, 1:-1]
+    if not adjoint_mode:
+        patches = patches[:, abs(patch_padding):-abs(patch_padding), abs(patch_padding):-abs(patch_padding)]
 
     for i in range(patches.shape[0]):
         if op == "add":
