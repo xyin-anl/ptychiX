@@ -28,19 +28,45 @@ class Up(nn.Module):
     This implementation is adapted from https://github.com/milesial/Pytorch-UNet.
     """
 
-    def __init__(self, in_channels, out_channels, bilinear=True):
+    def __init__(
+        self, 
+        in_channels: int, 
+        out_channels: int, 
+        bilinear: bool = True, 
+        skip_connection: bool = True,
+    ):
         super().__init__()
+        self.skip_connection = skip_connection
 
         # if bilinear, use the normal convolutions to reduce the number of channels
+        up_out_channels = in_channels // 2 if skip_connection else in_channels
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
             self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
         else:
-            self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
+            self.up = nn.ConvTranspose2d(in_channels, up_out_channels, kernel_size=2, stride=2)
             self.conv = DoubleConv(in_channels, out_channels)
 
     def forward(self, x1, x2):
+        """The forward pass.
+
+        Parameters
+        ----------
+        x1 : Tensor
+            The output of the previous layer.
+        x2 : Tensor
+            The output of the layer in the downsampling part that is on the same scale.
+            When skip connection is enabled, this tensor is concatenated with the output.
+            Even when skip connection is disabled, this argument is still required because
+            it is used to determine the padding of the input tensor.
+
+        Returns
+        -------
+        Tensor
+            The output of the layer.
+        """
         x1 = self.up(x1)
+        
         # input is CHW
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]
@@ -50,12 +76,22 @@ class Up(nn.Module):
         # if you have padding issues, see
         # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
         # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
-        x = torch.cat([x2, x1], dim=1)
+        if self.skip_connection:
+            x = torch.cat([x2, x1], dim=1)
+        else:
+            x = x1
         return self.conv(x)
 
 
 class UNet(nn.Module):
-    def __init__(self, n_in_channels, n_out_channels, bilinear=True):
+    def __init__(
+        self, 
+        num_in_channels: int, 
+        num_out_channels: int, 
+        bilinear: bool = True, 
+        initialize: bool = False,
+        skip_connections: bool = True,
+    ):
         """U-net model based on 
         Ronneberger, O., Fischer, P., & Brox, T. (2015). U-Net: Convolutional Networks for 
         Biomedical Image Segmentation. arXiv:1505.04597.
@@ -68,22 +104,42 @@ class UNet(nn.Module):
             Number of channels in the input image.
         bilinear : bool, optional
             If True, use bilinear upsampling. Otherwise, use transposed convolutions.
+        initialize : bool, optional
+            If True, initialize the model with normal weights.
+        skip_connections : bool, optional
+            If True, use skip connections.
         """
         super(UNet, self).__init__()
-        self.n_in_channels = n_in_channels
+        self.n_in_channels = num_in_channels
         self.bilinear = bilinear
 
-        self.inc = DoubleConv(n_in_channels, 64)
+        self.inc = DoubleConv(num_in_channels, 64)
         self.down1 = Down(64, 128)
         self.down2 = Down(128, 256)
         self.down3 = Down(256, 512)
         factor = 2 if bilinear else 1
         self.down4 = Down(512, 1024 // factor)
-        self.up1 = Up(1024, 512 // factor, bilinear)
-        self.up2 = Up(512, 256 // factor, bilinear)
-        self.up3 = Up(256, 128 // factor, bilinear)
-        self.up4 = Up(128, 64, bilinear)
-        self.outc = nn.Conv2d(64, n_out_channels, kernel_size=1)
+        if skip_connections:
+            self.up1 = Up(1024, 512 // factor, bilinear, skip_connection=skip_connections)
+            self.up2 = Up(512, 256 // factor, bilinear, skip_connection=skip_connections)
+            self.up3 = Up(256, 128 // factor, bilinear, skip_connection=skip_connections)
+            self.up4 = Up(128, 64, bilinear, skip_connection=skip_connections)
+            self.outc = nn.Conv2d(64, num_out_channels, kernel_size=1)
+        else:
+            self.up1 = Up(1024 // factor, 512 // factor, bilinear, skip_connection=skip_connections)
+            self.up2 = Up(512 // factor, 256 // factor, bilinear, skip_connection=skip_connections)
+            self.up3 = Up(256 // factor, 128 // factor, bilinear, skip_connection=skip_connections)
+            self.up4 = Up(128 // factor, 64, bilinear, skip_connection=skip_connections)
+            self.outc = nn.Conv2d(64, num_out_channels, kernel_size=1)
+        
+        if initialize:
+            self.apply(self._initialize_weights)
+            
+    def _initialize_weights(self, m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.normal_(m.weight, 0, 1e-2)
+            if m.bias is not None:
+                nn.init.normal_(m.bias, 0, 1e-2)
 
     def forward(self, x):
         """Forward pass of the U-net model.
@@ -125,5 +181,18 @@ class UNet(nn.Module):
 
 if __name__ == "__main__":
     import torchinfo
-    model = UNet(n_in_channels=1, n_out_channels=1)
-    torchinfo.summary(model, input_size=(1, 1, 256, 256))
+    import matplotlib.pyplot as plt
+    model = UNet(num_in_channels=1, num_out_channels=1)
+    torchinfo.summary(model, input_size=(1, 1, 256, 256), device="cpu")
+    delta_image = torch.zeros([1, 1, 1024, 1024])
+    delta_image[0, 0, delta_image.shape[-2]//2, delta_image.shape[-1]//2] = 100.0
+    out = model(delta_image).detach().cpu()
+    nz_pts = torch.where(out[0, 0] > 0)
+    print(nz_pts)
+    receptive_field_y = nz_pts[0].max() - nz_pts[0].min()
+    receptive_field_x = nz_pts[1].max() - nz_pts[1].min()
+    print(f"Receptive field: {receptive_field_y}x{receptive_field_x}")
+    fig, ax = plt.subplots(1, 2)
+    ax[0].imshow(out[0, 0])
+    ax[1].imshow(out[0, 0] > 0)
+    plt.show()

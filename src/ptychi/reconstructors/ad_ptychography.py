@@ -81,8 +81,18 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
             reg = object_.options.l1_norm_constraint.weight * obj_data.abs().sum()
             reg.backward()
 
-    def run_minibatch(self, input_data, y_true, *args, **kwargs):
+    def run_minibatch(self, input_data, y_true, *args, **kwargs):        
         y_pred = self.forward_model(*input_data)
+        
+        ###
+        # import torchviz
+        # import matplotlib.pyplot as plt
+        # dot = torchviz.make_dot(y_pred, params=dict(self.forward_model.named_parameters()), show_saved=True, show_attrs=True)
+        # dot.render("computational_graph", format="pdf", cleanup=True)
+        # import time
+        # time.sleep(9999)
+        ###
+        
         batch_loss = self.loss_function(
             y_pred[:, self.dataset.valid_pixel_mask], y_true[:, self.dataset.valid_pixel_mask]
         )

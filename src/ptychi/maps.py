@@ -8,6 +8,7 @@ import ptychi.reconstructors as reconstructors
 import ptychi.forward_models as fm
 from ptychi.reconstructors.base import Reconstructor
 import ptychi.image_proc as ip
+import ptychi.reconstructors.nn as pnn
 from functools import partial
 
 
@@ -94,4 +95,11 @@ def get_patch_extractor_function_by_name(
         enums.PatchInterpolationMethods.NEAREST: partial(
             ip.extract_patches_bilinear_shift, round_positions=True
         ),
+    }[key]
+
+
+def get_nn_model_by_enum(key: enums.DIPModels) -> Type["torch.nn.Module"]:
+    return {
+        enums.DIPModels.UNET: pnn.models.unet.UNet,
+        enums.DIPModels.AUTOENCODER: pnn.models.autoencoder.Autoencoder,
     }[key]

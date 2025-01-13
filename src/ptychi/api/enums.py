@@ -103,3 +103,8 @@ class AffineDegreesOfFreedom(StrEnum):
     SCALE = auto()
     SHEAR = auto()
     ASSYMETRY = auto()
+
+
+class DIPModels(StrEnum):
+    UNET = auto()
+    AUTOENCODER = auto()

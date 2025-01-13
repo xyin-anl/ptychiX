@@ -503,6 +503,9 @@ class PlanarPtychographyForwardModel(ForwardModel):
         """
         self.intermediate_variables = self.PlanarPtychographyIntermediateVariables()
         
+        if isinstance(self.object, ptychi.data_structures.object.DIPObject):
+            self.object.generate()
+        
         positions = self.probe_positions.tensor[indices]
         obj_patches = self.extract_object_patches(indices)
 
@@ -561,6 +564,9 @@ class PlanarPtychographyForwardModel(ForwardModel):
         Tensor
             Predicted intensities (squared magnitudes).
         """
+        if isinstance(self.object, ptychi.data_structures.object.DIPObject):
+            self.object.generate()
+
         positions = self.probe_positions.tensor[indices]
         obj_patches = self.extract_object_patches(indices)
 
@@ -612,6 +618,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
         nothing is done. If the normalization is "backward" (default in `torch.fft`),
         all gradients are scaled by 1 / sqrt(N).
         """
+        if isinstance(self.object, ptychi.data_structures.object.DIPObject):
+            return
         if not isinstance(self.free_space_propagator, FourierPropagator):
             return
         if self.free_space_propagator.norm == "backward" or self.free_space_propagator.norm is None:
@@ -655,6 +663,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
         For probe positions and OPR weights, we just compensate for the mean reduction:
         (1) multiply it by h * w.
         """
+        if isinstance(self.object, ptychi.data_structures.object.DIPObject):
+            return
         # Directly modify the gradients here. Tensor.register_hook has memory leak issue.
         if self.object.optimizable:
             self.object.set_grad(
