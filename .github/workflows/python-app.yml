@@ -21,8 +21,6 @@ permissions:
 jobs:
   linux-x86-gpu:
 
-    continue-on-error: true
-
     defaults:
       run:
         shell: bash -l {0}
