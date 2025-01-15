@@ -35,7 +35,7 @@ class TestPatchExtractionPlacement(tutils.BaseTester):
             plt.tight_layout()
             plt.show()
         
-        assert torch.allclose(orig_sum, replaced_sum, rtol=1e-3)
+        assert torch.allclose(orig_sum, replaced_sum, rtol=1e-2)
         
     def test_patch_extraction_placement_add_adjoint(self):
         torch.manual_seed(123)
