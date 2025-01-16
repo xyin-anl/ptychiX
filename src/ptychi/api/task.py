@@ -202,6 +202,18 @@ class PtychographyTask(Task):
         if as_numpy:
             data = data.numpy()
         return data
+    
+    def get_probe_positions_y(self, as_numpy: bool = False) -> Union[Tensor, ndarray]:
+        data = self.probe_positions.data[:, 0]
+        if as_numpy:
+            data = data.numpy()
+        return data
+
+    def get_probe_positions_x(self, as_numpy: bool = False) -> Union[Tensor, ndarray]:
+        data = self.probe_positions.data[:, 1]
+        if as_numpy:
+            data = data.numpy()
+        return data
 
     def __exit__(self, exc_type, exc_value, exc_tb):
         del self.object
