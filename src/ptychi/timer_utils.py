@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import copy
 import torch
 from collections import defaultdict
+import inspect
+
 
 # Type variables to retain function signatures
 T = TypeVar("T", bound=Callable)
@@ -13,6 +15,8 @@ T = TypeVar("T", bound=Callable)
 # Global flag to enable or disable timing
 ENABLE_TIMING = True
 ELAPSED_TIME_DICT = defaultdict(lambda: np.array([]))
+FUNCTION_CALL_STACK_DICT = defaultdict(list)
+TIMING_OVERHEAD_ARRAY = np.array([])
 
 
 def toggle_timer(enable: bool):
@@ -37,12 +41,21 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
                 result = func(*args, **kwargs)
                 torch.cuda.synchronize()
                 elapsed_time = time.time() - start_time
+                measure_overhead_start = time.time()
                 if save_elapsed_time:
                     update_elapsed_time_array(prefix, func, elapsed_time)
-                return result
+                # return result
             else:
                 # If timing is disabled, just call the function
-                return func(*args, **kwargs)
+                result = func(*args, **kwargs)
+            global TIMING_OVERHEAD_ARRAY
+            TIMING_OVERHEAD_ARRAY = np.append(
+                TIMING_OVERHEAD_ARRAY, time.time() - measure_overhead_start
+            )
+            # globals()["TIMING_OVERHEAD_ARRAY"] = np.append(
+            #     globals()["TIMING_OVERHEAD_ARRAY"], time.time() - measure_overhead_start
+            # )
+            return result
 
         # Ensure the wrapper function has the same type as the original
         return wrapper  # type: ignore
@@ -51,17 +64,25 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
 
 
 def update_elapsed_time_array(prefix: str, func: T, elapsed_time: float):
-    key = prefix + func.__name__
+    key = prefix + func.__qualname__
     ELAPSED_TIME_DICT[key] = np.append(ELAPSED_TIME_DICT[key], elapsed_time)
+    if key not in FUNCTION_CALL_STACK_DICT.keys():
+        FUNCTION_CALL_STACK_DICT[key] = get_calling_functions_from_module("ptychi")
 
 
 def return_elapsed_time_arrays() -> dict:
     return ELAPSED_TIME_DICT
 
 
+def return_call_stack_dict() -> dict:
+    return FUNCTION_CALL_STACK_DICT
+
+
 def delete_elapsed_time_arrays():
     global ELAPSED_TIME_DICT
+    global FUNCTION_CALL_STACK_DICT
     ELAPSED_TIME_DICT = defaultdict(lambda: np.array([]))
+    FUNCTION_CALL_STACK_DICT = defaultdict(list)
 
 
 def plot_elapsed_time_bar_plot(
@@ -163,3 +184,39 @@ def return_top_n_entries(elapsed_time_dict: dict, top_n: int) -> dict:
     elapsed_time_dict = dict(sorted_items)
 
     return elapsed_time_dict
+
+
+def get_calling_functions_from_module(module_name):
+    """
+    Get the functions from the specified module that called the current function.
+
+    Args:
+        module_name (str): Name of the module to filter functions by.
+
+    Returns:
+        list of str: List of function names from the module in the call stack.
+    """
+
+    calling_functions = []
+    # Inspect the current stack
+    for frame_info in inspect.stack():
+        # Get the module where the function is defined
+        module = inspect.getmodule(frame_info.frame)
+        if module and module.__name__.startswith(module_name):
+            # Try to determine the class name
+            class_name = None
+            local_self = frame_info.frame.f_locals.get("self")
+            local_cls = frame_info.frame.f_locals.get("cls")
+            if local_self:  # If 'self' is in local variables, it's an instance method
+                class_name = type(local_self).__name__
+            elif local_cls:  # If 'cls' is in local variables, it's a class method
+                class_name = local_cls.__name__
+
+            # Construct the full name with module, class (if applicable), and function
+            full_name = ""
+            if class_name:
+                full_name += f"{class_name}."
+            full_name += frame_info.function
+            calling_functions.append(full_name)
+
+    return calling_functions
