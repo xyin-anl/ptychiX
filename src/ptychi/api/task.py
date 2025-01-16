@@ -191,6 +191,18 @@ class PtychographyTask(Task):
     def get_data(
         self, name: Literal["object", "probe", "probe_positions", "opr_mode_weights"]
     ) -> Tensor:
+        """Get a detached copy of the data of the given name.
+
+        Parameters
+        ----------
+        name : Literal["object", "probe", "probe_positions", "opr_mode_weights"]
+            The name of the data to get.
+
+        Returns
+        -------
+        Tensor
+            The data of the given name.
+        """
         return getattr(self, name).data.detach()
 
     def get_data_to_cpu(
@@ -204,15 +216,15 @@ class PtychographyTask(Task):
         return data
     
     def get_probe_positions_y(self, as_numpy: bool = False) -> Union[Tensor, ndarray]:
-        data = self.probe_positions.data[:, 0]
+        data = self.probe_positions.data[:, 0].detach()
         if as_numpy:
-            data = data.numpy()
+            data = data.cpu().numpy()
         return data
 
     def get_probe_positions_x(self, as_numpy: bool = False) -> Union[Tensor, ndarray]:
-        data = self.probe_positions.data[:, 1]
+        data = self.probe_positions.data[:, 1].detach()
         if as_numpy:
-            data = data.numpy()
+            data = data.cpu().numpy()
         return data
 
     def __exit__(self, exc_type, exc_value, exc_tb):
