@@ -19,6 +19,9 @@ FUNCTION_CALL_STACK_DICT = defaultdict(list)
 TIMING_OVERHEAD_ARRAY = np.array([])
 CALLING_FUNCTION_RUNNING_LIST = []  # list[str] # Running list of functions that have been called
 
+ADVANCED_TIME_DICT = defaultdict(lambda: {})
+CURRENT_DICT = ADVANCED_TIME_DICT  # Points to the current dict
+
 
 def toggle_timer(enable: bool):
     global ENABLE_TIMING
@@ -36,33 +39,37 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
     def decorator(func: T) -> T:
         @wraps(func)
         def wrapper(*args, **kwargs):
-            print(func)
+            # print(func)
             if enabled and globals().get("ENABLE_TIMING", False):
+                measure_overhead_start_1 = time.time()
                 full_name = func.__qualname__
                 remove_function_later = record_calling_function(func, full_name)
+                parent_dict = update_current_dict_pointer(func, full_name)
+                overhead_time_1 = time.time() - measure_overhead_start_1
 
                 torch.cuda.synchronize()
                 start_time = time.time()
                 result = func(*args, **kwargs)
                 torch.cuda.synchronize()
                 elapsed_time = time.time() - start_time
-                measure_overhead_start = time.time()
+                measure_overhead_start_2 = time.time()
                 if save_elapsed_time:
                     update_elapsed_time_array(func, full_name, elapsed_time)
+                    update_advanced_time_dict(func, full_name, elapsed_time)
 
                 remove_calling_function(remove_function_later)
 
-                # return result
+                # Traverse back up the advanced timing dicts
+                move_current_dict_back(parent_dict)
+
             else:
                 # If timing is disabled, just call the function
                 result = func(*args, **kwargs)
             global TIMING_OVERHEAD_ARRAY
+            overhead_time_2 = time.time() - measure_overhead_start_2
             TIMING_OVERHEAD_ARRAY = np.append(
-                TIMING_OVERHEAD_ARRAY, time.time() - measure_overhead_start
+                TIMING_OVERHEAD_ARRAY, overhead_time_1 + overhead_time_2
             )
-            # globals()["TIMING_OVERHEAD_ARRAY"] = np.append(
-            #     globals()["TIMING_OVERHEAD_ARRAY"], time.time() - measure_overhead_start
-            # )
             return result
 
         # Ensure the wrapper function has the same type as the original
@@ -72,7 +79,6 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
 
 
 def record_calling_function(func: callable, full_name: str) -> bool:
-    # key = func.__qualname__
     if full_name not in ELAPSED_TIME_DICT.keys():
         globals()["CALLING_FUNCTION_RUNNING_LIST"] += [full_name]
         remove_function_later = True
@@ -87,12 +93,29 @@ def remove_calling_function(remove_function_from_list: bool):
 
 
 def update_elapsed_time_array(func: T, full_name: str, elapsed_time: float):
-    key = func.__qualname__
-    ELAPSED_TIME_DICT[key] = np.append(ELAPSED_TIME_DICT[key], elapsed_time)
-    if key not in FUNCTION_CALL_STACK_DICT.keys():
-        #     # FUNCTION_CALL_STACK_DICT[key] = get_calling_functions_from_module("ptychi")
-        # FUNCTION_CALL_STACK_DICT[key] = get_calling_functions("ptychi")
-        FUNCTION_CALL_STACK_DICT[key] = CALLING_FUNCTION_RUNNING_LIST.copy()
+    ELAPSED_TIME_DICT[full_name] = np.append(ELAPSED_TIME_DICT[full_name], elapsed_time)
+    if full_name not in FUNCTION_CALL_STACK_DICT.keys():
+        FUNCTION_CALL_STACK_DICT[full_name] = CALLING_FUNCTION_RUNNING_LIST.copy()
+
+
+def update_current_dict_pointer(func: T, full_name: str) -> dict:
+    # Save the parent to traverse back to later
+    parent_dict = globals()["CURRENT_DICT"]
+    # Create new dict if necessary
+    if full_name not in globals()["CURRENT_DICT"].keys():
+        globals()["CURRENT_DICT"][full_name] = defaultdict(lambda: {})
+        globals()["CURRENT_DICT"][full_name]["time"] = 0
+    # Update the pointer to the current dict
+    globals()["CURRENT_DICT"] = globals()["CURRENT_DICT"][full_name]
+    return parent_dict
+
+
+def update_advanced_time_dict(func: T, full_name: str, elapsed_time: float):
+    globals()["CURRENT_DICT"]["time"] += elapsed_time
+
+
+def move_current_dict_back(parent_dict):
+    globals()["CURRENT_DICT"] = parent_dict
 
 
 def return_elapsed_time_arrays() -> dict:
@@ -209,121 +232,3 @@ def return_top_n_entries(elapsed_time_dict: dict, top_n: int) -> dict:
     elapsed_time_dict = dict(sorted_items)
 
     return elapsed_time_dict
-
-
-def get_calling_functions_from_module(
-    module_name: str,
-    exclude: list[str] = [
-        "get_calling_functions_from_module",
-        "update_elapsed_time_array",
-        "wrapper",
-    ],
-) -> list[str]:
-    """
-    Get the functions from the specified module that called the current function.
-
-    Args:
-        module_name (str): Name of the module to filter functions by.
-
-    Returns:
-        list of str: List of function names from the module in the call stack.
-    """
-
-    calling_functions = []
-    # Inspect the current stack
-    for frame_info in inspect.stack():
-        # Get the module where the function is defined
-        module = inspect.getmodule(frame_info.frame)
-        if (
-            module
-            and module.__name__.startswith(module_name)
-            and frame_info.function not in exclude
-        ):
-            # Try to determine the class name
-            class_name = None
-            local_self = frame_info.frame.f_locals.get("self")
-            local_cls = frame_info.frame.f_locals.get("cls")
-            if local_self:  # If 'self' is in local variables, it's an instance method
-                class_name = type(local_self).__name__
-            elif local_cls:  # If 'cls' is in local variables, it's a class method
-                class_name = local_cls.__name__
-
-            # Construct the full name with module, class (if applicable), and function
-            full_name = ""
-            if class_name:
-                full_name += f"{class_name}."
-            full_name += frame_info.function
-            calling_functions.append(full_name)
-
-    return calling_functions
-
-
-def get_calling_functions(include_module_name: str) -> list[str]:
-    # Get the current stack
-    stack = inspect.stack()
-    calling_functions = []
-    for frame_info in stack[16:17]:
-        # Get module information
-        module = inspect.getmodule(frame_info.frame)
-        module_name = module.__name__ if module else "Unknown module"
-        if include_module_name in module_name:
-            # If the function is a method of a class, get the class name
-            class_name = None
-            if (
-                "__class__" in frame_info.frame.f_locals
-            ):  # issue is I don't know when this is even triggered
-                class_name = frame_info.frame.f_locals["__class__"].__name__
-            elif "self" in frame_info.frame.f_locals:
-                class_name = frame_info.frame.f_locals["self"].__class__.__name__
-            elif "cls" in frame_info.frame.f_locals:
-                class_name = frame_info.frame.f_locals["cls"].__name__
-
-            print((f"{class_name}.{frame_info.function}"))
-            if class_name:
-                calling_functions.append(f"{class_name}.{frame_info.function}")
-            else:
-                calling_functions.append(frame_info.function)
-    return calling_functions
-
-
-# # Get the current stack
-# stack = inspect.stack()
-# # print(f"Call stack for {func.__name__}:")
-# i = 0
-# for frame_info in stack:
-#     # Get module information
-#     module = inspect.getmodule(frame_info.frame)
-#     module_name = module.__name__ if module else "Unknown module"
-#     if "ptychi" in module_name:
-
-#         # Get the class name if the function is a method of a class
-#         class_name = None
-#         # Get the first argument (`self` or `cls`) and check if it is an instance or class
-#         # if "self" in frame_info.frame.f_locals:
-#         #     class_name = frame_info.frame.f_locals["self"].__class__.__name__
-#         #     # class_name = frame_info.frame.f_locals["__class__"].__name__
-#         # elif "cls" in frame_info.frame.f_locals:
-#         #     class_name = frame_info.frame.f_locals["cls"].__name__
-#         #     print("p")
-
-#         if "__class__" in frame_info.frame.f_locals:
-#             class_name = frame_info.frame.f_locals["__class__"].__name__
-#             # print("cls" in frame_info.frame.f_locals)
-#         elif "self" in frame_info.frame.f_locals:
-#             class_name = frame_info.frame.f_locals["self"].__class__.__name__
-#         elif "cls" in frame_info.frame.f_locals:
-#             class_name = frame_info.frame.f_locals["cls"].__name__
-
-#         # print(f"{class_name}.{func.__name__}")
-
-#         if class_name:
-#             print(f"  {module_name}.{class_name}.{frame_info.function} (line {frame_info.lineno})")
-#         else:
-#             print(f"  {module_name}.{frame_info.function} (line {frame_info.lineno})")
-#         # Construct the display string
-#         # if class_name:
-#         #     print(f"{class_name}.{frame_info.function}")
-#         # else:
-#         #     print(frame_info.function)
-
-# # print("-" * 50)
