@@ -42,24 +42,29 @@ class LossTracker:
             only computing the loss when it is not.
         """
         super().__init__(*args, **kwargs)
-        self.table = pd.DataFrame(columns=["epoch", "loss"])
+        self.table = pd.DataFrame(columns=["epoch", "loss", "reg_loss"])
         self.table["epoch"] = self.table["epoch"].astype(int)
         self.metric_function = metric_function
         self.epoch_loss = 0.0
         self.accumulated_num_batches = 0
+        self.epoch_reg_loss = 0.0
+        self.accumulated_num_reg_batches = 0
         self.epoch = 0
         self.always_compute_loss = always_compute_loss
 
     def conclude_epoch(self, epoch: Optional[int] = None) -> None:
         self.epoch_loss = self.epoch_loss / self.accumulated_num_batches
+        self.epoch_reg_loss = self.epoch_reg_loss / self.accumulated_num_reg_batches
         if epoch is None:
             epoch = self.epoch
             self.epoch += 1
         else:
             self.epoch = epoch + 1
-        self.table.loc[len(self.table)] = [epoch, self.epoch_loss]
+        self.table.loc[len(self.table)] = [epoch, self.epoch_loss, self.epoch_reg_loss]
         self.epoch_loss = 0.0
+        self.epoch_reg_loss = 0.0
         self.accumulated_num_batches = 0
+        self.accumulated_num_reg_batches = 0
 
     def update_batch_loss(
         self,
@@ -123,6 +128,11 @@ class LossTracker:
         loss = to_numpy(loss)
         self.epoch_loss = self.epoch_loss + loss
         self.accumulated_num_batches = self.accumulated_num_batches + 1
+        
+    def update_batch_regularization_loss(self, reg_loss: float) -> None:
+        reg_loss = to_numpy(reg_loss)
+        self.epoch_reg_loss = self.epoch_reg_loss + reg_loss
+        self.accumulated_num_reg_batches = self.accumulated_num_reg_batches + 1
 
     def print(self) -> None:
         print(self.table)
@@ -402,10 +412,6 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             # Apply smoothness constraint.
             if object_.options.smoothness_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_smoothness()
-
-            # Apply total variation constraint.
-            if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
-                object_.constrain_total_variation()
 
             # Remove grid artifacts.
             if object_.options.remove_grid_artifacts.is_enabled_on_this_epoch(self.current_epoch):

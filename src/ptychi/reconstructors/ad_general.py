@@ -58,7 +58,6 @@ class AutodiffReconstructor(IterativeReconstructor):
 
     def run_post_differentiation_hooks(self, input_data, y_true):
         self.get_forward_model().post_differentiation_hook(*input_data, y_true)
-        self.apply_regularizers()
 
     def apply_regularizers(self) -> None:
         """
@@ -73,11 +72,13 @@ class AutodiffReconstructor(IterativeReconstructor):
 
         batch_loss.backward()
         self.run_post_differentiation_hooks(input_data, y_true)
+        reg_loss = self.apply_regularizers()
         self.step_all_optimizers()
         self.forward_model.zero_grad()
         self.run_post_update_hooks()
 
         self.loss_tracker.update_batch_loss(y_pred=y_pred, y_true=y_true, loss=batch_loss.item())
+        self.loss_tracker.update_batch_regularization_loss(reg_loss.item())
 
     def step_all_optimizers(self):
         for var in self.parameter_group.get_optimizable_parameters():

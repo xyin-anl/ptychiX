@@ -96,7 +96,11 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
 
         batch_loss.backward()
         self.run_post_differentiation_hooks(input_data, y_true)
+        reg_loss = self.apply_regularizers()
+        
         self.step_all_optimizers()
         self.forward_model.zero_grad()
         self.run_post_update_hooks()
+        
         self.loss_tracker.update_batch_loss(y_pred=y_pred, y_true=y_true, loss=batch_loss.item())
+        self.loss_tracker.update_batch_regularization_loss(reg_loss.item())
