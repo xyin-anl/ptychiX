@@ -13,12 +13,12 @@ T = TypeVar("T", bound=Callable)
 
 ENABLE_TIMING = True
 "Global flag to enable or disable timing."
-ELAPSED_TIME_DICT = defaultdict(lambda: np.array([]))
+ELAPSED_TIME_DICT: dict[str, np.ndarray] = defaultdict(lambda: np.array([]))
 """
 A dictionary containing numpy arrays of the measured execution times of 
 each timed function.
 """
-ADVANCED_TIME_DICT = defaultdict(lambda: {})
+ADVANCED_TIME_DICT: dict[str, Union[np.ndarray, dict]] = defaultdict(lambda: {})
 """
 A nested dictionary, where each level of the dictionary contains
 1) a key, value pair ("time": np.ndarray) that contains all measured
@@ -49,10 +49,8 @@ def toggle_timer(enable: bool):
         ENABLE_TIMING = enable
 
 
-def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True):
+def timer(save_elapsed_time: bool = True, enabled: bool = True):
     """Decorator to time a function and print the function name if ENABLE_TIMING is True."""
-    if prefix != "":
-        prefix = prefix + "."
 
     def decorator(func: T) -> T:
         @wraps(func)
@@ -60,8 +58,8 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
             if enabled and globals().get("ENABLE_TIMING", False):
                 # Measure the overhead from running the timer function
                 measure_overhead_start_1 = time.time()
-                full_name = func.__qualname__
-                saved_dict_reference = update_current_dict_reference(full_name)
+                function_name = func.__qualname__
+                saved_dict_reference = update_current_dict_reference(function_name)
                 overhead_time_1 = time.time() - measure_overhead_start_1
 
                 # Measure function execution time
@@ -74,7 +72,7 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
                 # Measure the overhead from running the timer function
                 measure_overhead_start_2 = time.time()
                 if save_elapsed_time:
-                    update_elapsed_time_array(full_name, elapsed_time)
+                    update_elapsed_time_dict(function_name, elapsed_time)
                     update_advanced_time_dict(elapsed_time)
                 # Traverse back up the advanced timing dicts
                 revert_current_dict_reference(saved_dict_reference)
@@ -87,11 +85,6 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
             else:
                 # If timing is disabled, just call the function
                 result = func(*args, **kwargs)
-            # global TIMING_OVERHEAD_ARRAY
-            # overhead_time_2 = time.time() - measure_overhead_start_2
-            # TIMING_OVERHEAD_ARRAY = np.append(
-            #     TIMING_OVERHEAD_ARRAY, overhead_time_1 + overhead_time_2
-            # )
             return result
 
         # Ensure the wrapper function has the same type as the original
@@ -100,34 +93,31 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
     return decorator
 
 
-def update_elapsed_time_array(full_name: str, elapsed_time: float):
-    ELAPSED_TIME_DICT[full_name] = np.append(ELAPSED_TIME_DICT[full_name], elapsed_time)
+def update_elapsed_time_dict(function_name: str, elapsed_time: float):
+    ELAPSED_TIME_DICT[function_name] = np.append(ELAPSED_TIME_DICT[function_name], elapsed_time)
 
 
-def update_current_dict_reference(full_name: str) -> dict:
+def update_current_dict_reference(function_name: str) -> dict:
+    global CURRENT_DICT_REFERENCE
     # Save the parent to traverse back to later
-    saved_dict_reference = globals()["CURRENT_DICT_REFERENCE"]
+    saved_dict_reference = CURRENT_DICT_REFERENCE
     # Create new dict if necessary
-    if full_name not in globals()["CURRENT_DICT_REFERENCE"].keys():
-        globals()["CURRENT_DICT_REFERENCE"][full_name] = defaultdict(lambda: {})
-        globals()["CURRENT_DICT_REFERENCE"][full_name]["time"] = np.array([])
+    if function_name not in CURRENT_DICT_REFERENCE.keys():
+        CURRENT_DICT_REFERENCE[function_name] = defaultdict(lambda: {})
+        CURRENT_DICT_REFERENCE[function_name]["time"] = np.array([])
     # Update the pointer to the current dict
-    globals()["CURRENT_DICT_REFERENCE"] = globals()["CURRENT_DICT_REFERENCE"][full_name]
+    CURRENT_DICT_REFERENCE = CURRENT_DICT_REFERENCE[function_name]
     return saved_dict_reference
 
 
 def update_advanced_time_dict(elapsed_time: float):
-    globals()["CURRENT_DICT_REFERENCE"]["time"] = np.append(
-        globals()["CURRENT_DICT_REFERENCE"]["time"], elapsed_time
-    )
+    global CURRENT_DICT_REFERENCE
+    CURRENT_DICT_REFERENCE["time"] = np.append(CURRENT_DICT_REFERENCE["time"], elapsed_time)
 
 
 def revert_current_dict_reference(saved_dict_reference):
-    globals()["CURRENT_DICT_REFERENCE"] = saved_dict_reference
-
-
-def return_elapsed_time_arrays() -> dict:
-    return ELAPSED_TIME_DICT
+    global CURRENT_DICT_REFERENCE
+    CURRENT_DICT_REFERENCE = saved_dict_reference
 
 
 def delete_elapsed_time_arrays():
@@ -168,9 +158,13 @@ def plot_elapsed_time_bar_plot(
 
 
 def plot_elapsed_time_bar_plot_advanced(
-    data, key_to_find, max_levels=None, use_long_bar_labels: bool = False, figsize=None
+    advanced_time_dict: dict,
+    function_name: str,
+    max_levels=None,
+    use_long_bar_labels: bool = False,
+    figsize: Optional[tuple] = None,
 ):
-    def find_key_in_nested_dict(nested_dict, target_key):
+    def find_key_in_nested_dict(nested_dict: dict, target_key):
         for key, value in nested_dict.items():
             if key == target_key:
                 return value
@@ -178,13 +172,12 @@ def plot_elapsed_time_bar_plot_advanced(
                 result = find_key_in_nested_dict(value, target_key)
                 if result is not None:
                     return result
-        return None
 
     # Find the dictionary containing the key
-    result_dict = find_key_in_nested_dict(data, key_to_find)
+    result_dict = find_key_in_nested_dict(advanced_time_dict, function_name)
 
     if result_dict is None:
-        raise ValueError(f"Key '{key_to_find}' not found in the nested dictionary.")
+        raise ValueError(f"Key '{function_name}' not found in the nested dictionary.")
 
     # Prepare data for plotting
     short_labels = []
@@ -231,10 +224,11 @@ def plot_elapsed_time_bar_plot_advanced(
         times=times,
         labels=bar_labels,
         colors=colors,
-        title=f"Execution time breakdown for\n{key_to_find}",
+        title=f"Execution time breakdown for\n{function_name}",
+        figsize=figsize,
     )
 
-    print(text_bf(f"Execution summary of {key_to_find}\n"))
+    print(text_bf(f"Execution summary of {function_name}\n"))
     print(text_bf(f"Total execution time: {total_execution_time:.3g} s\n"))
     print(text_bf("Execution times:"))
     for i in range(1, len(short_labels)):
