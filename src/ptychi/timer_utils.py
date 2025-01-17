@@ -120,7 +120,7 @@ def revert_current_dict_reference(saved_dict_reference):
     CURRENT_DICT_REFERENCE = saved_dict_reference
 
 
-def delete_elapsed_time_arrays():
+def clear_timer_globals():
     global ELAPSED_TIME_DICT
     global ADVANCED_TIME_DICT
     global CURRENT_DICT_REFERENCE
