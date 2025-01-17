@@ -132,11 +132,25 @@ def clear_timer_globals():
 
 
 def plot_elapsed_time_bar_plot(
-    elapsed_time_dict: dict,
     include: Optional[List[str]] = None,
     exclude: Optional[List[str]] = None,
     top_n: Optional[int] = None,
+    only_include_leafs: bool = False,
+    advanced_time_dict: Optional[dict] = None,
+    elapsed_time_dict: Optional[dict] = None,
 ):
+    # If elapsed_time_dict was not passed in, use the
+    # value from the global
+    if elapsed_time_dict is None:
+        global ELAPSED_TIME_DICT
+        elapsed_time_dict = ELAPSED_TIME_DICT
+
+    if only_include_leafs:
+        if advanced_time_dict is None:
+            global ADVANCED_TIME_DICT
+            advanced_time_dict = ADVANCED_TIME_DICT
+        elapsed_time_dict = select_leaf_functions(advanced_time_dict)
+
     elapsed_time_dict = return_dict_subset_copy(elapsed_time_dict, include, exclude)
     if top_n is not None:
         elapsed_time_dict = return_top_n_entries(elapsed_time_dict, top_n)
@@ -332,5 +346,34 @@ def return_top_n_entries(elapsed_time_dict: dict, top_n: int) -> dict:
     return elapsed_time_dict
 
 
-def text_bf(string: str):
+def select_leaf_functions(advanced_time_dict: dict) -> dict[str, np.ndarray]:
+    time_key = "time"
+
+    def recursive_leaf_finder(
+        nested_dict: dict, last_key: str = "top level", leaf_functions: dict = {}
+    ) -> dict[str, np.ndarray]:
+        # Check if function is a leaf by seeing if any of the
+        # values in the dict are dicts
+        is_a_leaf = np.any([isinstance(v, dict) for v in nested_dict.values()])
+        if is_a_leaf:
+            for k, v in nested_dict.items():
+                if k != time_key:
+                    recursive_leaf_finder(v, k, leaf_functions)
+        else:
+            if last_key in leaf_functions.keys():
+                # Note: if a function is called in more than one
+                # function then the array are no longer timer
+                # ordered.
+                leaf_functions[last_key] = np.append(
+                    leaf_functions[last_key],
+                    nested_dict[time_key],
+                )
+            else:
+                leaf_functions[last_key] = nested_dict[time_key]
+        return leaf_functions
+
+    return recursive_leaf_finder(advanced_time_dict)
+
+
+def text_bf(string: str) -> str:
     return f"\033[1m{string}\033[0m"
