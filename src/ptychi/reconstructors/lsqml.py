@@ -577,7 +577,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                         torch.concat([torch.zeros([1]), torch.log(corr_level)], dim=0).reshape(-1),
                         deg=1
                     )
-                    friction = 0.5 * (-p[0]).clip(0.1, 2)
+                    friction = 0.5 * (-p[0]).clip(0, None)
                     
                     m = self.options.momentum_acceleration_gradient_mixing_factor
                     m = friction if m is None else m
@@ -802,6 +802,10 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         Apply momentum acceleration to the object. This is a special momentum acceleration used
         in PtychoShelves, which behaves somewhat differently from the momentum in `torch.optim.SGD`.
         """
+        # Scale object update by step size at the beginning to match the behavior in PtychoShelves, 
+        # In PtychoShelves, this scaling happens in `update_object.m`. 
+        delta_o_hat = delta_o_hat * alpha_o_mean_all_slices[:, None, None]
+        
         object_ = self.parameter_group.object
         if "update_direction_history" not in self.object_momentum_params.keys():
             self.object_momentum_params["update_direction_history"] = []
@@ -840,7 +844,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                     # If correlation drops fast as one goes away from the current epoch, p[0]
                     # is more negative, and friction is larger. Accumulated velocity is weighted
                     # less to allow the update direction to change more quickly.
-                    friction = 0.5 * (-p[0]).clip(0.1, 2)
+                    friction = 0.5 * (-p[0]).clip(0, None)
                     
                     w = object_.preconditioner / (0.1 * object_.preconditioner.max() + object_.preconditioner)
                     m = self.options.momentum_acceleration_gradient_mixing_factor

@@ -38,6 +38,7 @@ class Test2DPtychoLSQMLMomentum(tutils.TungstenDataTester):
         options.reconstructor_options.batch_size = 96
         options.reconstructor_options.noise_model = api.NoiseModels.GAUSSIAN
         options.reconstructor_options.momentum_acceleration_gain = 0.5
+        options.reconstructor_options.batching_mode = api.BatchingModes.COMPACT
         options.reconstructor_options.num_epochs = 12
         
         task = PtychographyTask(options)
