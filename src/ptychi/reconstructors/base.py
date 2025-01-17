@@ -590,6 +590,10 @@ class AnalyticalIterativePtychographyReconstructor(
             # Apply object L1-norm constraint.
             if object_.options.l1_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_l1_norm()
+                
+            # Apply total variation constraint.
+            if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
+                object_.constrain_total_variation()
 
     def run_pre_run_hooks(self) -> None:
         self.prepare_data()

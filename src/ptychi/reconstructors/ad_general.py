@@ -64,7 +64,8 @@ class AutodiffReconstructor(IterativeReconstructor):
         """
         Apply Tikonov regularizers.
         """
-        pass
+        reg = 0.0
+        return reg
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
         y_pred = self.forward_model(*input_data)
