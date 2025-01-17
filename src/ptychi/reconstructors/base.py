@@ -597,6 +597,10 @@ class AnalyticalIterativePtychographyReconstructor(
             if object_.options.l1_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_l1_norm()
                 
+            # Apply object L2-norm constraint.
+            if object_.options.l2_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
+                object_.constrain_l2_norm()
+                
             # Apply total variation constraint.
             if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_total_variation()

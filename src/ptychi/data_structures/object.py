@@ -62,6 +62,15 @@ class Object(dsbase.ReconstructParameter):
         data = data - self.options.l1_norm_constraint.weight * l1_grad
         self.set_data(data)
         logger.debug("L1 norm constraint applied to object.")
+        
+    def constrain_l2_norm(self):
+        if self.options.l2_norm_constraint.weight <= 0:
+            return
+        data = self.data
+        l2_grad = data * 2
+        data = data - self.options.l2_norm_constraint.weight * l2_grad
+        self.set_data(data)
+        logger.debug("L2 norm constraint applied to object.")
 
     def constrain_smoothness(self):
         raise NotImplementedError
@@ -338,7 +347,7 @@ class PlanarObject(Object):
 
     @timer()
     def regularize_multislice(self):
-        """
+        """ 
         Regularize multislice by applying a low-pass transfer function to the
         3D Fourier space of the magnitude and phase (unwrapped) of all slices.
 
