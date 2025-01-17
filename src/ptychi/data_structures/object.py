@@ -683,10 +683,10 @@ class DIPPlanarObject(DIPObject, PlanarObject):
             mag = o[:, 0]
             phase = o[:, 1]
             
-        expected_phase_shape = (self.n_slices, 1, *self.lateral_shape)
+        expected_phase_shape = (self.n_slices, *self.lateral_shape)
         if tuple(phase.shape) != expected_phase_shape:
             logger.warning(
-                f"Shape of phase output by NN is expected to be (n_slices, 1, h, w) = {expected_phase_shape} but got {phase.shape}."
+                f"Shape of phase output by NN is expected to be (n_slices, h, w) = {expected_phase_shape} but got {phase.shape}."
             )
         
         if self.options.deep_image_prior_options.constrain_object_outside_network:

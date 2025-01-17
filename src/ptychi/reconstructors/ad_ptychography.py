@@ -94,7 +94,7 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
             y_pred[:, self.dataset.valid_pixel_mask], y_true[:, self.dataset.valid_pixel_mask]
         )
 
-        batch_loss.backward()
+        batch_loss.backward(retain_graph=True)
         self.run_post_differentiation_hooks(input_data, y_true)
         reg_loss = self.apply_regularizers()
         
