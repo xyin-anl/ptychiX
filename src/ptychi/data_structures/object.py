@@ -6,6 +6,7 @@ from torch import Tensor
 
 import ptychi.image_proc as ip
 import ptychi.data_structures.base as ds
+from ptychi.timer_utils import timer
 from ptychi.utils import get_default_complex_dtype, to_tensor, to_numpy
 import ptychi.maps as maps
 
@@ -130,6 +131,7 @@ class PlanarObject(Object):
     def get_slice(self, index):
         return self.data[index, ...]
 
+    @timer()
     def extract_patches(self, positions: Tensor, patch_shape: Tuple[int, int]):
         """
         Extract (n_patches, n_slices, h', w') patches from the object.
@@ -159,6 +161,7 @@ class PlanarObject(Object):
         patches_all_slices = torch.stack(patches_all_slices, dim=1)
         return patches_all_slices
 
+    @timer()
     def place_patches(self, positions: Tensor, patches: Tensor, *args, **kwargs):
         """
         Place patches into the object.
@@ -181,6 +184,7 @@ class PlanarObject(Object):
         updated_slices = torch.stack(updated_slices, dim=0)
         self.tensor.set_data(updated_slices)
 
+    @timer()
     def place_patches_on_empty_buffer(self, positions: Tensor, patches: Tensor, *args, **kwargs):
         """
         Place patches into a zero array with the *lateral* shape of the object.
