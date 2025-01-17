@@ -1,14 +1,14 @@
 from typing import Union, Optional
+import dataclasses
 
 from numpy import ndarray, inf
 from torch import Tensor
 
-
-import dataclasses
+import ptychi.api.options.base as base
 
 
 @dataclasses.dataclass
-class PtychographyDataOptions:
+class PtychographyDataOptions(base.Options):
 
     data: Union[ndarray, Tensor] = None
     """
