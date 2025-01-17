@@ -17,6 +17,7 @@ ENABLE_TIMING = True
 ELAPSED_TIME_DICT = defaultdict(lambda: np.array([]))
 FUNCTION_CALL_STACK_DICT = defaultdict(list)
 TIMING_OVERHEAD_ARRAY = np.array([])
+CALLING_FUNCTION_RUNNING_LIST = []  # list[str] # Running list of functions that have been called
 
 
 def toggle_timer(enable: bool):
@@ -35,7 +36,11 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
     def decorator(func: T) -> T:
         @wraps(func)
         def wrapper(*args, **kwargs):
+            print(func)
             if enabled and globals().get("ENABLE_TIMING", False):
+                full_name = func.__qualname__
+                remove_function_later = record_calling_function(func, full_name)
+
                 torch.cuda.synchronize()
                 start_time = time.time()
                 result = func(*args, **kwargs)
@@ -43,7 +48,10 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
                 elapsed_time = time.time() - start_time
                 measure_overhead_start = time.time()
                 if save_elapsed_time:
-                    update_elapsed_time_array(prefix, func, elapsed_time)
+                    update_elapsed_time_array(func, full_name, elapsed_time)
+
+                remove_calling_function(remove_function_later)
+
                 # return result
             else:
                 # If timing is disabled, just call the function
@@ -63,11 +71,28 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
     return decorator
 
 
-def update_elapsed_time_array(prefix: str, func: T, elapsed_time: float):
-    key = prefix + func.__qualname__
+def record_calling_function(func: callable, full_name: str) -> bool:
+    # key = func.__qualname__
+    if full_name not in ELAPSED_TIME_DICT.keys():
+        globals()["CALLING_FUNCTION_RUNNING_LIST"] += [full_name]
+        remove_function_later = True
+    else:
+        remove_function_later = False
+    return remove_function_later
+
+
+def remove_calling_function(remove_function_from_list: bool):
+    if remove_function_from_list:
+        del CALLING_FUNCTION_RUNNING_LIST[-1]
+
+
+def update_elapsed_time_array(func: T, full_name: str, elapsed_time: float):
+    key = func.__qualname__
     ELAPSED_TIME_DICT[key] = np.append(ELAPSED_TIME_DICT[key], elapsed_time)
     if key not in FUNCTION_CALL_STACK_DICT.keys():
-        FUNCTION_CALL_STACK_DICT[key] = get_calling_functions_from_module("ptychi")
+        #     # FUNCTION_CALL_STACK_DICT[key] = get_calling_functions_from_module("ptychi")
+        # FUNCTION_CALL_STACK_DICT[key] = get_calling_functions("ptychi")
+        FUNCTION_CALL_STACK_DICT[key] = CALLING_FUNCTION_RUNNING_LIST.copy()
 
 
 def return_elapsed_time_arrays() -> dict:
@@ -186,7 +211,14 @@ def return_top_n_entries(elapsed_time_dict: dict, top_n: int) -> dict:
     return elapsed_time_dict
 
 
-def get_calling_functions_from_module(module_name):
+def get_calling_functions_from_module(
+    module_name: str,
+    exclude: list[str] = [
+        "get_calling_functions_from_module",
+        "update_elapsed_time_array",
+        "wrapper",
+    ],
+) -> list[str]:
     """
     Get the functions from the specified module that called the current function.
 
@@ -202,7 +234,11 @@ def get_calling_functions_from_module(module_name):
     for frame_info in inspect.stack():
         # Get the module where the function is defined
         module = inspect.getmodule(frame_info.frame)
-        if module and module.__name__.startswith(module_name):
+        if (
+            module
+            and module.__name__.startswith(module_name)
+            and frame_info.function not in exclude
+        ):
             # Try to determine the class name
             class_name = None
             local_self = frame_info.frame.f_locals.get("self")
@@ -220,3 +256,74 @@ def get_calling_functions_from_module(module_name):
             calling_functions.append(full_name)
 
     return calling_functions
+
+
+def get_calling_functions(include_module_name: str) -> list[str]:
+    # Get the current stack
+    stack = inspect.stack()
+    calling_functions = []
+    for frame_info in stack[16:17]:
+        # Get module information
+        module = inspect.getmodule(frame_info.frame)
+        module_name = module.__name__ if module else "Unknown module"
+        if include_module_name in module_name:
+            # If the function is a method of a class, get the class name
+            class_name = None
+            if (
+                "__class__" in frame_info.frame.f_locals
+            ):  # issue is I don't know when this is even triggered
+                class_name = frame_info.frame.f_locals["__class__"].__name__
+            elif "self" in frame_info.frame.f_locals:
+                class_name = frame_info.frame.f_locals["self"].__class__.__name__
+            elif "cls" in frame_info.frame.f_locals:
+                class_name = frame_info.frame.f_locals["cls"].__name__
+
+            print((f"{class_name}.{frame_info.function}"))
+            if class_name:
+                calling_functions.append(f"{class_name}.{frame_info.function}")
+            else:
+                calling_functions.append(frame_info.function)
+    return calling_functions
+
+
+# # Get the current stack
+# stack = inspect.stack()
+# # print(f"Call stack for {func.__name__}:")
+# i = 0
+# for frame_info in stack:
+#     # Get module information
+#     module = inspect.getmodule(frame_info.frame)
+#     module_name = module.__name__ if module else "Unknown module"
+#     if "ptychi" in module_name:
+
+#         # Get the class name if the function is a method of a class
+#         class_name = None
+#         # Get the first argument (`self` or `cls`) and check if it is an instance or class
+#         # if "self" in frame_info.frame.f_locals:
+#         #     class_name = frame_info.frame.f_locals["self"].__class__.__name__
+#         #     # class_name = frame_info.frame.f_locals["__class__"].__name__
+#         # elif "cls" in frame_info.frame.f_locals:
+#         #     class_name = frame_info.frame.f_locals["cls"].__name__
+#         #     print("p")
+
+#         if "__class__" in frame_info.frame.f_locals:
+#             class_name = frame_info.frame.f_locals["__class__"].__name__
+#             # print("cls" in frame_info.frame.f_locals)
+#         elif "self" in frame_info.frame.f_locals:
+#             class_name = frame_info.frame.f_locals["self"].__class__.__name__
+#         elif "cls" in frame_info.frame.f_locals:
+#             class_name = frame_info.frame.f_locals["cls"].__name__
+
+#         # print(f"{class_name}.{func.__name__}")
+
+#         if class_name:
+#             print(f"  {module_name}.{class_name}.{frame_info.function} (line {frame_info.lineno})")
+#         else:
+#             print(f"  {module_name}.{frame_info.function} (line {frame_info.lineno})")
+#         # Construct the display string
+#         # if class_name:
+#         #     print(f"{class_name}.{frame_info.function}")
+#         # else:
+#         #     print(frame_info.function)
+
+# # print("-" * 50)
