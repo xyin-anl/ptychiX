@@ -1,26 +1,44 @@
 import time
 from functools import wraps
-from typing import Callable, TypeVar, Optional, List, Dict
+from typing import Callable, TypeVar, Optional, List, Dict, Union
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
 import torch
 from collections import defaultdict
-import inspect
 
 
 # Type variables to retain function signatures
 T = TypeVar("T", bound=Callable)
 
-# Global flag to enable or disable timing
 ENABLE_TIMING = True
+"Global flag to enable or disable timing."
 ELAPSED_TIME_DICT = defaultdict(lambda: np.array([]))
-FUNCTION_CALL_STACK_DICT = defaultdict(list)
-TIMING_OVERHEAD_ARRAY = np.array([])
-CALLING_FUNCTION_RUNNING_LIST = []  # list[str] # Running list of functions that have been called
-
+"""
+A dictionary containing numpy arrays of the measured execution times of 
+each timed function.
+"""
 ADVANCED_TIME_DICT = defaultdict(lambda: {})
-CURRENT_DICT = ADVANCED_TIME_DICT  # Points to the current dict
+"""
+A nested dictionary, where each level of the dictionary contains
+1) a key, value pair ("time": np.ndarray) that contains all measured
+execution times for that function and 2) zero or more key-value 
+pairs (function_name: dict) where function_name refers to the name
+of each functions called in the function currently being times.
+
+Note that only functions with the `timer` decorator will show up
+in `ADVANCED_TIME_DICT`.
+"""
+CURRENT_DICT_REFERENCE = ADVANCED_TIME_DICT  # Initialized to the top level of ADVANCED_TIME_DICT
+"""
+A reference to the level of `ADVANCED_TIME_DICT` that corresponds to 
+the function currently being executed.
+"""
+TIMING_OVERHEAD_ARRAY = np.array([])
+"""
+A numpy array containing measurements of how long it takes to execute 
+functions in the `timer` decorator.
+"""
 
 
 def toggle_timer(enable: bool):
@@ -39,37 +57,41 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
     def decorator(func: T) -> T:
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # print(func)
             if enabled and globals().get("ENABLE_TIMING", False):
+                # Measure the overhead from running the timer function
                 measure_overhead_start_1 = time.time()
                 full_name = func.__qualname__
-                remove_function_later = record_calling_function(func, full_name)
-                parent_dict = update_current_dict_pointer(func, full_name)
+                saved_dict_reference = update_current_dict_reference(full_name)
                 overhead_time_1 = time.time() - measure_overhead_start_1
 
+                # Measure function execution time
                 torch.cuda.synchronize()
                 start_time = time.time()
                 result = func(*args, **kwargs)
                 torch.cuda.synchronize()
                 elapsed_time = time.time() - start_time
+
+                # Measure the overhead from running the timer function
                 measure_overhead_start_2 = time.time()
                 if save_elapsed_time:
-                    update_elapsed_time_array(func, full_name, elapsed_time)
-                    update_advanced_time_dict(func, full_name, elapsed_time)
-
-                remove_calling_function(remove_function_later)
-
+                    update_elapsed_time_array(full_name, elapsed_time)
+                    update_advanced_time_dict(elapsed_time)
                 # Traverse back up the advanced timing dicts
-                move_current_dict_back(parent_dict)
-
+                revert_current_dict_reference(saved_dict_reference)
+                global TIMING_OVERHEAD_ARRAY
+                overhead_time_2 = time.time() - measure_overhead_start_2
+                TIMING_OVERHEAD_ARRAY = np.append(
+                    TIMING_OVERHEAD_ARRAY,
+                    overhead_time_1 + overhead_time_2,
+                )
             else:
                 # If timing is disabled, just call the function
                 result = func(*args, **kwargs)
-            global TIMING_OVERHEAD_ARRAY
-            overhead_time_2 = time.time() - measure_overhead_start_2
-            TIMING_OVERHEAD_ARRAY = np.append(
-                TIMING_OVERHEAD_ARRAY, overhead_time_1 + overhead_time_2
-            )
+            # global TIMING_OVERHEAD_ARRAY
+            # overhead_time_2 = time.time() - measure_overhead_start_2
+            # TIMING_OVERHEAD_ARRAY = np.append(
+            #     TIMING_OVERHEAD_ARRAY, overhead_time_1 + overhead_time_2
+            # )
             return result
 
         # Ensure the wrapper function has the same type as the original
@@ -78,59 +100,45 @@ def timer(prefix: str = "", save_elapsed_time: bool = True, enabled: bool = True
     return decorator
 
 
-def record_calling_function(func: callable, full_name: str) -> bool:
-    if full_name not in ELAPSED_TIME_DICT.keys():
-        globals()["CALLING_FUNCTION_RUNNING_LIST"] += [full_name]
-        remove_function_later = True
-    else:
-        remove_function_later = False
-    return remove_function_later
-
-
-def remove_calling_function(remove_function_from_list: bool):
-    if remove_function_from_list:
-        del CALLING_FUNCTION_RUNNING_LIST[-1]
-
-
-def update_elapsed_time_array(func: T, full_name: str, elapsed_time: float):
+def update_elapsed_time_array(full_name: str, elapsed_time: float):
     ELAPSED_TIME_DICT[full_name] = np.append(ELAPSED_TIME_DICT[full_name], elapsed_time)
-    if full_name not in FUNCTION_CALL_STACK_DICT.keys():
-        FUNCTION_CALL_STACK_DICT[full_name] = CALLING_FUNCTION_RUNNING_LIST.copy()
 
 
-def update_current_dict_pointer(func: T, full_name: str) -> dict:
+def update_current_dict_reference(full_name: str) -> dict:
     # Save the parent to traverse back to later
-    parent_dict = globals()["CURRENT_DICT"]
+    saved_dict_reference = globals()["CURRENT_DICT_REFERENCE"]
     # Create new dict if necessary
-    if full_name not in globals()["CURRENT_DICT"].keys():
-        globals()["CURRENT_DICT"][full_name] = defaultdict(lambda: {})
-        globals()["CURRENT_DICT"][full_name]["time"] = 0
+    if full_name not in globals()["CURRENT_DICT_REFERENCE"].keys():
+        globals()["CURRENT_DICT_REFERENCE"][full_name] = defaultdict(lambda: {})
+        globals()["CURRENT_DICT_REFERENCE"][full_name]["time"] = np.array([])
     # Update the pointer to the current dict
-    globals()["CURRENT_DICT"] = globals()["CURRENT_DICT"][full_name]
-    return parent_dict
+    globals()["CURRENT_DICT_REFERENCE"] = globals()["CURRENT_DICT_REFERENCE"][full_name]
+    return saved_dict_reference
 
 
-def update_advanced_time_dict(func: T, full_name: str, elapsed_time: float):
-    globals()["CURRENT_DICT"]["time"] += elapsed_time
+def update_advanced_time_dict(elapsed_time: float):
+    globals()["CURRENT_DICT_REFERENCE"]["time"] = np.append(
+        globals()["CURRENT_DICT_REFERENCE"]["time"], elapsed_time
+    )
 
 
-def move_current_dict_back(parent_dict):
-    globals()["CURRENT_DICT"] = parent_dict
+def revert_current_dict_reference(saved_dict_reference):
+    globals()["CURRENT_DICT_REFERENCE"] = saved_dict_reference
 
 
 def return_elapsed_time_arrays() -> dict:
     return ELAPSED_TIME_DICT
 
 
-def return_call_stack_dict() -> dict:
-    return FUNCTION_CALL_STACK_DICT
-
-
 def delete_elapsed_time_arrays():
     global ELAPSED_TIME_DICT
-    global FUNCTION_CALL_STACK_DICT
+    global ADVANCED_TIME_DICT
+    global CURRENT_DICT_REFERENCE
+    global TIMING_OVERHEAD_ARRAY
     ELAPSED_TIME_DICT = defaultdict(lambda: np.array([]))
-    FUNCTION_CALL_STACK_DICT = defaultdict(list)
+    ADVANCED_TIME_DICT = defaultdict(lambda: {})
+    CURRENT_DICT_REFERENCE = ADVANCED_TIME_DICT
+    TIMING_OVERHEAD_ARRAY = np.array([])
 
 
 def plot_elapsed_time_bar_plot(
@@ -151,21 +159,117 @@ def plot_elapsed_time_bar_plot(
     sorted_sums = [sums[i] for i in sorted_indices]
     sorted_keys = [list(elapsed_time_dict.keys())[i] for i in sorted_indices]
 
-    # Create a horizontal bar plot
-    plt.figure()  # figsize=(10, 6))
-    bars = plt.barh(range(len(sorted_sums)), sorted_sums, color="skyblue")
+    generate_time_barplot(
+        times=sorted_sums,
+        labels=sorted_keys,
+        colors="skyblue",
+        title="Total elapsed time for each function",
+    )
+
+
+def plot_elapsed_time_bar_plot_advanced(
+    data, key_to_find, max_levels=None, use_long_bar_labels: bool = False, figsize=None
+):
+    def find_key_in_nested_dict(nested_dict, target_key):
+        for key, value in nested_dict.items():
+            if key == target_key:
+                return value
+            if isinstance(value, dict):
+                result = find_key_in_nested_dict(value, target_key)
+                if result is not None:
+                    return result
+        return None
+
+    # Find the dictionary containing the key
+    result_dict = find_key_in_nested_dict(data, key_to_find)
+
+    if result_dict is None:
+        raise ValueError(f"Key '{key_to_find}' not found in the nested dictionary.")
+
+    # Prepare data for plotting
+    short_labels = []
+    full_call_stack_labels = []
+    times = []
+    colors = []
+
+    def collect_data(d, prefix="", function_name="", level=0):
+        if max_levels is not None and level > max_levels:
+            return
+        symbol = " \u2192 "
+        for sub_key, sub_value in d.items():
+            if isinstance(sub_value, dict):
+                collect_data(sub_value, prefix + sub_key + symbol, sub_key, level + 1)
+            elif sub_key == "time":
+                if sub_value.sum() < 1e-2:
+                    return
+                if prefix == "":
+                    full_call_stack_labels.append("Total")
+                    short_labels.append("Total")
+                    colors.append("dodgerblue")
+                else:
+                    full_call_stack_labels.append(prefix.rstrip("/")[: -len(symbol)])
+                    short_labels.append(function_name)
+                    colors.append("skyblue")
+                times.append(sub_value.sum())
+
+    # Get total execution times for each of the called functions
+    collect_data({k: v for k, v in result_dict.items() if k != "time"})
+
+    # Add the total execution time of the function at the front of the list
+    total_execution_time = result_dict["time"].sum()
+    times.insert(0, total_execution_time)
+    full_call_stack_labels.insert(0, "Total")
+    short_labels.insert(0, "Total")
+    colors.insert(0, "dodgerblue")
+
+    if use_long_bar_labels:
+        bar_labels = full_call_stack_labels
+    else:
+        bar_labels = short_labels
+
+    generate_time_barplot(
+        times=times,
+        labels=bar_labels,
+        colors=colors,
+        title=f"Execution time breakdown for\n{key_to_find}",
+    )
+
+    print(text_bf(f"Execution summary of {key_to_find}\n"))
+    print(text_bf(f"Total execution time: {total_execution_time:.3g} s\n"))
+    print(text_bf("Execution times:"))
+    for i in range(1, len(short_labels)):
+        print(f"{i}. {short_labels[i]}: {times[i]:.2g} s")
+    print()
+    print(text_bf("Function call stack info:"))
+    for i in range(1, len(full_call_stack_labels)):
+        print(f"{i}. {full_call_stack_labels[i]}")
+
+    selected_elapsed_times = dict(zip(short_labels, times))
+    return selected_elapsed_times
+
+
+def generate_time_barplot(
+    times: dict,
+    labels: list,
+    colors: Optional[Union[list, str]],
+    title: Optional[str] = None,
+    figsize: Optional[tuple] = None,
+    label_fontsize: int = 10,
+):
+    plt.figure(figsize=figsize)
+    bars = plt.barh(range(len(times)), times, color=colors)
     plt.gca().invert_yaxis()  # Invert the y-axis to have the largest bar on top
     plt.tick_params(left=False, labelleft=False)
 
     # Add labels at the start of each bar
-    for i, (bar, label) in enumerate(zip(bars, sorted_keys)):
+    for i, (bar, label) in enumerate(zip(bars, labels)):
         plt.text(
             0,  # Start at the left edge
             bar.get_y() + bar.get_height() / 2,  # Vertically centered
             " " + label,
             ha="left",
             va="center",
-            fontsize=10,
+            fontsize=label_fontsize,
             fontweight="bold",
         )
 
@@ -174,8 +278,8 @@ def plot_elapsed_time_bar_plot(
     plt.gca().set_axisbelow(True)
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Function")
-    plt.title("Total elapsed time for each function")
-    plt.tight_layout()
+    plt.title(title)
+    # plt.tight_layout()
     plt.show()
 
 
@@ -201,7 +305,7 @@ def plot_elapsed_time_vs_iteration(
     plt.xlabel("Iteration")
     plt.title("Elapsed time vs iteration")
     plt.tight_layout()
-    # plt.show()
+    plt.show()
 
 
 def return_dict_subset_copy(
@@ -232,3 +336,7 @@ def return_top_n_entries(elapsed_time_dict: dict, top_n: int) -> dict:
     elapsed_time_dict = dict(sorted_items)
 
     return elapsed_time_dict
+
+
+def text_bf(string: str):
+    return f"\033[1m{string}\033[0m"
