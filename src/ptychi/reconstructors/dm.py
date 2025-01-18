@@ -14,6 +14,7 @@ from ptychi.reconstructors.base import (
     LossTracker,
 )
 from ptychi.api.options.dm import DMReconstructorOptions
+from ptychi.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg
@@ -92,10 +93,12 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.dataloader = DataLoader(**data_loader_kwargs)
         self.dataset.move_attributes_to_device(torch.get_default_device())
 
+    @timer()
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
         dm_error_squared = self.compute_updates(y_true, self.dataset.valid_pixel_mask)
         self.loss_tracker.update_batch_loss(loss=dm_error_squared.sqrt())
 
+    @timer()
     def compute_updates(self, y_true: Tensor, valid_pixel_mask: Tensor) -> Tensor:
         """
         Compute the updates to the object, probe, and exit wave using the procedure
@@ -174,6 +177,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         return dm_error_squared
 
+    @timer()
     def calculate_exit_wave_chunk(
         self, start_pt: int, end_pt: int, return_obj_patches: bool = False
     ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
@@ -193,6 +197,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         else:
             return psi
 
+    @timer()
     def apply_dm_update_to_exit_wave_chunk(
         self,
         start_pt: int,
@@ -236,6 +241,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         return obj_patches, dm_error_squared, new_psi
 
+    @timer()
     def add_to_probe_update_terms(
         self,
         probe_numerator: Tensor,
@@ -248,6 +254,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         probe_numerator += (obj_patches.conj() * self.psi[start_pt:end_pt]).sum(0)
         probe_denominator += (obj_patches.abs() ** 2).sum(0)
 
+    @timer()
     def update_object(self, start_pts: list[int], end_pts: list[int]):
         "Calculate and apply the object update."
 
@@ -283,6 +290,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         # Apply object update
         object_.set_data(updated_object)
 
+    @timer()
     def get_positions_update_chunk(
         self, indices: Tensor, obj_patches: Tensor, chi: Tensor
     ) -> Tensor:

@@ -42,6 +42,7 @@ class Object(ds.ReconstructParameter):
     def place_patches(self, positions, patches, *args, **kwargs):
         raise NotImplementedError
 
+    @timer()
     def constrain_l1_norm(self):
         if self.options.l1_norm_constraint.weight <= 0:
             return
@@ -213,6 +214,7 @@ class PlanarObject(Object):
         bbox = self.roi_bbox.get_bbox_with_top_left_origin()
         return self.data[:, int(bbox.sy):int(bbox.ey), int(bbox.sx):int(bbox.ex)]
 
+    @timer()
     def constrain_smoothness(self) -> None:
         """
         Smooth the magnitude of the object.
@@ -232,6 +234,7 @@ class PlanarObject(Object):
             data[i_slice] = data[i_slice] / data[i_slice].abs() * mag
         self.set_data(data)
 
+    @timer()
     def constrain_total_variation(self) -> None:
         if self.options.total_variation.weight <= 0:
             return
@@ -242,6 +245,7 @@ class PlanarObject(Object):
             )
         self.set_data(data)
 
+    @timer()
     def remove_grid_artifacts(self):
         data = self.data
         for i_slice in range(self.n_slices):
@@ -257,6 +261,7 @@ class PlanarObject(Object):
             data = data[i_slice].abs() * torch.exp(1j * phase)
         self.set_data(data)
 
+    @timer()
     def regularize_multislice(self):
         """
         Regularize multislice by applying a low-pass transfer function to the

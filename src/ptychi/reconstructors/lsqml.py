@@ -114,6 +114,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             size=(self.parameter_group.probe_positions.shape[0],), fill_value=0.5
         )
 
+    @timer()
     def get_psi_far_step_size(self, y_pred, y_true, indices, eps=1e-5):
         if isinstance(self.noise_model, fm.PtychographyGaussianNoiseModel):
             alpha = torch.tensor(0.5, device=y_pred.device)  # Eq. 16

@@ -8,6 +8,7 @@ import ptychi.data_structures.base as ds
 import ptychi.image_proc as ip
 import ptychi.maths as pmath
 from ptychi.data_structures.probe import Probe
+from ptychi.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -89,6 +90,7 @@ class OPRModeWeights(ds.ReconstructParameter):
         enabled = super().optimization_enabled(epoch)
         return enabled and self.optimize_intensity_variation
 
+    @timer()
     def update_variable_probe(
         self,
         probe: "Probe",
@@ -122,6 +124,7 @@ class OPRModeWeights(ds.ReconstructParameter):
             )
             self._apply_variable_intensity_updates(delta_weights_int)
 
+    @timer()
     def update_opr_probe_modes_and_weights(
         self,
         probe: "Probe",
@@ -189,6 +192,7 @@ class OPRModeWeights(ds.ReconstructParameter):
         if self.eigenmode_weight_optimization_enabled(current_epoch):
             self.set_data(weights_data)
 
+    @timer()
     def _update_first_eigenmode_and_weight(
         self,
         residue_update: Tensor,
@@ -239,6 +243,7 @@ class OPRModeWeights(ds.ReconstructParameter):
 
         return eigenmode_i, weights_i
 
+    @timer()
     def _calculate_intensity_variation_update_direction(
         self,
         probe: "Probe",
@@ -265,9 +270,11 @@ class OPRModeWeights(ds.ReconstructParameter):
         delta_weights_int[indices, 0] = delta_weights_int_i
         return delta_weights_int
 
+    @timer()
     def _apply_variable_intensity_updates(self, delta_weights_int: Tensor):
         self.set_data(self.data + 0.1 * delta_weights_int)
 
+    @timer()
     def smooth_weights(self):
         """
         Smooth the weights with a median filter.
@@ -303,6 +310,7 @@ class OPRModeWeights(ds.ReconstructParameter):
                 weights[:, i_opr_mode] = 0.5 * weights_current_mode + 0.5 * weights_smoothed
         self.set_data(weights)
 
+    @timer()
     def remove_outliers(self):
         aevol = torch.abs(self.data)
         weights = torch.min(aevol, 1.5 * torch.quantile(aevol, 0.95)) * torch.sign(self.data)

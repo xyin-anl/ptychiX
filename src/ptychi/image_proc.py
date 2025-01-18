@@ -8,6 +8,7 @@ import torch.signal
 
 import ptychi.maths as pmath
 from ptychi.api.types import ComplexTensor, RealTensor
+from ptychi.timer_utils import timer
 
 
 class PlacePatchesProtocol(Protocol):
@@ -19,9 +20,11 @@ class PlacePatchesProtocol(Protocol):
 class ExtractPatchesProtocol(Protocol):
     def __call__(self, image: Tensor, positions: Tensor, shape: Tuple[int, int]) -> Tensor: ...
 
+
 logger = logging.getLogger(__name__)
 
 
+@timer()
 def extract_patches_fourier_shift(
     image: Tensor, positions: Tensor, shape: Tuple[int, int]
 ) -> Tensor:
@@ -82,6 +85,7 @@ def extract_patches_fourier_shift(
     return patches
 
 
+@timer()
 def place_patches_fourier_shift(
     image: Tensor, 
     positions: Tensor, 
@@ -206,6 +210,7 @@ class ObjectPatchInterpolator:
         # extract patch support region from full object
         self._object_support = object_[ymin_wh:ymax_wh, xmin_wh:xmax_wh]
 
+    @timer()
     def get_patch(self) -> ComplexTensor:
         """interpolate object support to extract patch"""
         object_patch = self._weight00 * self._object_support[:-1, :-1]
@@ -214,6 +219,7 @@ class ObjectPatchInterpolator:
         object_patch += self._weight11 * self._object_support[1:, 1:]
         return object_patch
 
+    @timer()
     def update_patch(self, object_update: ComplexTensor) -> None:
         """add patch update to object support"""
         self._object_support[:-1, :-1] += self._weight00 * object_update
@@ -222,6 +228,7 @@ class ObjectPatchInterpolator:
         self._object_support[1:, 1:] += self._weight11 * object_update
 
 
+@timer()
 def extract_patches_bilinear_shift(
     image: Tensor,
     positions: Tensor,
@@ -242,6 +249,7 @@ def extract_patches_bilinear_shift(
     return obj_patches
 
 
+@timer()
 def place_patches_bilinear_shift(
     image: Tensor,
     positions: Tensor,
@@ -272,6 +280,7 @@ def place_patches_bilinear_shift(
     return image
 
 
+@timer()
 def fourier_shift(images: Tensor, shifts: Tensor, strictly_preserve_zeros: bool = False) -> Tensor:
     """
     Apply Fourier shift to a batch of images.
@@ -321,6 +330,7 @@ def fourier_shift(images: Tensor, shifts: Tensor, strictly_preserve_zeros: bool 
     return shifted_images
 
 
+@timer()
 def nearest_neighbor_gradient(
     image: Tensor, direction: Literal["forward", "backward"], dim: Tuple[int, ...] = (0, 1)
 ) -> Tensor:
@@ -360,6 +370,7 @@ def nearest_neighbor_gradient(
     return grad_y, grad_x
 
 
+@timer()
 def gaussian_gradient(image: Tensor, sigma: float = 1.0, kernel_size=5) -> Tensor:
     """
     Calculate the gradient of a 2D image with a Gaussian-derivative kernel.
@@ -393,6 +404,7 @@ def gaussian_gradient(image: Tensor, sigma: float = 1.0, kernel_size=5) -> Tenso
     return grad_y, grad_x
 
 
+@timer()
 def fourier_gradient(image: Tensor) -> Tensor:
     """
     Calculate the gradient of an image using Fourier differentiation
@@ -415,6 +427,7 @@ def fourier_gradient(image: Tensor) -> Tensor:
     return grad_y, grad_x
 
 
+@timer()
 def get_phase_gradient(
     img: Tensor,
     fourier_shift_step: float = 0,
@@ -496,6 +509,7 @@ def get_phase_gradient(
     return gy, gx
 
 
+@timer()
 def integrate_image_2d_fourier(grad_y: Tensor, grad_x: Tensor) -> Tensor:
     """
     Integrate an image with the gradient in y and x directions using Fourier
@@ -525,6 +539,7 @@ def integrate_image_2d_fourier(grad_y: Tensor, grad_x: Tensor) -> Tensor:
     return integrated_image
 
 
+@timer()
 def integrate_image_2d_deconvolution(
     grad_y: Tensor,
     grad_x: Tensor,
@@ -570,6 +585,7 @@ def integrate_image_2d_deconvolution(
     return img
 
 
+@timer()
 def integrate_image_2d(grad_y: Tensor, grad_x: Tensor, bc_center: float = 0) -> Tensor:
     """
     Integrate an image with the gradient in y and x directions.
@@ -594,6 +610,7 @@ def integrate_image_2d(grad_y: Tensor, grad_x: Tensor, bc_center: float = 0) -> 
     return int_img
 
 
+@timer()
 def convolve2d(
     image: Tensor,
     kernel: Tensor,
@@ -651,6 +668,7 @@ def convolve2d(
     return result
 
 
+@timer()
 def convolve1d(
     input: Tensor,
     kernel: Tensor,
@@ -721,6 +739,7 @@ def convolve1d(
     return result
 
 
+@timer()
 def gaussian_filter(image, sigma=1, size=3):
     x = torch.arange(-((size - 1) / 2), -((size - 1) / 2) + size, 1)
     gauss_1d = torch.exp(-0.5 * (x / sigma) ** 2)
@@ -729,6 +748,7 @@ def gaussian_filter(image, sigma=1, size=3):
     return convolve2d(image, kernel, padding="same")
 
 
+@timer()
 def find_cross_corr_peak(
     f: Tensor,
     g: Tensor,
@@ -799,6 +819,7 @@ def find_cross_corr_peak(
     return est_shift
 
 
+@timer()
 def total_variation_2d_chambolle(
     image: Tensor, lmbda: float = 0.01, niter: int = 2, tau: float = 0.125
 ) -> Tensor:
@@ -856,6 +877,7 @@ def total_variation_2d_chambolle(
     return image
 
 
+@timer()
 def remove_grid_artifacts(
     img: Tensor,
     pixel_size_m: float,
@@ -935,6 +957,7 @@ def remove_grid_artifacts(
     return img_new
 
 
+@timer()
 def median_filter_1d(x: Tensor, window_size: int = 5):
     """
     Apply a median filter to a 1D array.
@@ -958,6 +981,7 @@ def median_filter_1d(x: Tensor, window_size: int = 5):
     return y
 
 
+@timer()
 def vignett(img: Tensor, margin: int = 20, sigma: float = 1.0):
     """
     Vignett an image so that it gradually decays near the boundary.
@@ -1006,6 +1030,7 @@ def vignett(img: Tensor, margin: int = 20, sigma: float = 1.0):
     return img
 
 
+@timer()
 def remove_polynomial_background(
     img: Tensor,
     flat_region_mask: Tensor,
@@ -1061,6 +1086,7 @@ def remove_polynomial_background(
     return img - bg
 
 
+@timer()
 def unwrap_phase_2d(
     img: Tensor,
     fourier_shift_step: float = 0.5,
@@ -1163,6 +1189,7 @@ def unwrap_phase_2d(
     return phase
 
 
+@timer()
 def find_center_of_mass(img: Tensor):
     """
     Find the center of mass of one or a stack of 2D images.
@@ -1195,6 +1222,7 @@ def find_center_of_mass(img: Tensor):
     return com
 
 
+@timer()
 def central_crop(img: Tensor, crop_size: tuple[int, int]) -> Tensor:
     """
     Crop the center of an image.
@@ -1218,6 +1246,7 @@ def central_crop(img: Tensor, crop_size: tuple[int, int]) -> Tensor:
     ]
 
 
+@timer()
 def central_pad(
     img: Tensor, 
     target_size: tuple[int, int], 
@@ -1246,6 +1275,7 @@ def central_pad(
     return torch.nn.functional.pad(img, (pad_size[2], pad_size[3], pad_size[0], pad_size[1]), mode=mode, value=value)
 
 
+@timer()
 def central_crop_or_pad(img: Tensor, target_size: tuple[int, int]) -> Tensor:
     """
     Crop or pad the center of an image to the target size.
