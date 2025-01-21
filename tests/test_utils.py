@@ -3,18 +3,30 @@ import os
 import datetime
 import logging
 import configparser
+from typing import Union
 
 import torch
 import h5py
 import numpy as np
 import pytest
+import subprocess
+import socket
 
 from ptychi.utils import rescale_probe, add_additional_opr_probe_modes_to_probe, set_default_complex_dtype, to_tensor
+from ptychi.timer_utils import ADVANCED_TIME_DICT, ELAPSED_TIME_DICT, toggle_timer
 
 
 class BaseTester:
-        
-    def setup_method(self, name="", generate_data=False, generate_gold=False, debug=False, action=None, pytestconfig=None):
+    def setup_method(
+        self,
+        name="",
+        generate_data=False,
+        generate_gold=False,
+        save_timing=True,
+        debug=False,
+        action=None,
+        pytestconfig=None,
+    ):
         """
         A Pytest hook that sets instance attributes before running each test method. 
         If the script is executed with `python`, this method will not run automatically
@@ -30,6 +42,8 @@ class BaseTester:
             Whether to generate test data. 
         generate_gold : bool
             Whether to generate gold data. 
+        save_timing : bool
+            Whether to save timing results.
         debug : bool, optional
             Switches debug mode.
         """
@@ -39,6 +53,7 @@ class BaseTester:
         
         self.generate_data = generate_data
         self.generate_gold = generate_gold
+        self.save_timing = save_timing
         self.debug = debug
         
         if pytestconfig is not None:
@@ -52,7 +67,13 @@ class BaseTester:
     def inject_config(self, pytestconfig):
         self.pytestconfig = pytestconfig
         self.setup_method(
-            name="", generate_data=False, generate_gold=False, debug=False, action=None, pytestconfig=pytestconfig
+            name="",
+            generate_data=False,
+            generate_gold=False,
+            save_timing=True,
+            debug=False,
+            action=None,
+            pytestconfig=pytestconfig,
         )
     
     @staticmethod
@@ -189,6 +210,8 @@ class BaseTester:
         """
         def decorator(test_method):
             def wrapper(self: BaseTester):
+                if self.save_timing:
+                    toggle_timer(enable=True)
                 recon = test_method(self)
                 if self.debug and not self.generate_gold:
                     self.plot_object(recon)
@@ -196,6 +219,8 @@ class BaseTester:
                     self.save_gold_data(name, recon)
                 if not self.generate_gold:
                     self.run_comparison(name, recon)
+                if self.save_timing:
+                    save_timing_data(name)
             return wrapper
         return decorator
     
@@ -254,3 +279,79 @@ def plot_multislice_phase(img):
         ax[i].imshow(np.angle(img[i, ...]))
         ax[i].set_title('slice {}'.format(i))
     plt.show()
+
+
+def get_timing_data_dir():
+    return os.path.join(BaseTester.get_ci_data_dir(), "timing")
+
+
+def save_timing_data(name: str):
+    commit_hash, branch_name = get_git_info()
+    timing_results_folder = os.path.join(get_timing_data_dir(), name, branch_name, commit_hash)
+    if not os.path.exists(timing_results_folder):
+        os.makedirs(timing_results_folder)
+
+    timestamp = get_timestamp()
+    unique_file_name = "timing_results_" + str(timestamp) + ".h5"
+    file_path = os.path.join(timing_results_folder, unique_file_name)
+
+    with h5py.File(file_path, "w") as F:
+        insert_timing_dict_into_h5_object(ELAPSED_TIME_DICT, F.create_group("elapsed_time_dict"))
+        insert_timing_dict_into_h5_object(ADVANCED_TIME_DICT, F.create_group("advanced_time_dict"))
+
+
+def insert_timing_dict_into_h5_object(d: dict, h5_object: Union[h5py.Group, h5py.File]):
+    for key, value in d.items():
+        if isinstance(value, dict):
+            # Recursively handle dicts
+            insert_timing_dict_into_h5_object(value, h5_object.create_group(key))
+        elif isinstance(value, np.ndarray):
+            h5_object.create_dataset(key, data=value)
+        else:
+            raise ValueError("Data type not supported")
+
+
+def get_git_info() -> tuple[str, str]:
+    "Return the currnet commit hash and branch name"
+    try:
+        # Get the shortened commit hash
+        commit_hash = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                stderr=subprocess.STDOUT,
+            )
+            .strip()
+            .decode("utf-8")
+        )
+
+        # Get the current branch name
+        branch_name = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                stderr=subprocess.STDOUT,
+            )
+            .strip()
+            .decode("utf-8")
+        )
+
+        return commit_hash, branch_name
+    except subprocess.CalledProcessError as e:
+        print(f"Error retrieving Git information: {e.output.decode('utf-8')}")
+        return None, None
+
+
+def get_host_name():
+    """
+    Get the hostname of the current machine.
+
+    Returns
+    -------
+    str
+        The hostname of the machine, or an error message if it fails.
+    """
+    try:
+        hostname = socket.gethostname()
+        return hostname
+    except Exception as e:
+        print(f"Error retrieving hostname: {e}")
+        return None
