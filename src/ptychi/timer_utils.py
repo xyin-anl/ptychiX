@@ -11,7 +11,7 @@ from collections import defaultdict
 # Type variables to retain function signatures
 T = TypeVar("T", bound=Callable)
 
-ENABLE_TIMING = True
+ENABLE_TIMING = False
 "Global flag to enable or disable timing."
 ELAPSED_TIME_DICT: dict[str, np.ndarray] = defaultdict(lambda: np.array([]))
 """
@@ -39,18 +39,44 @@ TIMING_OVERHEAD_ARRAY = np.array([])
 A numpy array containing measurements of how long it takes to execute 
 functions in the `timer` decorator.
 """
+default_label_font_size = 8
 
 
 def toggle_timer(enable: bool):
+    """
+    Toggle the global ENABLE_TIMING flag.
+
+    Parameters
+    ----------
+    enable : bool
+        If True, enable timing. If False, disable timing.
+    """
     global ENABLE_TIMING
-    if enable is None:
-        ENABLE_TIMING = not ENABLE_TIMING
-    else:
-        ENABLE_TIMING = enable
+    ENABLE_TIMING = enable
 
 
 def timer(enabled: bool = True, override_with_name: Optional[str] = None):
-    """Decorator to time a function and print the function name if ENABLE_TIMING is True."""
+    """
+    Decorator to time a function's execution time and the execution time of the timed code
+    within that function. This function is enabled or disabled depending on the state of the
+    global ENABLE_TIMING flag.
+
+    The results of the timer function will be recorded in `ELAPSED_TIME_DICT` and
+    `ADVANCED_TIME_DICT`.
+
+    Parameters
+    ----------
+    enabled : bool, optional
+        Whether timing is enabled for the decorated function. Default is True.
+    override_with_name : str, optional
+        Custom name to use for the function in the timing dictionary. If not
+        specified, the function name is automatically generated.
+
+    Returns
+    -------
+    Callable
+        The wrapped function.
+    """
 
     def decorator(func: T) -> T:
         @wraps(func)
@@ -96,12 +122,27 @@ def timer(enabled: bool = True, override_with_name: Optional[str] = None):
 
 
 class InlineTimer:
+    """
+    A timer class for inline timing of code blocks.
+
+    Parameters
+    ----------
+    name : str
+        The name associated with the timer that will be recorded
+        in the timing dictionaries.
+    enabled : bool, optional
+        Whether the timer is enabled, by default True.
+    """
+
     def __init__(self, name: str, enabled: bool = True):
         self.name = name
         self.enabled = enabled
         self.overhead_time = 0
 
     def start(self):
+        """
+        Starts the timer if timing is enabled.
+        """
         if self.enabled and globals().get("ENABLE_TIMING", False):
             measure_overhead_start = time.time()
             saved_dict_reference = update_current_dict_reference(self.name)
@@ -111,6 +152,9 @@ class InlineTimer:
             self.start_time = time.time()
 
     def end(self):
+        """
+        Stops the timer and records the elapsed time if timing is enabled.
+        """
         if self.enabled and globals().get("ENABLE_TIMING", False):
             torch.cuda.synchronize()
             elapsed_time = time.time() - self.start_time
@@ -124,10 +168,33 @@ class InlineTimer:
 
 
 def update_elapsed_time_dict(function_name: str, elapsed_time: float):
+    """
+    Updates the global elapsed time dictionary with the elapsed time for a function.
+
+    Parameters
+    ----------
+    function_name : str
+        The name of the function being timed.
+    elapsed_time : float
+        The elapsed time for the function execution.
+    """
     ELAPSED_TIME_DICT[function_name] = np.append(ELAPSED_TIME_DICT[function_name], elapsed_time)
 
 
 def update_current_dict_reference(function_name: str) -> dict:
+    """
+    Updates the current reference in the advanced timing dictionary to a nested level.
+
+    Parameters
+    ----------
+    function_name : str
+        The name of the function being timed.
+
+    Returns
+    -------
+    dict
+        The previous dictionary reference.
+    """
     global CURRENT_DICT_REFERENCE
     # Save the parent to traverse back to later
     saved_dict_reference = CURRENT_DICT_REFERENCE
@@ -141,16 +208,35 @@ def update_current_dict_reference(function_name: str) -> dict:
 
 
 def update_advanced_time_dict(elapsed_time: float):
+    """
+    Updates the advanced timing dictionary with the elapsed time.
+
+    Parameters
+    ----------
+    elapsed_time : float
+        The elapsed time for the function execution.
+    """
     global CURRENT_DICT_REFERENCE
     CURRENT_DICT_REFERENCE["time"] = np.append(CURRENT_DICT_REFERENCE["time"], elapsed_time)
 
 
-def revert_current_dict_reference(saved_dict_reference):
+def revert_current_dict_reference(saved_dict_reference: dict):
+    """
+    Reverts the current dictionary reference in the advanced timing dictionary.
+
+    Parameters
+    ----------
+    saved_dict_reference : dict
+        The saved dictionary reference to revert to.
+    """
     global CURRENT_DICT_REFERENCE
     CURRENT_DICT_REFERENCE = saved_dict_reference
 
 
 def clear_timer_globals():
+    """
+    Clears the global timing dictionaries and resets the state.
+    """
     global ELAPSED_TIME_DICT
     global ADVANCED_TIME_DICT
     global CURRENT_DICT_REFERENCE
@@ -165,10 +251,36 @@ def plot_elapsed_time_bar_plot(
     include: Optional[List[str]] = None,
     exclude: Optional[List[str]] = None,
     top_n: Optional[int] = None,
+    figsize: Optional[tuple] = None,
     only_include_leafs: bool = False,
     advanced_time_dict: Optional[dict] = None,
     elapsed_time_dict: Optional[dict] = None,
 ):
+    """
+    Plots a simple bar chart of elapsed times for timed functions.
+
+    Parameters
+    ----------
+    include : list of str, optional
+        Specific functions to include in the plot, by default None.
+    exclude : list of str, optional
+        Specific functions to exclude from the plot, by default None.
+    top_n : int, optional
+        The top N functions with the largest elapsed times to include, by default None.
+    only_include_leafs : bool, optional
+        If True, includes only leaf functions in the plot, by default False.
+    figsize : tuple, optional
+        The figure size for the plot, by default None.
+    label_fontsize: int, optional
+        The font size for bar labels.
+    advanced_time_dict : dict, optional
+        By default, this will be the global `ADVANCED_TIME_DICT`. Override this
+        to plot some other dict. The `ADVANCED_TIME_DICT` is only used when
+        `only_include_leafs` is True.
+    elapsed_time_dict : dict, optional
+        By default, this will be the global `ELAPSED_TIME_DICT`. Override this
+        to plot some other dict.
+    """
     # If elapsed_time_dict was not passed in, use the
     # value from the global
     if elapsed_time_dict is None:
@@ -198,6 +310,7 @@ def plot_elapsed_time_bar_plot(
         labels=sorted_keys,
         colors="skyblue",
         title="Total elapsed time for each function",
+        figsize=figsize,
     )
 
 
@@ -206,10 +319,37 @@ def plot_elapsed_time_bar_plot_advanced(
     max_levels: int = None,
     use_long_bar_labels: bool = False,
     figsize: Optional[tuple] = None,
+    label_fontsize: Optional[int] = None,
     advanced_time_dict: Optional[dict] = None,
-    use_top_level: bool = False,
     exclude_below_time_fraction: float = 1e-2,
 ):
+    """
+    Plots a detailed breakdown of execution times for a specific function.
+
+    Parameters
+    ----------
+    function_name : str
+        The name of the function to analyze.
+    max_levels : int, optional
+        The maximum levels of nested function calls to display, by default None.
+    use_long_bar_labels : bool, optional
+        Whether to use long labels for the bars, by default False.
+    figsize : tuple, optional
+        The figure size for the plot, by default None.
+    label_fontsize: int, optional
+        The font size for bar labels.
+    advanced_time_dict : dict, optional
+        By default, this will be the global `ADVANCED_TIME_DICT`. Override this
+        to plot some other dict.
+    exclude_below_time_fraction : float, optional
+        Excludes functions contributing less than this fraction of total time, by default 1e-2.
+
+    Returns
+    -------
+    dict
+        A dictionary of execution times for each function in the call stack.
+    """
+
     if advanced_time_dict is None:
         global ADVANCED_TIME_DICT
         advanced_time_dict = ADVANCED_TIME_DICT
@@ -223,11 +363,8 @@ def plot_elapsed_time_bar_plot_advanced(
                 if result is not None:
                     return result
 
-    # Find the dictionary containing the key
-    if use_top_level:
-        result_dict = advanced_time_dict
-    else:
-        result_dict = find_key_in_nested_dict(advanced_time_dict, function_name)
+    # Find the dictionary containing the function_name key
+    result_dict = find_key_in_nested_dict(advanced_time_dict, function_name)
 
     if result_dict is None:
         raise ValueError(f"Key '{function_name}' not found in the nested dictionary.")
@@ -280,6 +417,7 @@ def plot_elapsed_time_bar_plot_advanced(
         colors=colors,
         title=f"Execution time breakdown for\n{function_name}",
         figsize=figsize,
+        label_fontsize=label_fontsize,
     )
 
     print(text_bf(f"Execution summary of {function_name}\n"))
@@ -302,8 +440,28 @@ def generate_time_barplot(
     colors: Optional[Union[list, str]],
     title: Optional[str] = None,
     figsize: Optional[tuple] = None,
-    label_fontsize: int = 10,
+    label_fontsize: Optional[int] = None,
 ):
+    """
+    Generates a horizontal bar plot for elapsed times.
+
+    Parameters
+    ----------
+    times : dict
+        Elapsed times for the functions.
+    labels : list
+        Labels for the bars.
+    colors : list or str, optional
+        Colors for the bars, by default None.
+    title : str, optional
+        Title for the plot, by default None.
+    figsize : tuple, optional
+        Figure size for the plot, by default None.
+    label_fontsize : int, optional
+        Font size for the bar labels.
+    """
+    if label_fontsize is None:
+        label_fontsize = default_label_font_size
     plt.figure(figsize=figsize)
     bars = plt.barh(range(len(times)), times, color=colors)
     plt.gca().invert_yaxis()  # Invert the y-axis to have the largest bar on top
@@ -373,7 +531,6 @@ def return_dict_subset_copy(
 
 def return_top_n_entries(elapsed_time_dict: dict, top_n: int) -> dict:
     elapsed_time_dict = copy.deepcopy(elapsed_time_dict)
-    # if top_n is not None:
     # Sort dictionary items based on the sum of their values and get top N
     sorted_items = sorted(
         elapsed_time_dict.items(),
