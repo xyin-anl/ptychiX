@@ -322,13 +322,23 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
         return super().build_dataloader(batch_sampler=batch_sampler)
 
     def update_preconditioners(self, use_all_probe_modes_for_object_preconditioner=False):
-        # Update preconditioner of the object only if the probe has been updated in the previous
-        # epoch, or when the preconditioner is None.
-        if (
-            self.parameter_group.probe.optimization_enabled(self.current_epoch - 1)
-            or self.parameter_group.object.preconditioner is None
+        # Update preconditioner of the object only if:
+        # - the preconditioner does not exist, or
+        # - it is within the 10 epochs after the probe starts being optimized, or
+        # - it has been 10 epochs since the preconditioner was last updated.
+        if self.parameter_group.object.preconditioner is None or (
+            (self.current_epoch > self.parameter_group.probe.optimization_plan.start)
+            and (
+                (self.current_epoch - self.parameter_group.probe.optimization_plan.start < 10)
+                or (
+                    (self.current_epoch - self.parameter_group.probe.optimization_plan.start) % 10
+                    == 0
+                )
+            )
         ):
-            self.update_object_preconditioner(use_all_modes=use_all_probe_modes_for_object_preconditioner)
+            self.update_object_preconditioner(
+                use_all_modes=use_all_probe_modes_for_object_preconditioner
+            )
 
     def update_object_preconditioner(self, use_all_modes=False):
         positions_all = self.parameter_group.probe_positions.tensor
