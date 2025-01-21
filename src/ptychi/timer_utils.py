@@ -49,9 +49,7 @@ def toggle_timer(enable: bool):
         ENABLE_TIMING = enable
 
 
-def timer(
-    save_elapsed_time: bool = True, enabled: bool = True, override_with_name: Optional[str] = None
-):
+def timer(enabled: bool = True, override_with_name: Optional[str] = None):
     """Decorator to time a function and print the function name if ENABLE_TIMING is True."""
 
     def decorator(func: T) -> T:
@@ -76,9 +74,8 @@ def timer(
 
                 # Measure the overhead from running the timer function
                 measure_overhead_start_2 = time.time()
-                if save_elapsed_time:
-                    update_elapsed_time_dict(function_name, elapsed_time)
-                    update_advanced_time_dict(elapsed_time)
+                update_elapsed_time_dict(function_name, elapsed_time)
+                update_advanced_time_dict(elapsed_time)
                 # Traverse back up the advanced timing dicts
                 revert_current_dict_reference(saved_dict_reference)
                 global TIMING_OVERHEAD_ARRAY
@@ -99,7 +96,7 @@ def timer(
 
 
 class InlineTimer:
-    def __init__(self, name: str, enabled: bool=True):
+    def __init__(self, name: str, enabled: bool = True):
         self.name = name
         self.enabled = enabled
         self.overhead_time = 0
@@ -216,6 +213,7 @@ def plot_elapsed_time_bar_plot_advanced(
     if advanced_time_dict is None:
         global ADVANCED_TIME_DICT
         advanced_time_dict = ADVANCED_TIME_DICT
+
     def find_key_in_nested_dict(nested_dict: dict, target_key):
         for key, value in nested_dict.items():
             if key == target_key:
@@ -241,6 +239,7 @@ def plot_elapsed_time_bar_plot_advanced(
     colors = []
 
     total_execution_time = result_dict["time"].sum()
+
     def collect_data(d, prefix="", function_name="", level=0):
         if max_levels is not None and level > max_levels:
             return
@@ -249,7 +248,7 @@ def plot_elapsed_time_bar_plot_advanced(
             if isinstance(sub_value, dict):
                 collect_data(sub_value, prefix + sub_key + symbol, sub_key, level + 1)
             elif sub_key == "time":
-                if sub_value.sum()/total_execution_time < exclude_below_time_fraction:
+                if sub_value.sum() / total_execution_time < exclude_below_time_fraction:
                     return
                 if prefix == "":
                     full_call_stack_labels.append("Total")
