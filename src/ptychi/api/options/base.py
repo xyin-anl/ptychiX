@@ -274,7 +274,7 @@ class ProbeOrthogonalizeIncoherentModesOptions(FeatureOptions):
     Settings for orthogonalizing incoherent probe modes.
     """
 
-    enabled: bool = False
+    enabled: bool = True
 
     optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
 
@@ -288,7 +288,7 @@ class ProbeOrthogonalizeOPRModesOptions(FeatureOptions):
     Settings for orthogonalizing OPR modes.
     """
 
-    enabled: bool = False
+    enabled: bool = True
 
     optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
 
