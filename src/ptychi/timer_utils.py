@@ -49,7 +49,9 @@ def toggle_timer(enable: bool):
         ENABLE_TIMING = enable
 
 
-def timer(save_elapsed_time: bool = True, enabled: bool = True):
+def timer(
+    save_elapsed_time: bool = True, enabled: bool = True, override_with_name: Optional[str] = None
+):
     """Decorator to time a function and print the function name if ENABLE_TIMING is True."""
 
     def decorator(func: T) -> T:
@@ -58,7 +60,10 @@ def timer(save_elapsed_time: bool = True, enabled: bool = True):
             if enabled and globals().get("ENABLE_TIMING", False):
                 # Measure the overhead from running the timer function
                 measure_overhead_start_1 = time.time()
-                function_name = func.__qualname__
+                if override_with_name is None:
+                    function_name = func.__qualname__
+                else:
+                    function_name = override_with_name
                 saved_dict_reference = update_current_dict_reference(function_name)
                 overhead_time_1 = time.time() - measure_overhead_start_1
 
@@ -91,6 +96,34 @@ def timer(save_elapsed_time: bool = True, enabled: bool = True):
         return wrapper  # type: ignore
 
     return decorator
+
+
+class InlineTimer:
+    def __init__(self, name: str, enabled: bool=True):
+        self.name = name
+        self.enabled = enabled
+        self.overhead_time = 0
+
+    def start(self):
+        if self.enabled and globals().get("ENABLE_TIMING", False):
+            measure_overhead_start = time.time()
+            saved_dict_reference = update_current_dict_reference(self.name)
+            self.saved_dict_reference = saved_dict_reference
+            self.overhead_time = time.time() - measure_overhead_start
+            torch.cuda.synchronize()
+            self.start_time = time.time()
+
+    def end(self):
+        if self.enabled and globals().get("ENABLE_TIMING", False):
+            torch.cuda.synchronize()
+            elapsed_time = time.time() - self.start_time
+            measure_overhead_start = time.time()
+            update_elapsed_time_dict(self.name, elapsed_time)
+            update_advanced_time_dict(elapsed_time)
+            revert_current_dict_reference(self.saved_dict_reference)
+            global TIMING_OVERHEAD_ARRAY
+            self.overhead_time += time.time() - measure_overhead_start
+            TIMING_OVERHEAD_ARRAY = np.append(TIMING_OVERHEAD_ARRAY, self.overhead_time)
 
 
 def update_elapsed_time_dict(function_name: str, elapsed_time: float):

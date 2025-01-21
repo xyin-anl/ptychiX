@@ -8,8 +8,7 @@ import torch.signal
 
 import ptychi.maths as pmath
 from ptychi.api.types import ComplexTensor, RealTensor
-from ptychi.timer_utils import timer
-
+from ptychi.timer_utils import timer, InlineTimer
 
 class PlacePatchesProtocol(Protocol):
     def __call__(
@@ -165,11 +164,14 @@ def place_patches_fourier_shift(
     if not adjoint_mode:
         patches = patches[:, abs(patch_padding):-abs(patch_padding), abs(patch_padding):-abs(patch_padding)]
 
+    inline_timer = InlineTimer("add/set patches on image")
+    inline_timer.start()
     for i in range(patches.shape[0]):
         if op == "add":
             image[sys[i] : eys[i], sxs[i] : exs[i]] += patches[i]
         elif op == "set":
             image[sys[i] : eys[i], sxs[i] : exs[i]] = patches[i]
+    inline_timer.end()
 
     # Undo padding
     image = image[
