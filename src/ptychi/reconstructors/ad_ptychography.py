@@ -79,11 +79,11 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
         if object_.options.l1_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
             # object.data returns a copy, so we directly access the tensor here.
             obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]
-            reg = reg + object_.options.l1_norm_constraint.weight * obj_data.abs().sum()
+            reg = reg + object_.options.l1_norm_constraint.weight * torch.mean(obj_data.abs())
             
         if object_.options.l2_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
             obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]
-            reg = reg + object_.options.l2_norm_constraint.weight * torch.sum(obj_data.abs() ** 2)
+            reg = reg + object_.options.l2_norm_constraint.weight * torch.mean(obj_data.abs() ** 2)
             
         if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
             obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]

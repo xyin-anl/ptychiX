@@ -58,7 +58,7 @@ class Object(dsbase.ReconstructParameter):
         if self.options.l1_norm_constraint.weight <= 0:
             return
         data = self.data
-        l1_grad = torch.sgn(data)
+        l1_grad = torch.sgn(data) / data.numel()
         data = data - self.options.l1_norm_constraint.weight * l1_grad
         self.set_data(data)
         logger.debug("L1 norm constraint applied to object.")
@@ -67,7 +67,7 @@ class Object(dsbase.ReconstructParameter):
         if self.options.l2_norm_constraint.weight <= 0:
             return
         data = self.data
-        l2_grad = data * 2
+        l2_grad = data * 2 / data.numel()
         data = data - self.options.l2_norm_constraint.weight * l2_grad
         self.set_data(data)
         logger.debug("L2 norm constraint applied to object.")
