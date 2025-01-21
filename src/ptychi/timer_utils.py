@@ -172,12 +172,17 @@ def plot_elapsed_time_bar_plot(
 
 
 def plot_elapsed_time_bar_plot_advanced(
-    advanced_time_dict: dict,
     function_name: str,
-    max_levels=None,
+    max_levels: int = None,
     use_long_bar_labels: bool = False,
     figsize: Optional[tuple] = None,
+    advanced_time_dict: Optional[dict] = None,
+    use_top_level: bool = False,
+    exclude_below_time_fraction: float = 1e-2,
 ):
+    if advanced_time_dict is None:
+        global ADVANCED_TIME_DICT
+        advanced_time_dict = ADVANCED_TIME_DICT
     def find_key_in_nested_dict(nested_dict: dict, target_key):
         for key, value in nested_dict.items():
             if key == target_key:
@@ -188,7 +193,10 @@ def plot_elapsed_time_bar_plot_advanced(
                     return result
 
     # Find the dictionary containing the key
-    result_dict = find_key_in_nested_dict(advanced_time_dict, function_name)
+    if use_top_level:
+        result_dict = advanced_time_dict
+    else:
+        result_dict = find_key_in_nested_dict(advanced_time_dict, function_name)
 
     if result_dict is None:
         raise ValueError(f"Key '{function_name}' not found in the nested dictionary.")
@@ -199,6 +207,7 @@ def plot_elapsed_time_bar_plot_advanced(
     times = []
     colors = []
 
+    total_execution_time = result_dict["time"].sum()
     def collect_data(d, prefix="", function_name="", level=0):
         if max_levels is not None and level > max_levels:
             return
@@ -207,7 +216,7 @@ def plot_elapsed_time_bar_plot_advanced(
             if isinstance(sub_value, dict):
                 collect_data(sub_value, prefix + sub_key + symbol, sub_key, level + 1)
             elif sub_key == "time":
-                if sub_value.sum() < 1e-2:
+                if sub_value.sum()/total_execution_time < exclude_below_time_fraction:
                     return
                 if prefix == "":
                     full_call_stack_labels.append("Total")
@@ -223,7 +232,6 @@ def plot_elapsed_time_bar_plot_advanced(
     collect_data({k: v for k, v in result_dict.items() if k != "time"})
 
     # Add the total execution time of the function at the front of the list
-    total_execution_time = result_dict["time"].sum()
     times.insert(0, total_execution_time)
     full_call_stack_labels.insert(0, "Total")
     short_labels.insert(0, "Total")
