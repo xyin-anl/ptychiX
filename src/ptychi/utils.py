@@ -9,7 +9,7 @@ from numpy import ndarray
 
 import ptychi.maths as pmath
 from ptychi.propagate import FourierPropagator
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 
 default_complex_dtype = torch.complex64
 

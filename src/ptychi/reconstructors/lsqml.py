@@ -13,7 +13,7 @@ import ptychi.data_structures.base as ds
 import ptychi.forward_models as fm
 import ptychi.maths as pmath
 import ptychi.api.enums as enums
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg

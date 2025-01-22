@@ -13,7 +13,9 @@ import subprocess
 import socket
 
 from ptychi.utils import rescale_probe, add_additional_opr_probe_modes_to_probe, set_default_complex_dtype, to_tensor
-from ptychi.timer_utils import ADVANCED_TIME_DICT, ELAPSED_TIME_DICT, toggle_timer
+# from ptychi.timer_utils import ADVANCED_TIME_DICT, ELAPSED_TIME_DICT, toggle_timer
+import ptychi.timing.timer_utils as timer_utils
+from ptychi.timing.io import save_timing_data_to_unique_file_path
 
 
 class BaseTester:
@@ -22,7 +24,6 @@ class BaseTester:
         name="",
         generate_data=False,
         generate_gold=False,
-        save_timing=True,
         debug=False,
         action=None,
         pytestconfig=None,
@@ -53,15 +54,17 @@ class BaseTester:
         
         self.generate_data = generate_data
         self.generate_gold = generate_gold
-        self.save_timing = save_timing
+        # self.save_timing = save_timing
         self.debug = debug
         
         if pytestconfig is not None:
             self.high_tol = pytestconfig.getoption("high_tol")
             self.action = pytestconfig.getoption("action")
+            self.save_timing = pytestconfig.getoption("save_timing")
         else:
             self.high_tol = False
             self.action = action
+            self.save_timing = False
     
     @pytest.fixture(autouse=True)
     def inject_config(self, pytestconfig):
@@ -70,7 +73,6 @@ class BaseTester:
             name="",
             generate_data=False,
             generate_gold=False,
-            save_timing=True,
             debug=False,
             action=None,
             pytestconfig=pytestconfig,
@@ -211,7 +213,7 @@ class BaseTester:
         def decorator(test_method):
             def wrapper(self: BaseTester):
                 if self.save_timing:
-                    toggle_timer(enable=True)
+                    timer_utils.toggle_timer(enable=True)
                 recon = test_method(self)
                 if self.debug and not self.generate_gold:
                     self.plot_object(recon)
@@ -220,7 +222,7 @@ class BaseTester:
                 if not self.generate_gold:
                     self.run_comparison(name, recon)
                 if self.save_timing:
-                    save_timing_data(name)
+                    save_timing_data_to_unique_file_path(name, get_timing_data_dir())
             return wrapper
         return decorator
     
@@ -285,73 +287,102 @@ def get_timing_data_dir():
     return os.path.join(BaseTester.get_ci_data_dir(), "timing")
 
 
-def save_timing_data(name: str):
-    commit_hash, branch_name = get_git_info()
-    timing_results_folder = os.path.join(get_timing_data_dir(), name, branch_name, commit_hash)
-    if not os.path.exists(timing_results_folder):
-        os.makedirs(timing_results_folder)
-
-    timestamp = get_timestamp()
-    unique_file_name = "timing_results_" + str(timestamp) + ".h5"
-    file_path = os.path.join(timing_results_folder, unique_file_name)
-
-    with h5py.File(file_path, "w") as F:
-        insert_timing_dict_into_h5_object(ELAPSED_TIME_DICT, F.create_group("elapsed_time_dict"))
-        insert_timing_dict_into_h5_object(ADVANCED_TIME_DICT, F.create_group("advanced_time_dict"))
+# def get_timestamp_for_timing_files() -> str:
+#     current_datetime = datetime.datetime.now()
+#     timestamp = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
+#     date_string = current_datetime.strftime("%Y-%m-%d")
+#     time_string = current_datetime.strftime("%H-%M-%S")
+#     return timestamp, date_string, time_string
 
 
-def insert_timing_dict_into_h5_object(d: dict, h5_object: Union[h5py.Group, h5py.File]):
-    for key, value in d.items():
-        if isinstance(value, dict):
-            # Recursively handle dicts
-            insert_timing_dict_into_h5_object(value, h5_object.create_group(key))
-        elif isinstance(value, np.ndarray):
-            h5_object.create_dataset(key, data=value)
-        else:
-            raise ValueError("Data type not supported")
+# def save_timing_data(name: str):
+#     timing_results_folder = os.path.join(get_timing_data_dir(), name)
+#     if not os.path.exists(timing_results_folder):
+#         os.makedirs(timing_results_folder)
+
+#     if "TIMESTAMP" in os.environ:
+#         timestamp, date_string, time_string = (
+#             os.environ["TIMESTAMP"],
+#             os.environ["DATE_STRING"],
+#             os.environ["TIME_STRING"],
+#         )
+#     else:
+#         timestamp, date_string, time_string = get_timestamp_for_timing_files()
+
+#     unique_file_name = "timing_results_" + str(timestamp) + ".h5"
+#     file_path = os.path.join(timing_results_folder, unique_file_name)
+
+#     with h5py.File(file_path, "w") as F:
+#         F.attrs["name"] = name
+#         F.attrs["host"] = socket.gethostname().split(".")[0]
+#         F.attrs["commit"] = get_current_commit_hash()
+#         F.attrs["branch"] = get_current_branch_name()
+#         F.attrs["date"] = date_string
+#         F.attrs["time"] = time_string
+#         insert_timing_dict_into_h5_object(
+#             timer_utils.ELAPSED_TIME_DICT, F.create_group("elapsed_time_dict")
+#         )
+#         insert_timing_dict_into_h5_object(
+#             timer_utils.ADVANCED_TIME_DICT, F.create_group("advanced_time_dict")
+#         )
 
 
-def get_git_info() -> tuple[str, str]:
-    "Return the currnet commit hash and branch name"
-    try:
-        # Get the shortened commit hash
-        commit_hash = (
-            subprocess.check_output(
-                ["git", "rev-parse", "--short", "HEAD"],
-                stderr=subprocess.STDOUT,
-            )
-            .strip()
-            .decode("utf-8")
-        )
+# def read_timing_data(file_path: str) -> dict:
+#     def recursively_convert_h5_group(group):
+#         result = {}
+#         for key, item in group.items():
+#             if isinstance(item, h5py.Group):
+#                 # Recursively process groups
+#                 result[key] = recursively_convert_h5_group(item)
+#             elif isinstance(item, h5py.Dataset):
+#                 # Convert datasets to numpy arrays or lists
+#                 result[key] = item[()]  # Read the dataset
+#             else:
+#                 raise ValueError(f"Unknown item type for key {key}: {type(item)}")
+#         return result
 
-        # Get the current branch name
-        branch_name = (
-            subprocess.check_output(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                stderr=subprocess.STDOUT,
-            )
-            .strip()
-            .decode("utf-8")
-        )
-
-        return commit_hash, branch_name
-    except subprocess.CalledProcessError as e:
-        print(f"Error retrieving Git information: {e.output.decode('utf-8')}")
-        return None, None
+#     with h5py.File(file_path, "r") as h5_file:
+#         d = recursively_convert_h5_group(h5_file)
+#         # Get attributes
+#         d["attributes"] = {}
+#         for k in h5_file.attrs.keys():
+#             d["attributes"][k] = h5_file.attrs[k]
+#         return d
 
 
-def get_host_name():
-    """
-    Get the hostname of the current machine.
+# def insert_timing_dict_into_h5_object(d: dict, h5_object: Union[h5py.Group, h5py.File]):
+#     for key, value in d.items():
+#         if isinstance(value, dict):
+#             # Recursively handle dicts
+#             insert_timing_dict_into_h5_object(value, h5_object.create_group(key))
+#         elif isinstance(value, np.ndarray):
+#             h5_object.create_dataset(key, data=value)
+#         else:
+#             raise ValueError("Data type not supported")
 
-    Returns
-    -------
-    str
-        The hostname of the machine, or an error message if it fails.
-    """
-    try:
-        hostname = socket.gethostname()
-        return hostname
-    except Exception as e:
-        print(f"Error retrieving hostname: {e}")
-        return None
+
+# def get_current_commit_hash() -> str:
+#     # Get the shortened commit hash
+#     commit_hash = (
+#         subprocess.check_output(
+#             ["git", "rev-parse", "--short", "HEAD"],
+#             stderr=subprocess.STDOUT,
+#         )
+#         .strip()
+#         .decode("utf-8")
+#     )
+#     return commit_hash
+
+
+# def get_current_branch_name() -> str:
+#     # Get the current branch name
+#     branch_name = (
+#         subprocess.check_output(
+#             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+#             stderr=subprocess.STDOUT,
+#         )
+#         .strip()
+#         .decode("utf-8")
+#     )
+
+#     return branch_name

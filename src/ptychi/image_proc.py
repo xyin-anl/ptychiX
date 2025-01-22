@@ -8,7 +8,7 @@ import torch.signal
 
 import ptychi.maths as pmath
 from ptychi.api.types import ComplexTensor, RealTensor
-from ptychi.timer_utils import timer, InlineTimer
+from ptychi.timing.timer_utils import timer, InlineTimer
 
 class PlacePatchesProtocol(Protocol):
     def __call__(

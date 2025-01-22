@@ -6,7 +6,7 @@ from torch import Tensor
 
 import ptychi.image_proc as ip
 import ptychi.data_structures.base as ds
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 from ptychi.utils import get_default_complex_dtype, to_tensor, to_numpy
 import ptychi.maps as maps
 

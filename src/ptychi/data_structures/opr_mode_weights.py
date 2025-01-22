@@ -8,7 +8,7 @@ import ptychi.data_structures.base as ds
 import ptychi.image_proc as ip
 import ptychi.maths as pmath
 from ptychi.data_structures.probe import Probe
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.api as api

@@ -22,7 +22,7 @@ from ptychi.reconstructors.base import Reconstructor
 from ptychi.utils import to_tensor
 import ptychi.utils as utils
 # from ptychi.timer_utils import clear_timer_globals
-from ptychi import timer_utils
+from ptychi.timing import timer_utils
 
 logger = logging.getLogger(__name__)
 

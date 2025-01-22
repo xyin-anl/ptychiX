@@ -8,7 +8,7 @@ from ptychi.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
 from ptychi.metrics import MSELossOfSqrt
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.api as api

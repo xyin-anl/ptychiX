@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 import tqdm
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 
 from ptychi.utils import to_numpy, chunked_processing
 import ptychi.maps as maps

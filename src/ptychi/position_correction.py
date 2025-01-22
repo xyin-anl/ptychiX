@@ -3,7 +3,7 @@ import ptychi.data_structures.probe
 from ptychi.image_proc import find_cross_corr_peak, gaussian_gradient
 import ptychi.data_structures.opr_mode_weights as base
 import ptychi.api as api
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 
 class PositionCorrection:
     """

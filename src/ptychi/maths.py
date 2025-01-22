@@ -1,7 +1,7 @@
 from typing import Literal, Optional, Tuple, Union
 
 import torch
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 
 
 @timer()

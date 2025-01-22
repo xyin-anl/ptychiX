@@ -14,7 +14,7 @@ from ptychi.reconstructors.base import (
     LossTracker,
 )
 from ptychi.api.options.dm import DMReconstructorOptions
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg

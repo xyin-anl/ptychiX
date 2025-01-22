@@ -13,7 +13,7 @@ from ptychi.propagate import (
 )
 from ptychi.metrics import MSELossOfSqrt
 import ptychi.image_proc as ip
-from ptychi.timer_utils import timer
+from ptychi.timing.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group

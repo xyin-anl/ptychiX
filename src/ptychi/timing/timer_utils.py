@@ -135,7 +135,7 @@ class InlineTimer:
     """
 
     def __init__(self, name: str, enabled: bool = True):
-        self.name = name
+        self.name = name.replace(" ", "_")  # remove white space
         self.enabled = enabled
         self.overhead_time = 0
 

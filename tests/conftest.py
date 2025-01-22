@@ -1,4 +1,6 @@
 import pytest
+import os
+from ptychi.timing.io import get_timestamp_for_timing_files
 
 
 def pytest_addoption(parser):
@@ -15,10 +17,18 @@ def pytest_addoption(parser):
              "\"compare\" - just run comparison with reference data; "
              "\"all\" - run everything.",
     )
+    parser.addoption(
+        "--save-timing", action="store_true", help="Enable function timing and save results."
+    )
 
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "local: mark test as local-only")
+    # Save timestamps for timing file metadata
+    timestamp, date_string, time_string = get_timestamp_for_timing_files()
+    os.environ["TIMESTAMP"] = timestamp
+    os.environ["DATE_STRING"] = date_string
+    os.environ["TIME_STRING"] = time_string
 
 
 def pytest_collection_modifyitems(config, items):

@@ -63,7 +63,7 @@ jobs:
         source $CONDA_ROOT/bin/activate $ENVNAME
         echo $(which python)
         cd tests
-        pytest -s --high-tol
+        pytest -s --high-tol --save-timing
 
     - name: Remove environment
       if: always()
