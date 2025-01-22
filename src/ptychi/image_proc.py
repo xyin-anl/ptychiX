@@ -164,7 +164,7 @@ def place_patches_fourier_shift(
     if not adjoint_mode:
         patches = patches[:, abs(patch_padding):-abs(patch_padding), abs(patch_padding):-abs(patch_padding)]
 
-    inline_timer = InlineTimer("add/set patches on image")
+    inline_timer = InlineTimer("add or set patches on image")
     inline_timer.start()
     for i in range(patches.shape[0]):
         if op == "add":

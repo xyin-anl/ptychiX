@@ -135,7 +135,7 @@ class InlineTimer:
     """
 
     def __init__(self, name: str, enabled: bool = True):
-        self.name = name.replace(" ", "_")  # remove white space
+        self.name = name
         self.enabled = enabled
         self.overhead_time = 0
 
@@ -255,6 +255,7 @@ def plot_elapsed_time_bar_plot(
     only_include_leafs: bool = False,
     advanced_time_dict: Optional[dict] = None,
     elapsed_time_dict: Optional[dict] = None,
+    sort: bool = False,
 ):
     """
     Plots a simple bar chart of elapsed times for timed functions.
@@ -294,34 +295,33 @@ def plot_elapsed_time_bar_plot(
         elapsed_time_dict = select_leaf_functions(advanced_time_dict)
 
     elapsed_time_dict = return_dict_subset_copy(elapsed_time_dict, include, exclude)
-    if top_n is not None:
-        elapsed_time_dict = return_top_n_entries(elapsed_time_dict, top_n)
 
     # Remove the prefix from keys and calculate sums
     sums = [np.sum(elapsed_time_dict[key]) for key in elapsed_time_dict.keys()]
 
-    # Sort the sums and corresponding keys in descending order
-    sorted_indices = np.argsort(sums)[::-1]
-    sorted_sums = [sums[i] for i in sorted_indices]
-    sorted_keys = [list(elapsed_time_dict.keys())[i] for i in sorted_indices]
-
     generate_time_barplot(
-        times=sorted_sums,
-        labels=sorted_keys,
+        times=sums,
+        labels=list(elapsed_time_dict.keys()),
         colors="skyblue",
         title="Total elapsed time for each function",
         figsize=figsize,
+        sort=sort,
+        top_n=top_n,
     )
 
 
 def plot_elapsed_time_bar_plot_advanced(
     function_name: str,
+    include: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+    top_n: Optional[int] = None,
     max_levels: int = None,
     use_long_bar_labels: bool = False,
     figsize: Optional[tuple] = None,
     label_fontsize: Optional[int] = None,
     advanced_time_dict: Optional[dict] = None,
     exclude_below_time_fraction: float = 1e-2,
+    sort: bool = False,
 ):
     """
     Plots a detailed breakdown of execution times for a specific function.
@@ -365,9 +365,10 @@ def plot_elapsed_time_bar_plot_advanced(
 
     # Find the dictionary containing the function_name key
     result_dict = find_key_in_nested_dict(advanced_time_dict, function_name)
-
     if result_dict is None:
         raise ValueError(f"Key '{function_name}' not found in the nested dictionary.")
+
+    result_dict = return_dict_subset_copy(result_dict, include, exclude)
 
     # Prepare data for plotting
     short_labels = []
@@ -411,6 +412,9 @@ def plot_elapsed_time_bar_plot_advanced(
     else:
         bar_labels = short_labels
 
+    if top_n is not None:
+        top_n = top_n + 1
+
     generate_time_barplot(
         times=times,
         labels=bar_labels,
@@ -418,6 +422,8 @@ def plot_elapsed_time_bar_plot_advanced(
         title=f"Execution time breakdown for\n{function_name}",
         figsize=figsize,
         label_fontsize=label_fontsize,
+        sort=sort,
+        top_n=top_n,
     )
 
     print(text_bf(f"Execution summary of {function_name}\n"))
@@ -441,6 +447,8 @@ def generate_time_barplot(
     title: Optional[str] = None,
     figsize: Optional[tuple] = None,
     label_fontsize: Optional[int] = None,
+    sort: bool = False,
+    top_n: Optional[int] = None,
 ):
     """
     Generates a horizontal bar plot for elapsed times.
@@ -462,6 +470,20 @@ def generate_time_barplot(
     """
     if label_fontsize is None:
         label_fontsize = default_label_font_size
+    if sort:
+        sort_idx = np.argsort(times)[::-1]
+        times = [times[i] for i in sort_idx]
+        labels = [labels[i] for i in sort_idx]
+        if isinstance(colors, list):
+            colors = [colors[i] for i in sort_idx]
+    if top_n is not None:
+        sort_idx = np.argsort(times)[::-1][:top_n]
+        keep_idx = np.sort(sort_idx)
+        times = [times[i] for i in keep_idx]
+        labels = [labels[i] for i in keep_idx]
+        if isinstance(colors, list):
+            colors = [colors[i] for i in keep_idx]
+
     plt.figure(figsize=figsize)
     bars = plt.barh(range(len(times)), times, color=colors)
     plt.gca().invert_yaxis()  # Invert the y-axis to have the largest bar on top
@@ -538,7 +560,11 @@ def return_top_n_entries(elapsed_time_dict: dict, top_n: int) -> dict:
         key=lambda x: sum(x[1]) if hasattr(x[1], "__iter__") else x[1],
         reverse=True,
     )[:top_n]
-    elapsed_time_dict = dict(sorted_items)
+    keys = list(elapsed_time_dict.keys())
+    keep_keys = list(dict(sorted_items).keys())
+    for k in keys:
+        if k not in keep_keys:
+            elapsed_time_dict.pop(k)
 
     return elapsed_time_dict
 
