@@ -267,7 +267,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
                 "add",
             )
 
-        self.update_preconditioners(use_all_probe_modes_for_object_preconditioner=True)
+        self.update_object_preconditioner(use_all_modes=True)
         object_denominator = self.parameter_group.object.preconditioner
 
         updated_object = object_numerator / torch.sqrt(
