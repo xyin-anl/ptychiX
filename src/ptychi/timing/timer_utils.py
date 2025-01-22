@@ -429,7 +429,11 @@ def plot_elapsed_time_bar_plot_advanced(
     print(text_bf(f"Execution summary of {function_name}\n"))
     print(text_bf(f"Total execution time: {total_execution_time:.3g} s\n"))
     print(text_bf("Execution times:"))
-    for i in range(1, len(short_labels)):
+    if sort:
+        idx = np.argsort(times[1:]) + 1
+    else:
+        idx = range(1, len(short_labels))
+    for i in idx:
         print(f"{i}. {short_labels[i]}: {times[i]:.2g} s")
     print()
     print(text_bf("Function call stack info:"))
@@ -511,28 +515,39 @@ def generate_time_barplot(
     plt.show()
 
 
-def plot_elapsed_time_vs_iteration(
+def plot_elapsed_time_vs_call_number(
     elapsed_time_dict: Dict[str, List[float]],
     include: Optional[List[str]] = None,
     exclude: Optional[List[str]] = None,
     linestyle: str = "-",
     top_n: Optional[int] = None,  # plot top N largest sums
+    exclude_below_time_fraction: float = 1e-2,
 ):
     elapsed_time_dict = return_dict_subset_copy(elapsed_time_dict, include, exclude)
     if top_n is not None:
         elapsed_time_dict = return_top_n_entries(elapsed_time_dict, top_n)
 
+    total_execution_time = np.max([v.sum() for v in elapsed_time_dict.values()])
+
     for k, v in elapsed_time_dict.items():
         if hasattr(v, "__len__") and len(v) > 2:  # temp fix
-            plt.plot(v, linestyle, label=k)
+            if v.sum() / total_execution_time > exclude_below_time_fraction:
+                plt.plot(v, linestyle, label=k)
 
-    plt.legend()
+    # plt.legend(loc='upper left', bbox_to_anchor=(1.05, 1))
     plt.grid(linestyle=":")
     plt.gca().set_axisbelow(True)
     plt.ylabel("Elapsed Time (s)")
-    plt.xlabel("Iteration")
-    plt.title("Elapsed time vs iteration")
+    plt.xlabel("Call number")
+    plt.title("Elapsed time vs call number")
     plt.tight_layout()
+    handles, labels = plt.gca().get_legend_handles_labels()
+    plt.show()
+
+    # Separate figure for the legend
+    fig_legend = plt.figure()#figsize=(4, 2))  # Adjust size as needed
+    fig_legend.legend(handles, labels, loc='center', frameon=False)
+    plt.axis('off')  # Turn off the axes
     plt.show()
 
 
