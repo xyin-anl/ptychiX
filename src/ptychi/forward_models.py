@@ -10,6 +10,7 @@ from ptychi.propagate import (
     WavefieldPropagatorParameters,
     AngularSpectrumPropagator,
     FourierPropagator,
+    FresnelTransformPropagator
 )
 from ptychi.metrics import MSELossOfSqrt
 import ptychi.image_proc as ip
@@ -174,7 +175,10 @@ class PlanarPtychographyForwardModel(ForwardModel):
             )
             # TODO: AngularSpectrumPropagator uses analytical transfer function. Using the FFT
             # of real-space impulse response might offer better sampling for large propagation distances.
-            self.free_space_propagator = AngularSpectrumPropagator(params)
+            if params.is_fresnel_transform_preferrable():
+                self.free_space_propagator = FresnelTransformPropagator(params)
+            else:
+                self.free_space_propagator = AngularSpectrumPropagator(params)
 
     def get_probe(self, indices: Tensor) -> Tensor:
         """

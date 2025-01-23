@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TypeAlias
 import cmath
+import math
 
 import torch
 from torch.fft import fft2, fftfreq, ifft2
@@ -109,6 +110,10 @@ class WavefieldPropagatorParameters:
         FY = FY.to(torch.get_default_device())
         FX = FX.to(torch.get_default_device())
         return FY, FX
+    
+    def is_fresnel_transform_preferrable(self) -> bool:
+        n_eff = math.sqrt(float(self.height_px) * float(self.width_px))
+        return self.fresnel_number < 1 / (2 * n_eff)
 
 
 class WavefieldPropagator(ABC, torch.nn.Module):
@@ -177,6 +182,7 @@ class AngularSpectrumPropagator(WavefieldPropagator):
 
 class FresnelTransformPropagator(WavefieldPropagator):
     def __init__(self, parameters: WavefieldPropagatorParameters) -> None:
+        super().__init__()
         ipi = 1j * torch.pi
 
         Fr = parameters.fresnel_number
@@ -202,6 +208,7 @@ class FresnelTransformPropagator(WavefieldPropagator):
 
 class FraunhoferPropagator(WavefieldPropagator):
     def __init__(self, parameters: WavefieldPropagatorParameters) -> None:
+        super().__init__()
         ipi = 1j * torch.pi
 
         Fr = parameters.fresnel_number
