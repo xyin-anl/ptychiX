@@ -93,6 +93,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.dataset.move_attributes_to_device(torch.get_default_device())
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
+        # self.get_indices_of_empty_space()
         dm_error_squared = self.compute_updates(y_true, self.dataset.valid_pixel_mask)
         self.loss_tracker.update_batch_loss(loss=dm_error_squared.sqrt())
 
@@ -171,6 +172,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         if probe_positions.optimization_enabled(self.current_epoch):
             probe_positions.set_grad(-delta_pos)
             probe_positions.optimizer.step()
+            # Update empty space indices
 
         return dm_error_squared
 
@@ -269,9 +271,16 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         self.update_object_preconditioner(use_all_modes=True)
         object_denominator = self.parameter_group.object.preconditioner
-
-        updated_object = object_numerator / torch.sqrt(
+        update = object_numerator / torch.sqrt(
             object_denominator**2 + (0.05 * object_denominator.max()) ** 2
+        )
+        # Weight updates proportional to object illumination
+        object_update_weights = (
+            self.parameter_group.object.preconditioner
+            / self.parameter_group.object.preconditioner.max()
+        )
+        updated_object = update * object_update_weights + object_.get_slice(0) * (
+            1 - object_update_weights
         )
 
         # Clamp the object amplitude
