@@ -9,7 +9,7 @@ from numpy import ndarray
 
 import ptychi.maths as pmath
 from ptychi.propagate import FourierPropagator
-
+from ptychi.timing.timer_utils import timer
 
 default_complex_dtype = torch.complex64
 
@@ -121,6 +121,7 @@ def orthogonalize_initial_probe(
     return probe
 
 
+@timer()
 def generate_secondary_probe_modes_hermite(probe: Tensor, m: int, n: int) -> Tensor:
     """
     Generate secondary probe modes using Hermite polynomials.
@@ -164,6 +165,7 @@ def generate_secondary_probe_modes_hermite(probe: Tensor, m: int, n: int) -> Ten
     return h
 
 
+@timer()
 def get_probe_renormalization_factor(patterns: Tensor | ndarray) -> float:
     """
     Calculate the renormalization factor that should be applied to the probe
@@ -198,6 +200,7 @@ def generate_initial_object(shape: tuple[int, ...], method: Literal["random"] = 
     return obj
 
 
+@timer()
 def add_additional_opr_probe_modes_to_probe(
     probe: Tensor, n_opr_modes_to_add: int, normalize: bool = True
 ) -> Tensor:
@@ -246,6 +249,7 @@ def add_additional_opr_probe_modes_to_probe(
     return probe
 
 
+@timer()
 def generate_initial_opr_mode_weights(
     n_points: int, n_opr_modes: int, eigenmode_weight: Optional[float] = None, probe: Optional[Tensor] = None
 ) -> Tensor:
@@ -283,6 +287,7 @@ def generate_initial_opr_mode_weights(
     return weights
 
 
+@timer()
 def generate_gaussian_random_image(
     shape: tuple[int, ...], loc: float = 0.9, sigma: float = 0.1, smoothing: float = 3.0
 ) -> Tensor:

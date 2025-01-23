@@ -3,7 +3,7 @@ import ptychi.data_structures.probe
 from ptychi.image_proc import find_cross_corr_peak, gaussian_gradient
 import ptychi.data_structures.opr_mode_weights as base
 import ptychi.api as api
-
+from ptychi.timing.timer_utils import timer
 
 class PositionCorrection:
     """
@@ -20,6 +20,7 @@ class PositionCorrection:
         self.cross_correlation_real_space_width = options.cross_correlation_real_space_width
         self.cross_correlation_probe_threshold = options.cross_correlation_probe_threshold
 
+    @timer()
     def get_update(
         self,
         chi: torch.Tensor,
@@ -72,6 +73,7 @@ class PositionCorrection:
                 obj_patches, delta_o_patches, probe_m0, object_step_size
             )
 
+    @timer()
     def get_cross_correlation_update(
         self,
         obj_patches: torch.Tensor,
@@ -106,6 +108,7 @@ class PositionCorrection:
 
         return delta_pos
 
+    @timer()
     def get_gradient_update(
         self, chi: torch.Tensor, obj_patches: torch.Tensor, probe: torch.Tensor, eps=1e-6
     ):

@@ -8,6 +8,7 @@ from ptychi.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
 from ptychi.metrics import MSELossOfSqrt
+from ptychi.timing.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -60,6 +61,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
                     "Optimizable parameter {} must have 'lr' in optimizer_params.".format(var.name)
                 )
 
+    @timer()
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
         self.parameter_group.probe.initialize_grad()
         (delta_o, delta_p_i, delta_pos), y_pred = self.compute_updates(
@@ -68,6 +70,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.apply_updates(delta_o, delta_p_i, delta_pos)
         self.loss_tracker.update_batch_loss_with_metric_function(y_pred, y_true)
 
+    @timer()
     def compute_updates(
         self, indices: torch.Tensor, y_true: torch.Tensor, valid_pixel_mask: torch.Tensor
     ) -> tuple[torch.Tensor, ...]:
@@ -144,6 +147,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         return (delta_o, delta_p_i, delta_pos), y
 
+    @timer()
     def calculate_object_step_weight(self, p: Tensor):
         """
         Calculate the weight for the object update step.
@@ -165,6 +169,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         step_weight = numerator / denominator
         return step_weight
 
+    @timer()
     def calculate_probe_step_weight(self, obj_patches: Tensor):
         """
         Calculate the weight for the probe update step.
@@ -189,6 +194,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         step_weight = numerator / denominator
         return step_weight
 
+    @timer()
     def apply_updates(self, delta_o, delta_p_i, delta_pos, *args, **kwargs):
         """
         Apply updates to optimizable parameters given the updates calculated by self.compute_updates.
@@ -237,11 +243,13 @@ class EPIEReconstructor(PIEReconstructor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    @timer()
     def calculate_object_step_weight(self, p: Tensor):
         p_max = (torch.abs(p) ** 2).sum(0).max()
         step_weight = self.parameter_group.object.options.alpha * p.conj() / p_max
         return step_weight
 
+    @timer()
     def calculate_probe_step_weight(self, obj_patches: Tensor):
         # Just take the first slice.
         obj_patches = obj_patches[:, 0]
@@ -273,6 +281,7 @@ class RPIEReconstructor(PIEReconstructor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    @timer()
     def calculate_object_step_weight(self, p: Tensor):
         p_max = (torch.abs(p) ** 2).sum(0).max()
         step_weight = p.conj() / (
@@ -281,6 +290,7 @@ class RPIEReconstructor(PIEReconstructor):
         )
         return step_weight
 
+    @timer()
     def calculate_probe_step_weight(self, obj_patches: Tensor):
         # Just take the first slice.
         obj_patches = obj_patches[:, 0]

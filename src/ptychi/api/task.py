@@ -21,6 +21,8 @@ from ptychi.io_handles import PtychographyDataset
 from ptychi.reconstructors.base import Reconstructor
 from ptychi.utils import to_tensor
 import ptychi.utils as utils
+# from ptychi.timer_utils import clear_timer_globals
+from ptychi.timing import timer_utils
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +188,7 @@ class PtychographyTask(Task):
             The number of epochs to run. If None, use the number of epochs specified in the
             option object.
         """
+        timer_utils.clear_timer_globals()
         self.reconstructor.run(n_epochs=n_epochs)
 
     def get_data(

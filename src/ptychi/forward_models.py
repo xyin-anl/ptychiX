@@ -14,6 +14,7 @@ from ptychi.propagate import (
 )
 from ptychi.metrics import MSELossOfSqrt
 import ptychi.image_proc as ip
+from ptychi.timing.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group
@@ -206,6 +207,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             probe = self.probe.data
         return probe
 
+    @timer()
     def propagate_through_object(self, probe, obj_patches, return_slice_psis=False):
         """
         Propagate through the planar object.
@@ -258,6 +260,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
                 return slice_psi, None
         return slice_psi
 
+    @timer()
     def forward_real_space(self, indices, obj_patches):
         """
         Propagate through the planar object.
@@ -284,6 +287,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         slice_psi = self.propagate_through_object(probe, obj_patches, return_slice_psis=False)
         return slice_psi
 
+    @timer()
     def forward_far_field(self, psi: Tensor) -> Tensor:
         """
         Propagate exit waves to far field.
@@ -302,6 +306,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         self.record_intermediate_variable("psi_far", psi_far)
         return psi_far
 
+    @timer()
     def propagate_to_next_slice(self, psi: Tensor, slice_index: int):
         """
         Propagate wavefield to the next slice by the distance given by
@@ -332,6 +337,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         slice_psi_prop = self.in_object_propagator.propagate_forward(psi)
         return slice_psi_prop
 
+    @timer()
     def propagate_to_previous_slice(self, psi: Tensor, slice_index: int):
         """
         Propagate wavefield to the previous slice by the distance given by
@@ -364,6 +370,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         slice_psi_prop = self.in_object_propagator.propagate_backward(psi)
         return slice_psi_prop
 
+    @timer()
     def forward(self, indices: Tensor, return_object_patches: bool = False) -> Tensor:
         """
         Run ptychographic forward simulation and calculate the measured intensities.
@@ -402,7 +409,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
             return returns[0]
         else:
             return returns
-        
+
+    @timer()        
     def conform_to_detector_size(self, y: Tensor) -> Tensor:
         if (
             self.detector_size is None
@@ -419,6 +427,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         y = torch.fft.ifftshift(y, dim=(-2, -1))
         return y
 
+    @timer()
     def forward_low_memory(self, indices: Tensor, return_object_patches: bool = False) -> Tensor:
         """
         The forward model that should give the same result as `forward`, but
@@ -471,10 +480,12 @@ class PlanarPtychographyForwardModel(ForwardModel):
         else:
             return returns
 
+    @timer()
     def post_differentiation_hook(self, indices, y_true, **kwargs):
         self.compensate_for_fft_scaler()
         self.scale_gradients(y_true)
-        
+
+    @timer()        
     def compensate_for_fft_scaler(self):
         """
         Compensate for the scaling of the FFT. If the normalization of FFT is "ortho",
@@ -489,6 +500,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
                 if var.get_grad() is not None:
                     var.set_grad(var.get_grad() / factor)
 
+    @timer()
     def scale_gradients(self, patterns):
         """
         Scale the gradients of object and probe so that they are identical to the
@@ -549,7 +561,8 @@ class NoiseModel(torch.nn.Module):
 
     def backward(self, *args, **kwargs):
         raise NotImplementedError
-    
+
+    @timer()
     def conform_to_exit_wave_size(
         self, 
         y_pred: Tensor, 
@@ -589,6 +602,7 @@ class PtychographyGaussianNoiseModel(GaussianNoiseModel):
     def __init__(self, sigma: float = 0.5, eps: float = 1e-9, *args, **kwargs) -> None:
         super().__init__(sigma=sigma, eps=eps, *args, **kwargs)
 
+    @timer()
     def backward_to_psi_far(self, y_pred, y_true, psi_far):
         """
         Compute the gradient of the NLL with respect to far field wavefront.
@@ -623,6 +637,7 @@ class PtychographyPoissonNoiseModel(PoissonNoiseModel):
     def __init__(self, eps: float = 1e-6, *args, **kwargs) -> None:
         super().__init__(eps=eps, *args, **kwargs)
 
+    @timer()
     def backward_to_psi_far(self, y_pred: Tensor, y_true: Tensor, psi_far: Tensor):
         """
         Compute the gradient of the NLL with respect to far field wavefront.

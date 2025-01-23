@@ -3,18 +3,31 @@ import os
 import datetime
 import logging
 import configparser
+from typing import Union
 
 import torch
 import h5py
 import numpy as np
 import pytest
+import subprocess
+import socket
 
 from ptychi.utils import rescale_probe, add_additional_opr_probe_modes_to_probe, set_default_complex_dtype, to_tensor
+# from ptychi.timer_utils import ADVANCED_TIME_DICT, ELAPSED_TIME_DICT, toggle_timer
+import ptychi.timing.timer_utils as timer_utils
+from ptychi.timing.io import save_timing_data_to_unique_file_path
 
 
 class BaseTester:
-        
-    def setup_method(self, name="", generate_data=False, generate_gold=False, debug=False, action=None, pytestconfig=None):
+    def setup_method(
+        self,
+        name="",
+        generate_data=False,
+        generate_gold=False,
+        debug=False,
+        action=None,
+        pytestconfig=None,
+    ):
         """
         A Pytest hook that sets instance attributes before running each test method. 
         If the script is executed with `python`, this method will not run automatically
@@ -30,6 +43,8 @@ class BaseTester:
             Whether to generate test data. 
         generate_gold : bool
             Whether to generate gold data. 
+        save_timing : bool
+            Whether to save timing results.
         debug : bool, optional
             Switches debug mode.
         """
@@ -39,20 +54,28 @@ class BaseTester:
         
         self.generate_data = generate_data
         self.generate_gold = generate_gold
+        # self.save_timing = save_timing
         self.debug = debug
         
         if pytestconfig is not None:
             self.high_tol = pytestconfig.getoption("high_tol")
             self.action = pytestconfig.getoption("action")
+            self.save_timing = pytestconfig.getoption("save_timing")
         else:
             self.high_tol = False
             self.action = action
+            self.save_timing = False
     
     @pytest.fixture(autouse=True)
     def inject_config(self, pytestconfig):
         self.pytestconfig = pytestconfig
         self.setup_method(
-            name="", generate_data=False, generate_gold=False, debug=False, action=None, pytestconfig=pytestconfig
+            name="",
+            generate_data=False,
+            generate_gold=False,
+            debug=False,
+            action=None,
+            pytestconfig=pytestconfig,
         )
     
     @staticmethod
@@ -189,6 +212,8 @@ class BaseTester:
         """
         def decorator(test_method):
             def wrapper(self: BaseTester):
+                if self.save_timing:
+                    timer_utils.toggle_timer(enable=True)
                 recon = test_method(self)
                 if self.debug and not self.generate_gold:
                     self.plot_object(recon)
@@ -196,6 +221,8 @@ class BaseTester:
                     self.save_gold_data(name, recon)
                 if not self.generate_gold:
                     self.run_comparison(name, recon)
+                if self.save_timing:
+                    save_timing_data_to_unique_file_path(name, get_timing_data_dir())
             return wrapper
         return decorator
     
@@ -254,3 +281,7 @@ def plot_multislice_phase(img):
         ax[i].imshow(np.angle(img[i, ...]))
         ax[i].set_title('slice {}'.format(i))
     plt.show()
+
+
+def get_timing_data_dir():
+    return os.path.join(BaseTester.get_ci_data_dir(), "timing")

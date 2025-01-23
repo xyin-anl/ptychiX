@@ -1,8 +1,10 @@
 from typing import Literal, Optional, Tuple, Union
 
 import torch
+from ptychi.timing.timer_utils import timer
 
 
+@timer()
 def trim_mean(
     x: torch.Tensor, 
     fraction: float = 0.1, 
@@ -40,7 +42,7 @@ def trim_mean(
     else:
         return torch.mean(x, dim=dim, keepdim=keepdim)
     
-    
+
 def angle(x: torch.Tensor, eps=1e-5) -> torch.Tensor:
     """
     A stable version of `torch.angle()`, which calculates
@@ -63,6 +65,7 @@ def angle(x: torch.Tensor, eps=1e-5) -> torch.Tensor:
     return torch.atan2(x.imag, x.real + eps)
 
 
+@timer()
 def orthogonalize_gs(
     x: torch.Tensor,
     dim: Union[int, Tuple[int, ...]] = -1,
@@ -96,6 +99,7 @@ def orthogonalize_gs(
     return torch.moveaxis(u, 0, group_dim)
 
 
+@timer()
 def orthogonalize_svd(
     x: torch.Tensor,
     dim: Union[int, Tuple[int, ...]] = -1,

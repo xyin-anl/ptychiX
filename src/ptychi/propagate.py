@@ -7,6 +7,7 @@ import math
 
 import torch
 from torch.fft import fft2, fftfreq, ifft2
+from ptychi.timing.timer_utils import timer
 
 import ptychi.maths as pmath
 
@@ -134,12 +135,13 @@ class FourierPropagator(WavefieldPropagator):
         super().__init__()
         self.norm = norm
 
+    @timer()
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
         return pmath.fft2_precise(wavefield, norm=self.norm)
 
+    @timer()
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
         return pmath.ifft2_precise(wavefield, norm=self.norm)
-
 
 class AngularSpectrumPropagator(WavefieldPropagator):
     def __init__(self, parameters: WavefieldPropagatorParameters) -> None:

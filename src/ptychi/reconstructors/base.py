@@ -6,6 +6,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 import tqdm
+from ptychi.timing.timer_utils import timer
 
 from ptychi.utils import to_numpy, chunked_processing
 import ptychi.maps as maps
@@ -275,6 +276,7 @@ class IterativeReconstructor(Reconstructor):
     def run_post_epoch_hooks(self) -> None:
         pass
 
+    @timer()
     def run(self, n_epochs: Optional[int] = None, *args, **kwargs):
         if self.current_epoch == 0:
             self.run_pre_run_hooks()
@@ -525,6 +527,7 @@ class AnalyticalIterativeReconstructor(IterativeReconstructor):
     def apply_updates(self, *args, **kwargs):
         raise NotImplementedError
 
+    @timer()
     def run(self, n_epochs: Optional[int] = None, *args, **kwargs):
         with torch.no_grad():
             return super().run(n_epochs=n_epochs, *args, **kwargs)
