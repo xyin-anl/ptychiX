@@ -7,9 +7,11 @@ import math
 
 import torch
 from torch.fft import fft2, fftfreq, ifft2
-from ptychi.timing.timer_utils import timer
 
+from ptychi.timing.timer_utils import timer
 import ptychi.maths as pmath
+import ptychi.utils as utils
+
 
 BooleanTensor: TypeAlias = torch.Tensor
 ComplexTensor: TypeAlias = torch.Tensor
@@ -165,12 +167,14 @@ class AngularSpectrumPropagator(WavefieldPropagator):
         i2piz = 2j * torch.pi * parameters.propagation_distance_wlu
 
         FY, FX = parameters.get_frequency_coordinates()
+        FY, FX = FY.double(), FX.double()
         F2 = torch.square(FX) + torch.square(ar * FY)
         self.register_buffer('F2', F2)
 
         ratio = self.F2 / (parameters.pixel_width_wlu**2)
         tf = torch.exp(i2piz * torch.sqrt(1 - ratio))
-        tf = torch.where(ratio < 1, tf, 1)        
+        tf = torch.where(ratio < 1, tf, 1)
+        tf = tf.to(utils.get_default_complex_dtype())
         return tf
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
@@ -185,27 +189,41 @@ class AngularSpectrumPropagator(WavefieldPropagator):
 class FresnelTransformPropagator(WavefieldPropagator):
     def __init__(self, parameters: WavefieldPropagatorParameters) -> None:
         super().__init__()
+
+        _C0, _C1C2, _B = self.get_kernels(parameters)
+        self._C0 = _C0
+        self.register_buffer('_C1C2', _C1C2)
+        self.register_buffer('_B', _B)
+        
+    def get_kernels(
+        self, 
+        parameters: WavefieldPropagatorParameters
+    ) -> tuple[ComplexTensor, ComplexTensor, ComplexTensor]:
         ipi = 1j * torch.pi
-
-        Fr = parameters.fresnel_number
-        ar = parameters.pixel_aspect_ratio
-        N = parameters.width_px
-        M = parameters.height_px
+        Fr = float(parameters.fresnel_number)
+        ar = float(parameters.pixel_aspect_ratio)
+        N = float(parameters.width_px)
+        M = float(parameters.height_px)
         YY, XX = parameters.get_spatial_coordinates()
-
-        self._C0 = Fr / (1j * ar)
-        self._C1 = cmath.exp(2j * cmath.pi * parameters.propagation_distance_wlu)
-        self._C2 = torch.exp((torch.square(XX / N) + torch.square(ar * YY / M)) * ipi / Fr)
-
-        self._B = torch.exp(ipi * Fr * (torch.square(XX) + torch.square(YY / ar)))
+        YY, XX = YY.double(), XX.double()
+        
+        C0 = Fr / (1j * ar)
+        C1 = cmath.exp(2j * cmath.pi * parameters.propagation_distance_wlu)
+        C2 = torch.exp((torch.square(XX / N) + torch.square(ar * YY / M)) * ipi / Fr)
+        C1C2 = C1 * C2
+        B = torch.exp(ipi * Fr * (torch.square(XX) + torch.square(YY / ar)))
+        
+        C1C2 = C1C2.to(utils.get_default_complex_dtype())
+        B = B.to(utils.get_default_complex_dtype())
+        return C0, C1C2, B
 
     def propagate_forward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        A = self._C2 * self._C1 * self._C0
-        return A * pmath.fft2_precise(wavefield * self._B)
+        A = self._C1C2 * self._C0
+        return (A * pmath.fft2_precise(wavefield * self._B)).to(utils.get_default_complex_dtype())
 
     def propagate_backward(self, wavefield: ComplexTensor) -> ComplexTensor:
-        A = self._C2 * self._C1 / self._C0
-        return self._B * pmath.ifft2_precise(wavefield * A)
+        A = self._C1C2 / self._C0
+        return (self._B * pmath.ifft2_precise(wavefield * A)).to(utils.get_default_complex_dtype())
 
 
 class FraunhoferPropagator(WavefieldPropagator):

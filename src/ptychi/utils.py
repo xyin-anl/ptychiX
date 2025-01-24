@@ -8,7 +8,7 @@ import numpy as np
 from numpy import ndarray
 
 import ptychi.maths as pmath
-from ptychi.propagate import FourierPropagator
+import ptychi.propagate as propagate
 from ptychi.timing.timer_utils import timer
 
 default_complex_dtype = torch.complex64
@@ -42,7 +42,7 @@ def rescale_probe(
     scaled_probe : Tensor
         The scaled probe.
     """
-    propagator = FourierPropagator()
+    propagator = propagate.FourierPropagator()
 
     probe_tensor = torch.tensor(probe)
 
