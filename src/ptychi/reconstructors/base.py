@@ -247,6 +247,16 @@ class IterativeReconstructor(Reconstructor):
         d = super().get_config_dict()
         d.update({"batch_size": self.batch_size, "n_epochs": self.n_epochs})
         return d
+    
+    def prepare_batch_data(self, batch_data: Sequence[Tensor]) -> Tuple[Sequence[Tensor], Tensor]:
+        # If data is not saved on device, move it to device.
+        input_data = batch_data[:-1]
+        if input_data[0].device.type != torch.get_default_device().type:
+            input_data = [x.to(torch.get_default_device()) for x in input_data]
+        y_true = batch_data[-1]
+        if y_true.device.type != torch.get_default_device().type:
+            y_true = y_true.to(torch.get_default_device())
+        return input_data, y_true
 
     def run_minibatch(self, input_data: Sequence[Tensor], y_true: Tensor, *args, **kwargs) -> None:
         """
@@ -285,9 +295,7 @@ class IterativeReconstructor(Reconstructor):
             self.run_pre_epoch_hooks()
             self.current_minibatch = 0
             for batch_data in self.dataloader:
-                input_data = [x.to(torch.get_default_device()) for x in batch_data[:-1]]
-                y_true = batch_data[-1].to(torch.get_default_device())
-
+                input_data, y_true = self.prepare_batch_data(batch_data)
                 self.run_pre_update_hooks()
                 self.run_minibatch(input_data, y_true)
                 self.run_post_update_hooks()

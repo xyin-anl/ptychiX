@@ -23,11 +23,12 @@ class PtychographyDataset(Dataset):
         wavelength_m: float = None,
         free_space_propagation_distance_m: float = 1.0,
         fft_shift: bool = True,
+        save_data_on_device: bool = False,
         *args,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.patterns = to_tensor(patterns, device="cpu")
+        self.patterns = to_tensor(patterns, device="cpu" if not save_data_on_device else "cuda")
         if fft_shift:
             self.patterns = torch.fft.fftshift(self.patterns, dim=(-2, -1))
             logger.info("Diffraction data have been FFT-shifted.")
@@ -38,10 +39,12 @@ class PtychographyDataset(Dataset):
 
         self.wavelength_m = wavelength_m
         self.free_space_propagation_distance_m = free_space_propagation_distance_m
+        
+        self.save_data_on_device = save_data_on_device
 
     def __getitem__(self, index):
         if not isinstance(index, torch.Tensor):
-            index = torch.tensor(index, device="cpu", dtype=torch.long)
+            index = torch.tensor(index, device=self.patterns.device, dtype=torch.long)
         pattern = self.patterns[index]
         return index, pattern
 

@@ -116,6 +116,7 @@ class PtychographyTask(Task):
             self.data_options.data, 
             wavelength_m=self.data_options.wavelength_m,
             free_space_propagation_distance_m=self.data_options.free_space_propagation_distance_m,
+            save_data_on_device=self.data_options.save_data_on_device,
         )
 
     def build_object(self):
