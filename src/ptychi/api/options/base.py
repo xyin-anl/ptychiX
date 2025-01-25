@@ -1,5 +1,7 @@
+from abc import ABC
 from typing import Optional, Union, Sequence
 import dataclasses
+from dataclasses import field
 import logging
 
 from numpy import ndarray
@@ -80,26 +82,88 @@ class ParameterOptions(Options):
 
 
 @dataclasses.dataclass
-class ObjectOptions(ParameterOptions):
-    initial_guess: Union[ndarray, Tensor] = None
-    """A (h, w) complex tensor of the object initial guess."""
+class FeatureOptions(ABC):
+    """
+    Abstract base class that is inherited by sub-feature dataclasses. This class is used to
+    determining if/when a feature is used.
+    """
 
-    slice_spacings_m: Optional[ndarray] = None
-    """Slice spacing in meters. This should be provided if the object is multislice."""
+    enabled: bool
+    "Turns execution of the feature on and off."
 
-    pixel_size_m: float = 1.0
-    """The pixel size in meters."""
+    optimization_plan: OptimizationPlan
+    "Schedules when the feature is executed."
 
-    l1_norm_constraint_weight: float = 0
+    def is_enabled_on_this_epoch(self, current_epoch: int):
+        if self.enabled and self.optimization_plan.is_enabled(current_epoch):
+            return True
+        else:
+            return False
+
+
+@dataclasses.dataclass
+class ObjectMultisliceRegularizationOptions(FeatureOptions):
+    """Settings for multislice regularization of the object."""
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    weight: float = 0
+    """
+    The weight for multislice regularization. Disabled if 0, or if `type != ObjectTypes.MULTISLICE`. 
+    When enabled, multislice objects are regularized using cross-slice smoothing.
+    """
+
+    unwrap_phase: bool = True
+    """Whether to unwrap the phase of the object during multislice regularization."""
+
+    unwrap_image_grad_method: enums.ImageGradientMethods = (
+        enums.ImageGradientMethods.FOURIER_SHIFT
+    )
+    """
+    The method for calculating the phase gradient during phase unwrapping.
+    
+        - FOURIER_SHIFT: Use Fourier shift to perform shift.
+        - NEAREST: Use nearest neighbor to perform shift.
+        - FOURIER_DIFFERENTIATION: Use Fourier differentiation.
+    """
+
+    unwrap_image_integration_method: enums.ImageIntegrationMethods = (
+        enums.ImageIntegrationMethods.DECONVOLUTION
+    )
+    """
+    The method for integrating the phase gradient during phase unwrapping.
+    
+        - FOURIER: Use Fourier integration as implemented in PtychoShelves.
+        - DECONVOLUTION: Deconvolve a ramp filter.
+        - DISCRETE: Use cumulative sum.
+    """
+
+
+@dataclasses.dataclass
+class ObjectL1NormConstraintOptions(FeatureOptions):
+    """Settings for the L1 norm constraint."""
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    weight: float = 0
     """The weight of the L1 norm constraint. Disabled if equal or less than 0."""
 
-    l1_norm_constraint_stride: int = 1
-    """The number of epochs between L1 norm constraint updates."""
 
-    smoothness_constraint_alpha: float = 0
+@dataclasses.dataclass
+class ObjectSmoothnessConstraintOptions(FeatureOptions):
+    """Settings for smoothing of the magnitude (but not the phase) of the object"""
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    alpha: float = 0
     """
-    The relaxation smoothing constant. If greater than 0, the magnitude (but not phase)
-    of the object will be smoothed every `smoothness_constraint_stride` epochs.
+    The relaxation smoothing constant. This value should be in the range  0 < alpha <= 1/8.
 
     Smoothing is done by constructing a 3x3 kernel of
     ```
@@ -111,66 +175,70 @@ class ObjectOptions(ParameterOptions):
     is maximal. The value of alpha should not be larger than 1 / 8.
     """
 
-    smoothness_constraint_stride: int = 1
-    """The number of epochs between smoothness constraint updates."""
 
-    total_variation_weight: float = 0
+@dataclasses.dataclass
+class ObjectTotalVariationOptions(FeatureOptions):
+    """Settings for total variation constraint on the object."""
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    weight: float = 0
     """The weight of the total variation constraint. Disabled if equal or less than 0."""
 
-    total_variation_stride: int = 1
-    """The number of epochs between total variation constraint updates."""
 
-    remove_grid_artifacts: bool = False
-    """Whether to remove grid artifacts in the object's phase at the end of an epoch."""
+@dataclasses.dataclass
+class RemoveGridArtifactsOptions(FeatureOptions):
+    """Settings for grid artifact removal in the object's phase, applied at the end of an epoch"""
 
-    remove_grid_artifacts_period_x_m: float = 1e-7
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    period_x_m: float = 1e-7
     """The horizontal period of grid artifacts in meters."""
 
-    remove_grid_artifacts_period_y_m: float = 1e-7
+    period_y_m: float = 1e-7
     """The vertical period of grid artifacts in meters."""
 
-    remove_grid_artifacts_window_size: int = 5
+    window_size: int = 5
     """The window size for grid artifact removal in pixels."""
 
-    remove_grid_artifacts_direction: enums.Directions = enums.Directions.XY
+    direction: enums.Directions = enums.Directions.XY
     """The direction of grid artifact removal."""
 
-    remove_grid_artifacts_stride: int = 1
-    """The number of epochs between grid artifact removal updates."""
 
-    multislice_regularization_weight: float = 0
-    """
-    The weight for multislice regularization. Disabled if 0, or if `type != ObjectTypes.MULTISLICE`. 
-    When enabled, multislice objects are regularized using cross-slice smoothing.
-    """
+@dataclasses.dataclass
+class ObjectOptions(ParameterOptions):
+    initial_guess: Union[ndarray, Tensor] = None
+    """A (h, w) complex tensor of the object initial guess."""
 
-    multislice_regularization_unwrap_phase: bool = True
-    """Whether to unwrap the phase of the object during multislice regularization."""
+    slice_spacings_m: Optional[ndarray] = None
+    """Slice spacing in meters. This should be provided if the object is multislice."""
 
-    multislice_regularization_unwrap_image_grad_method: enums.ImageGradientMethods = (
-        enums.ImageGradientMethods.FOURIER_SHIFT
+    pixel_size_m: float = 1.0
+    """The pixel size in meters."""
+
+    l1_norm_constraint: ObjectL1NormConstraintOptions = field(
+        default_factory=ObjectL1NormConstraintOptions
     )
-    """
-    The method for calculating the phase gradient during phase unwrapping.
-    
-        - FOURIER_SHIFT: Use Fourier shift to perform shift.
-        - NEAREST: Use nearest neighbor to perform shift.
-        - FOURIER_DIFFERENTIATION: Use Fourier differentiation.
-    """
 
-    multislice_regularization_unwrap_image_integration_method: enums.ImageIntegrationMethods = (
-        enums.ImageIntegrationMethods.DECONVOLUTION
+    smoothness_constraint: ObjectSmoothnessConstraintOptions = field(
+        default_factory=ObjectSmoothnessConstraintOptions
     )
-    """
-    The method for integrating the phase gradient during phase unwrapping.
-    
-        - FOURIER: Use Fourier integration as implemented in PtychoShelves.
-        - DECONVOLUTION: Deconvolve a ramp filter.
-        - DISCRETE: Use cumulative sum.
-    """
 
-    multislice_regularization_stride: int = 1
-    """The number of epochs between multislice regularization updates."""
+    total_variation: ObjectTotalVariationOptions = field(
+        default_factory=ObjectTotalVariationOptions
+    )
+
+    remove_grid_artifacts: RemoveGridArtifactsOptions = field(
+        default_factory=RemoveGridArtifactsOptions
+    )
+
+    multislice_regularization: ObjectMultisliceRegularizationOptions = field(
+        default_factory=ObjectMultisliceRegularizationOptions
+    )
 
     patch_interpolation_method: enums.PatchInterpolationMethods = (
         enums.PatchInterpolationMethods.FOURIER
@@ -181,6 +249,76 @@ class ObjectOptions(ParameterOptions):
         d = super().get_non_data_fields()
         del d["initial_guess"]
         return d
+
+
+@dataclasses.dataclass
+class ProbePowerConstraintOptions(FeatureOptions):
+    """
+    Settings for scaling the probe and object intensity.
+    """
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    probe_power: float = 0.0
+    """
+    The target probe power. The probe and object intensity will be scaled such that 
+    the power of the far-field probe is `probe_power`.
+    """
+
+
+@dataclasses.dataclass
+class ProbeOrthogonalizeIncoherentModesOptions(FeatureOptions):
+    """
+    Settings for orthogonalizing incoherent probe modes.
+    """
+
+    enabled: bool = True
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    method: enums.OrthogonalizationMethods = enums.OrthogonalizationMethods.GS
+    """The method to use for incoherent_mode orthogonalization."""
+
+
+@dataclasses.dataclass
+class ProbeOrthogonalizeOPRModesOptions(FeatureOptions):
+    """
+    Settings for orthogonalizing OPR modes.
+    """
+
+    enabled: bool = True
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+
+@dataclasses.dataclass
+class ProbeSupportConstraintOptions(FeatureOptions):
+    """
+    Settings for probe shrinkwrapping, where small values are set to 0.
+    """
+        
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    threshold: float = 0.005
+    """
+    The threshold for the probe support constraint. The value of a pixel (x, y) is set to 0
+    if `p(x, y) < [max(blur(p)) * `threshold`](x, y)`.
+    """
+
+
+@dataclasses.dataclass
+class ProbeCenterConstraintOptions(FeatureOptions):
+    """
+    Settings for constraining the probe's center of mass to the center of the probe array.
+    """
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
 
 
 @dataclasses.dataclass
@@ -199,53 +337,30 @@ class ProbeOptions(ParameterOptions):
     initial_guess: Union[ndarray, Tensor] = None
     """A (n_opr_modes, n_modes, h, w) complex tensor of the probe initial guess."""
 
-    probe_power: float = 0.0
-    """
-    The target probe power. If greater than 0, probe power constraint
-    is run every `probe_power_constraint_stride` epochs, where it scales the probe
-    and object intensity such that the power of the far-field probe is `probe_power`.
-    """
-
-    probe_power_constraint_stride: int = 1
-    """The number of epochs between probe power constraint updates."""
-
-    orthogonalize_incoherent_modes: bool = False
-    """
-    Whether to orthogonalize incoherent probe modes. If True, the incoherent probe
-    modes are orthogonalized every `orthogonalize_incoherent_modes_stride` epochs.
-    """
-
-    orthogonalize_incoherent_modes_stride: int = 1
-    """The number of epochs between orthogonalizing the incoherent probe modes."""
-
-    orthogonalize_incoherent_modes_method: enums.OrthogonalizationMethods = (
-        enums.OrthogonalizationMethods.GS
+    power_constraint: ProbePowerConstraintOptions = field(
+        default_factory=ProbePowerConstraintOptions
     )
-    """The method to use for incoherent_mode orthogonalization."""
 
-    orthogonalize_opr_modes: bool = False
-    """
-    Whether to orthogonalize OPR modes. If True, the OPR modes are orthogonalized
-    every `orthogonalize_opr_modes_stride` epochs.
-    """
+    orthogonalize_incoherent_modes: ProbeOrthogonalizeIncoherentModesOptions = field(
+        default_factory=ProbeOrthogonalizeIncoherentModesOptions
+    )
 
-    orthogonalize_opr_modes_stride: int = 1
-    """The number of epochs between orthogonalizing the OPR modes."""
+    orthogonalize_opr_modes: ProbeOrthogonalizeOPRModesOptions = field(
+        default_factory=ProbeOrthogonalizeOPRModesOptions
+    )
 
-    support_constraint: bool = False
-    """
-    When enabled, the probe will be shrinkwrapped every `probe_support_constraint_stride` epochs,
-    where small values are set to 0.
-    """
-    
-    support_constraint_threshold: float = 0.005
-    """
-    The threshold for the probe support constraint. The value of a pixel (x, y) is set to 0
-    if `p(x, y) < [max(blur(p)) * `support_constraint_threshold`](x, y)`.
-    """
+    support_constraint: ProbeSupportConstraintOptions = field(
+        default_factory=ProbeSupportConstraintOptions
+    )
 
-    support_constraint_stride: int = 1
-    """The number of epochs between probe support constraint updates."""
+    center_constraint: ProbeCenterConstraintOptions = field(
+        default_factory=ProbeCenterConstraintOptions
+    )
+
+    eigenmode_update_relaxation: float = 1.0
+    """
+    A separate step size for eigenmode update.
+    """
 
     def check(self):
         if not (self.initial_guess is not None and self.initial_guess.ndim == 4):
@@ -275,6 +390,17 @@ class PositionCorrectionOptions:
 
 
 @dataclasses.dataclass
+class ProbePositionMagnitudeLimitOptions(FeatureOptions):
+    """Settings for imposing a magnitude limit on the probe position update."""
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    limit: Optional[float] = 0
+
+
+@dataclasses.dataclass
 class ProbePositionOptions(ParameterOptions):
     position_x_px: Union[ndarray, Tensor] = None
     """The x position in pixel."""
@@ -282,8 +408,9 @@ class ProbePositionOptions(ParameterOptions):
     position_y_px: Union[ndarray, Tensor] = None
     """The y position in pixel."""
 
-    update_magnitude_limit: Optional[float] = 0
-    """Magnitude limit of the probe update. No limit is imposed if it is 0."""
+    magnitude_limit: ProbePositionMagnitudeLimitOptions = dataclasses.field(
+        default_factory=ProbePositionMagnitudeLimitOptions
+    )
 
     constrain_position_mean: bool = False
     """
@@ -302,6 +429,29 @@ class ProbePositionOptions(ParameterOptions):
         del d["position_x_px"]
         del d["position_y_px"]
         return d
+
+
+@dataclasses.dataclass
+class OPRModeWeightsSmoothingOptions(FeatureOptions):
+    """Settings for smoothing OPR mode weights."""
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+    
+    method: Optional[enums.OPRWeightSmoothingMethods] = None
+    """
+    The method for smoothing OPR mode weights. 
+    
+    MEDIAN: applying a median filter to the weights of each mode. 
+    
+    POLYNOMIAL: fit the weights of each mode with a polynomial of selected degree.
+    """
+
+    polynomial_degree: int = 4
+    """
+    The degree of the polynomial used for smoothing OPR mode weights.
+    """
 
 
 @dataclasses.dataclass
@@ -329,6 +479,15 @@ class OPRModeWeightsOptions(ParameterOptions):
 
     At least one of `optimize_eigenmode_weights` and `optimize_intensity_variation`
     should be set to `True` if `optimizable` is `True`.
+    """
+
+    smoothing: OPRModeWeightsSmoothingOptions = dataclasses.field(
+        default_factory=OPRModeWeightsSmoothingOptions
+    )
+
+    update_relaxation: float = 1.0
+    """
+    A separate step size for eigenmode weight update.
     """
 
     def check(self):
@@ -361,7 +520,10 @@ class ReconstructorOptions(Options):
     
     - `enums.BatchingModes.RANDOM`: load a random set of data in each minibatch.
     - `enums.BatchingModes.COMPACT`: load a spatially close cluster of data in each minibatch.
-      This is equivalent to the compact mode in PtychoSheleves.
+      This is equivalent to the "compact" mode in PtychoShelves.
+    - `enums.BatchingModes.UNIFORM`: load a random set of data in each minibatch, but the
+      indices across batches are manipulated so that points in each batch are more uniformly
+      spread out in the scan space. This is equivalent to the "sparse" mode in PtychoShelves.
     """
 
     compact_mode_update_clustering: bool = False

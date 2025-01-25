@@ -21,8 +21,6 @@ permissions:
 jobs:
   linux-x86-gpu:
 
-    continue-on-error: true
-
     defaults:
       run:
         shell: bash -l {0}
@@ -65,7 +63,7 @@ jobs:
         source $CONDA_ROOT/bin/activate $ENVNAME
         echo $(which python)
         cd tests
-        pytest -s --high-tol
+        pytest -s --high-tol --save-timing
 
     - name: Remove environment
       if: always()

@@ -21,6 +21,8 @@ from ptychi.io_handles import PtychographyDataset
 from ptychi.reconstructors.base import Reconstructor
 from ptychi.utils import to_tensor
 import ptychi.utils as utils
+# from ptychi.timer_utils import clear_timer_globals
+from ptychi.timing import timer_utils
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +113,10 @@ class PtychographyTask(Task):
 
     def build_data(self):
         self.dataset = PtychographyDataset(
-            self.data_options.data, wavelength_m=self.data_options.wavelength_m
+            self.data_options.data, 
+            wavelength_m=self.data_options.wavelength_m,
+            free_space_propagation_distance_m=self.data_options.free_space_propagation_distance_m,
+            save_data_on_device=self.data_options.save_data_on_device,
         )
 
     def build_object(self):
@@ -184,11 +189,24 @@ class PtychographyTask(Task):
             The number of epochs to run. If None, use the number of epochs specified in the
             option object.
         """
+        timer_utils.clear_timer_globals()
         self.reconstructor.run(n_epochs=n_epochs)
 
     def get_data(
         self, name: Literal["object", "probe", "probe_positions", "opr_mode_weights"]
     ) -> Tensor:
+        """Get a detached copy of the data of the given name.
+
+        Parameters
+        ----------
+        name : Literal["object", "probe", "probe_positions", "opr_mode_weights"]
+            The name of the data to get.
+
+        Returns
+        -------
+        Tensor
+            The data of the given name.
+        """
         return getattr(self, name).data.detach()
 
     def get_data_to_cpu(
@@ -199,6 +217,18 @@ class PtychographyTask(Task):
         data = self.get_data(name).cpu()
         if as_numpy:
             data = data.numpy()
+        return data
+    
+    def get_probe_positions_y(self, as_numpy: bool = False) -> Union[Tensor, ndarray]:
+        data = self.probe_positions.data[:, 0].detach()
+        if as_numpy:
+            data = data.cpu().numpy()
+        return data
+
+    def get_probe_positions_x(self, as_numpy: bool = False) -> Union[Tensor, ndarray]:
+        data = self.probe_positions.data[:, 1].detach()
+        if as_numpy:
+            data = data.cpu().numpy()
         return data
 
     def __exit__(self, exc_type, exc_value, exc_tb):

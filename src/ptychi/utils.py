@@ -8,8 +8,8 @@ import numpy as np
 from numpy import ndarray
 
 import ptychi.maths as pmath
-from ptychi.propagate import FourierPropagator
-
+import ptychi.propagate as propagate
+from ptychi.timing.timer_utils import timer
 
 default_complex_dtype = torch.complex64
 
@@ -42,7 +42,7 @@ def rescale_probe(
     scaled_probe : Tensor
         The scaled probe.
     """
-    propagator = FourierPropagator()
+    propagator = propagate.FourierPropagator()
 
     probe_tensor = torch.tensor(probe)
 
@@ -83,7 +83,11 @@ def orthogonalize_initial_probe(
     Parameters
     ----------
     probe : Tensor
-        A (n_opr_modes, n_modes, h, w) tensor of the probe.
+        A (n_opr_modes, n_modes, h, w) tensor of the probe. This function only generates
+        incoherent modes; OPR modes are kept as they are. Only the first incoherent mode
+        of the input probe is used. As such, the rest of the incoherent modes can be
+        arbotrarily initialized, but the shape of the input probe should be indicate the
+        number of incoherent modes intended to be generated.
     secondary_mode_energy : float, optional
         The energy of the secondary mode relative to the principal mode, which is
         always 1.0.
@@ -117,6 +121,7 @@ def orthogonalize_initial_probe(
     return probe
 
 
+@timer()
 def generate_secondary_probe_modes_hermite(probe: Tensor, m: int, n: int) -> Tensor:
     """
     Generate secondary probe modes using Hermite polynomials.
@@ -160,6 +165,7 @@ def generate_secondary_probe_modes_hermite(probe: Tensor, m: int, n: int) -> Ten
     return h
 
 
+@timer()
 def get_probe_renormalization_factor(patterns: Tensor | ndarray) -> float:
     """
     Calculate the renormalization factor that should be applied to the probe
@@ -194,9 +200,29 @@ def generate_initial_object(shape: tuple[int, ...], method: Literal["random"] = 
     return obj
 
 
+@timer()
 def add_additional_opr_probe_modes_to_probe(
     probe: Tensor, n_opr_modes_to_add: int, normalize: bool = True
 ) -> Tensor:
+    """
+    Add additional OPR modes to the probe.
+    
+    Parameters
+    ----------
+    probe : Tensor
+        A (n_opr_modes, n_modes, h, w) tensor of the probe.
+    n_opr_modes_to_add : int
+        The number of OPR modes to add.
+    normalize : bool, optional
+        Whether to normalize the OPR modes using `mnorm` so that the power
+        of each mode is the number of pixels in a mode.
+    
+    Returns
+    -------
+    Tensor
+        A (n_opr_modes + n_opr_modes_to_add, n_modes, h, w) tensor of the probe 
+        with additional OPR modes.
+    """
     if probe.ndim != 4:
         raise ValueError("probe must be a (n_opr_modes, n_modes, h, w) tensor.")
     n_modes = probe.shape[1]
@@ -223,6 +249,7 @@ def add_additional_opr_probe_modes_to_probe(
     return probe
 
 
+@timer()
 def generate_initial_opr_mode_weights(
     n_points: int, n_opr_modes: int, eigenmode_weight: Optional[float] = None, probe: Optional[Tensor] = None
 ) -> Tensor:
@@ -260,6 +287,7 @@ def generate_initial_opr_mode_weights(
     return weights
 
 
+@timer()
 def generate_gaussian_random_image(
     shape: tuple[int, ...], loc: float = 0.9, sigma: float = 0.1, smoothing: float = 3.0
 ) -> Tensor:

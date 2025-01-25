@@ -1,14 +1,14 @@
 from typing import Union, Optional
+import dataclasses
 
-from numpy import ndarray
+from numpy import ndarray, inf
 from torch import Tensor
 
-
-import dataclasses
+import ptychi.api.options.base as base
 
 
 @dataclasses.dataclass
-class PtychographyDataOptions:
+class PtychographyDataOptions(base.Options):
 
     data: Union[ndarray, Tensor] = None
     """
@@ -16,8 +16,8 @@ class PtychographyDataOptions:
     or square-rooted.
     """
 
-    propagation_distance_m: float = 1.0
-    """The propagation distance in meters."""
+    free_space_propagation_distance_m: float = inf
+    """The free-space propagation distance in meters, or `inf` for far-field."""
 
     wavelength_m: float = 1e-9
     """The wavelength in meters."""
@@ -27,3 +27,6 @@ class PtychographyDataOptions:
 
     valid_pixel_mask: Optional[Union[ndarray, Tensor]] = None
     """A 2D boolean mask where valid pixels are True."""
+    
+    save_data_on_device: bool = False
+    """Whether to save the diffraction data on acceleration devices like GPU."""

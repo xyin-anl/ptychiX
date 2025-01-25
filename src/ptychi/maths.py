@@ -1,9 +1,16 @@
 from typing import Literal, Optional, Tuple, Union
 
 import torch
+from ptychi.timing.timer_utils import timer
 
 
-def trim_mean(x: torch.Tensor, fraction: float = 0.1, dim: Optional[Union[int, Tuple[int, ...]]] = None) -> torch.Tensor:
+@timer()
+def trim_mean(
+    x: torch.Tensor, 
+    fraction: float = 0.1, 
+    dim: Optional[Union[int, Tuple[int, ...]]] = None,
+    keepdim: bool = False
+) -> torch.Tensor:
     """
     Calculate the mean of a tensor after removing a certain percentage of the
     lowest and highest values.
@@ -31,11 +38,11 @@ def trim_mean(x: torch.Tensor, fraction: float = 0.1, dim: Optional[Union[int, T
     if mask_check:
         x = x.clone()
         x[~mask] = torch.nan
-        return torch.nanmean(x, dim=dim)
+        return torch.nanmean(x, dim=dim, keepdim=keepdim)
     else:
-        return torch.mean(x, dim=dim)
+        return torch.mean(x, dim=dim, keepdim=keepdim)
     
-    
+
 def angle(x: torch.Tensor, eps=1e-5) -> torch.Tensor:
     """
     A stable version of `torch.angle()`, which calculates
@@ -58,6 +65,7 @@ def angle(x: torch.Tensor, eps=1e-5) -> torch.Tensor:
     return torch.atan2(x.imag, x.real + eps)
 
 
+@timer()
 def orthogonalize_gs(
     x: torch.Tensor,
     dim: Union[int, Tuple[int, ...]] = -1,
@@ -91,6 +99,7 @@ def orthogonalize_gs(
     return torch.moveaxis(u, 0, group_dim)
 
 
+@timer()
 def orthogonalize_svd(
     x: torch.Tensor,
     dim: Union[int, Tuple[int, ...]] = -1,
@@ -242,3 +251,36 @@ def polyfit(x: torch.Tensor, y: torch.Tensor, deg: int = 1):
     """
     x_powers = x[:, None] ** torch.arange(deg, -1, -1)
     return torch.linalg.lstsq(x_powers, y, rcond=None)[0]
+
+
+def polyval(x: torch.Tensor, coeffs: torch.Tensor):
+    """
+    Evaluate a polynomial at the given points.
+    
+    Parameters
+    ----------
+    x : torch.Tensor
+        The independent variable.
+    coeffs : torch.Tensor
+        The coefficients of the polynomial from high to low order.
+    
+    Returns
+    -------
+    torch.Tensor
+        The values of the polynomial at the given points.
+    """
+    return (coeffs * x.view(-1, 1) ** torch.arange(len(coeffs) - 1, -1, -1)).sum(1)
+
+
+def fft2_precise(x, norm=None):
+    """
+    2D FFT with double precision.
+    """
+    return torch.fft.fft2(x.type(torch.complex128), norm=norm).type(x.dtype)
+
+
+def ifft2_precise(x, norm=None):
+    """
+    2D FFT with double precision.
+    """
+    return torch.fft.ifft2(x.type(torch.complex128), norm=norm).type(x.dtype)

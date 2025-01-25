@@ -4,6 +4,7 @@ from enum import StrEnum, auto
 class BatchingModes(StrEnum):
     RANDOM = auto()
     COMPACT = auto()
+    UNIFORM = auto()
 
 
 class Optimizers(StrEnum):
@@ -90,3 +91,8 @@ class PatchInterpolationMethods(StrEnum):
     FOURIER = auto()
     BILINEAR = auto()
     NEAREST = auto()
+
+
+class OPRWeightSmoothingMethods(StrEnum):
+    MEDIAN = auto()
+    POLYNOMIAL = auto()

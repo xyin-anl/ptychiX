@@ -9,6 +9,7 @@ from torch import Tensor
 
 import ptychi.image_proc as ip
 import ptychi.maths as pmath
+import ptychi.utils as utils
 import ptychi.data_structures.base as ds
 import ptychi.data_structures.object as object
 import ptychi.data_structures.opr_mode_weights as oprweights
@@ -24,6 +25,8 @@ class Probe(ds.ReconstructParameter):
     # TODO: eigenmode_update_relaxation is only used for LSQML. We should create dataclasses
     # to contain additional options for ReconstructParameter classes, and subclass them for specific
     # reconstruction algorithms - for example, ProbeOptions -> LSQMLProbeOptions.
+    options: "api.options.base.ProbeOptions"
+
     def __init__(
         self,
         name: str = "probe",
@@ -43,13 +46,8 @@ class Probe(ds.ReconstructParameter):
         if len(self.shape) != 4:
             raise ValueError("Probe tensor must be of shape (n_opr_modes, n_modes, h, w).")
 
-        self.probe_power = options.probe_power
-        self.probe_power_constraint_stride = options.probe_power_constraint_stride
-        self.orthogonalize_incoherent_modes = options.orthogonalize_incoherent_modes
-        self.orthogonalize_incoherent_modes_stride = options.orthogonalize_incoherent_modes_stride
-        self.orthogonalize_incoherent_modes_method = options.orthogonalize_incoherent_modes_method
-        self.orthogonalize_opr_modes = options.orthogonalize_opr_modes
-        self.orthogonalize_opr_modes_stride = options.orthogonalize_opr_modes_stride
+        self.probe_power = options.power_constraint.probe_power
+        self.orthogonalize_incoherent_modes_method = options.orthogonalize_incoherent_modes.method
 
     def shift(self, shifts: Tensor):
         """
@@ -69,7 +67,7 @@ class Probe(ds.ReconstructParameter):
         if shifts.ndim == 1:
             probe_straightened = self.tensor.complex().view(-1, *self.shape[-2:])
             shifted_probe = ip.fourier_shift(
-                probe_straightened, shifts[None, :].repeat([[probe_straightened.shape[0], 1, 1]])
+                probe_straightened, shifts[None, :].repeat([probe_straightened.shape[0], 1])
             )
             shifted_probe = shifted_probe.view(*self.shape)
         else:
@@ -194,21 +192,17 @@ class Probe(ds.ReconstructParameter):
                 unique_probe = p_orig
         return unique_probe
 
-    def incoherent_mode_orthogonality_constraint_enabled(self, current_epoch: int) -> bool:
-        if (
-            self.has_multiple_incoherent_modes
-            and self.orthogonalize_incoherent_modes
-            and current_epoch >= self.optimization_plan.start
-            and (current_epoch - self.optimization_plan.start)
-            % self.orthogonalize_incoherent_modes_stride
-            == 0
-        ):
-            return True
+    def _get_probe_mode_slicer(self, mode_index=None):
+        if mode_index is None:
+            return slice(None)
         else:
-            return False
+            return slice(mode_index, mode_index + 1)
 
     def constrain_incoherent_modes_orthogonality(self):
         """Orthogonalize the incoherent probe modes for the first OPR mode."""
+        if not self.has_multiple_incoherent_modes:
+            return
+
         probe = self.data
 
         norm_first_mode_orig = pmath.norm(probe[0, 0], dim=(-2, -1))
@@ -234,18 +228,8 @@ class Probe(ds.ReconstructParameter):
 
         self.set_data(probe)
 
-    def opr_mode_orthogonalization_enabled(self, current_epoch: int) -> bool:
-        enabled = self.optimization_enabled(current_epoch)
-        return (
-            enabled
-            and self.has_multiple_opr_modes
-            and self.orthogonalize_opr_modes
-            and (current_epoch - self.optimization_plan.start) % self.orthogonalize_opr_modes_stride
-            == 0
-        )
-
     def constrain_opr_mode_orthogonality(
-        self, weights: Union[Tensor, ds.ReconstructParameter], eps=1e-5
+        self, weights: "oprweights.OPRModeWeights", eps=1e-5, *, update_weights_in_place: bool
     ):
         """
         Add the following constraints to variable probe weights
@@ -263,19 +247,24 @@ class Probe(ds.ReconstructParameter):
         incoherent mode when mixed state probe is used, as this is what PtychoShelves does.
         OPR modes of other incoherent modes are ignored, for now.
 
+        This function also updates the OPR mode weights when `update_weights_in_place` is True.
+
         Parameters
         ----------
-        weights : Tensor
-            A (n_points, n_opr_modes) tensor of weights.
-        :param weights: a (n_points, n_opr_modes) tensor of weights.
+        weights : OPRModeWeights
+            The OPR mode weights object.
+        update_weights_in_place : bool
+            Whether to update the OPR mode weights data.
 
         Returns
         -------
-        Tensor
+        Tensor, optional
             Normalized and sorted OPR mode weights.
         """
-        if isinstance(weights, oprweights.OPRModeWeights):
-            weights = weights.data
+        if not self.has_multiple_opr_modes:
+            return
+
+        weights_data = weights.data
 
         # The main mode of the probe is the first OPR mode, while the
         # variable part of the probe is the second and following OPR modes.
@@ -292,7 +281,7 @@ class Probe(ds.ReconstructParameter):
         # Shape of weights:      (n_points, n_opr_modes).
         # Currently, only the first incoherent mode has OPR modes, and the
         # stored weights are for that mode.
-        weights[:, 1:] = weights[:, 1:] * vnorm[:, 0, 0, 0]
+        weights_data[:, 1:] = weights_data[:, 1:] * vnorm[:, 0, 0, 0]
 
         # Orthogonalize variable probes. With Gram-Schmidt, the first
         # OPR mode (i.e., the main mode) should not change during orthogonalization.
@@ -306,17 +295,17 @@ class Probe(ds.ReconstructParameter):
             # Compute the energies of variable OPR modes (i.e., the second and following)
             # in order to sort probes by energy.
             # Shape of power:         (n_opr_modes - 1,).
-            power = pmath.norm(weights[..., 1:], dim=0) ** 2
+            power = pmath.norm(weights_data[..., 1:], dim=0) ** 2
 
             # Sort the probes by energy
             sorted = torch.argsort(-power)
-            weights[:, 1:] = weights[:, sorted + 1]
+            weights_data[:, 1:] = weights_data[:, sorted + 1]
             # Apply only to the first incoherent mode.
             probe[1:, 0, :, :] = probe[sorted + 1, 0, :, :]
 
         # Remove outliars from variable probe weights.
-        aevol = torch.abs(weights)
-        weights = torch.minimum(
+        aevol = torch.abs(weights_data)
+        weights_data = torch.minimum(
             aevol,
             1.5
             * torch.quantile(
@@ -324,23 +313,16 @@ class Probe(ds.ReconstructParameter):
                 0.95,
                 dim=0,
                 keepdims=True,
-            ).type(weights.dtype),
-        ) * torch.sign(weights)
+            ).type(weights_data.dtype),
+        ) * torch.sign(weights_data)
 
         # Update stored data.
         self.set_data(probe)
-        return weights
 
-    def probe_power_constraint_enabled(self, current_epoch: int) -> bool:
-        if (
-            self.probe_power > 0.0
-            and current_epoch >= self.optimization_plan.start
-            and (current_epoch - self.optimization_plan.start) % self.probe_power_constraint_stride
-            == 0
-        ):
-            return True
+        if update_weights_in_place:
+            weights.set_data(weights_data)
         else:
-            return False
+            return weights_data
 
     def constrain_probe_power(
         self,
@@ -383,24 +365,21 @@ class Probe(ds.ReconstructParameter):
         mask = ip.gaussian_filter(data, sigma=3, size=5).abs()
         thresh = (
             mask.max(-1, keepdim=True).values.max(-2, keepdim=True).values
-            * self.options.support_constraint_threshold
+            * self.options.support_constraint.threshold
         )
         mask = torch.where(mask > thresh, 1.0, 0.0)
         mask = ip.gaussian_filter(mask, sigma=2, size=3).abs()
         data = data * mask
         self.set_data(data)
 
-    def support_constraint_enabled(self, current_epoch: int) -> bool:
-        if (
-            self.options.support_constraint
-            and current_epoch >= self.optimization_plan.start
-            and (current_epoch - self.optimization_plan.start)
-            % self.options.support_constraint_stride
-            == 0
-        ):
-            return True
-        else:
-            return False
+    def center_probe(self):
+        """
+        Move the probe's center of mass to the center of the probe array.
+        """
+        com = ip.find_center_of_mass(self.get_mode_and_opr_mode(0, 0))
+        shift = utils.to_tensor(self.shape[-2:]) // 2 - com
+        shifted_probe = self.shift(shift)
+        self.set_data(shifted_probe)
 
     def post_update_hook(self) -> None:
         super().post_update_hook()

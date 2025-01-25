@@ -6,11 +6,13 @@ from torch import Tensor
 
 import ptychi.image_proc as ip
 import ptychi.data_structures.base as ds
-from ptychi.utils import get_default_complex_dtype, to_tensor
+from ptychi.timing.timer_utils import timer
+from ptychi.utils import get_default_complex_dtype, to_tensor, to_numpy
 import ptychi.maps as maps
 
 if TYPE_CHECKING:
     import ptychi.api as api
+    from ptychi.data_structures.probe_positions import ProbePositions
     
 logger = logging.getLogger(__name__)
 
@@ -29,13 +31,8 @@ class Object(ds.ReconstructParameter):
     ):
         super().__init__(*args, name=name, options=options, is_complex=True, **kwargs)
         self.pixel_size_m = options.pixel_size_m
-        self.l1_norm_constraint_weight = options.l1_norm_constraint_weight
-        self.l1_norm_constraint_stride = options.l1_norm_constraint_stride
-        self.smoothness_constraint_alpha = options.smoothness_constraint_alpha
-        self.smoothness_constraint_stride = options.smoothness_constraint_stride
-        self.total_variation_weight = options.total_variation_weight
-        self.total_variation_stride = options.total_variation_stride
         center_pixel = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
+        self.roi_bbox: ds.BoundingBox = None
 
         self.register_buffer("center_pixel", center_pixel)
 
@@ -45,63 +42,36 @@ class Object(ds.ReconstructParameter):
     def place_patches(self, positions, patches, *args, **kwargs):
         raise NotImplementedError
 
-    def l1_norm_constraint_enabled(self, current_epoch: int):
-        if (
-            self.l1_norm_constraint_weight > 0
-            and self.optimization_enabled(current_epoch)
-            and (current_epoch - self.optimization_plan.start) % self.l1_norm_constraint_stride == 0
-        ):
-            return True
-        else:
-            return False
-
+    @timer()
     def constrain_l1_norm(self):
+        if self.options.l1_norm_constraint.weight <= 0:
+            return
         data = self.data
         l1_grad = torch.sgn(data)
-        data = data - self.l1_norm_constraint_weight * l1_grad
+        data = data - self.options.l1_norm_constraint.weight * l1_grad
         self.set_data(data)
         logger.debug("L1 norm constraint applied to object.")
-
-    def smoothness_constraint_enabled(self, current_epoch: int):
-        if (
-            self.smoothness_constraint_alpha > 0
-            and self.optimization_enabled(current_epoch)
-            and (current_epoch - self.optimization_plan.start) % self.smoothness_constraint_stride
-            == 0
-        ):
-            return True
-        else:
-            return False
 
     def constrain_smoothness(self):
         raise NotImplementedError
 
-    def total_variation_enabled(self, current_epoch: int):
-        if (
-            self.total_variation_weight > 0
-            and self.optimization_enabled(current_epoch)
-            and (current_epoch - self.optimization_plan.start) % self.total_variation_stride == 0
-        ):
-            return True
-        else:
-            return False
-
     def constrain_total_variation(self) -> None:
         raise NotImplementedError
 
-    def remove_grid_artifacts_enabled(self, current_epoch: int):
-        if (
-            self.options.remove_grid_artifacts
-            and self.optimization_enabled(current_epoch)
-            and (current_epoch - self.optimization_plan.start)
-            % self.options.remove_grid_artifacts_stride
-            == 0
-        ):
-            return True
-        else:
-            return False
-
     def remove_grid_artifacts(self, *args, **kwargs):
+        raise NotImplementedError
+    
+    def build_roi_bounding_box(self, positions: "ProbePositions"):
+        pos = positions.data
+        self.roi_bbox = ds.BoundingBox(
+            sy=pos[:, 0].min(),
+            ey=pos[:, 0].max(),
+            sx=pos[:, 1].min(),
+            ex=pos[:, 1].max(),
+            origin=tuple(to_numpy(self.center_pixel)),
+        )
+    
+    def get_object_in_roi(self):
         raise NotImplementedError
 
 
@@ -125,6 +95,7 @@ class PlanarObject(Object):
         if (
             self.options.slice_spacings_m is not None
             and len(self.options.slice_spacings_m) != self.n_slices - 1
+            and self.n_slices > 1
         ):
             raise ValueError("The number of slice spacings must be n_slices - 1.")
 
@@ -161,6 +132,7 @@ class PlanarObject(Object):
     def get_slice(self, index):
         return self.data[index, ...]
 
+    @timer()
     def extract_patches(self, positions: Tensor, patch_shape: Tuple[int, int]):
         """
         Extract (n_patches, n_slices, h', w') patches from the object.
@@ -190,6 +162,7 @@ class PlanarObject(Object):
         patches_all_slices = torch.stack(patches_all_slices, dim=1)
         return patches_all_slices
 
+    @timer()
     def place_patches(self, positions: Tensor, patches: Tensor, *args, **kwargs):
         """
         Place patches into the object.
@@ -212,6 +185,7 @@ class PlanarObject(Object):
         updated_slices = torch.stack(updated_slices, dim=0)
         self.tensor.set_data(updated_slices)
 
+    @timer()
     def place_patches_on_empty_buffer(self, positions: Tensor, patches: Tensor, *args, **kwargs):
         """
         Place patches into a zero array with the *lateral* shape of the object.
@@ -235,17 +209,23 @@ class PlanarObject(Object):
         )
         image = self.place_patches_function(image, positions, patches, op="add")
         return image
+    
+    def get_object_in_roi(self):
+        bbox = self.roi_bbox.get_bbox_with_top_left_origin()
+        return self.data[:, int(bbox.sy):int(bbox.ey), int(bbox.sx):int(bbox.ex)]
 
+    @timer()
     def constrain_smoothness(self) -> None:
         """
         Smooth the magnitude of the object.
         """
-        if self.smoothness_constraint_alpha > 1.0 / 8:
-            logger.warning(
-                f"Alpha = {self.smoothness_constraint_alpha} in smoothness constraint should be less than 1/8."
-            )
-        psf = torch.ones(3, 3, device=self.device) * self.smoothness_constraint_alpha
-        psf[2, 2] = 1 - 8 * self.smoothness_constraint_alpha
+        if self.options.smoothness_constraint.alpha <= 0:
+            return
+        alpha = self.options.smoothness_constraint.alpha
+        if alpha > 1.0 / 8:
+            logger.warning(f"Alpha = {alpha} in smoothness constraint should be less than 1/8.")
+        psf = torch.ones(3, 3, device=self.device) * alpha
+        psf[2, 2] = 1 - 8 * alpha
 
         data = self.data
         for i_slice in range(self.n_slices):
@@ -254,14 +234,18 @@ class PlanarObject(Object):
             data[i_slice] = data[i_slice] / data[i_slice].abs() * mag
         self.set_data(data)
 
+    @timer()
     def constrain_total_variation(self) -> None:
+        if self.options.total_variation.weight <= 0:
+            return
         data = self.data
         for i_slice in range(self.n_slices):
             data[i_slice] = ip.total_variation_2d_chambolle(
-                data[i_slice], lmbda=self.total_variation_weight, niter=2
+                data[i_slice], lmbda=self.options.total_variation.weight, niter=2
             )
         self.set_data(data)
 
+    @timer()
     def remove_grid_artifacts(self):
         data = self.data
         for i_slice in range(self.n_slices):
@@ -269,26 +253,15 @@ class PlanarObject(Object):
             phase = ip.remove_grid_artifacts(
                 phase,
                 pixel_size_m=self.pixel_size_m,
-                period_x_m=self.options.remove_grid_artifacts_period_x_m,
-                period_y_m=self.options.remove_grid_artifacts_period_y_m,
-                window_size=self.options.remove_grid_artifacts_window_size,
-                direction=self.options.remove_grid_artifacts_direction,
+                period_x_m=self.options.remove_grid_artifacts.period_x_m,
+                period_y_m=self.options.remove_grid_artifacts.period_y_m,
+                window_size=self.options.remove_grid_artifacts.window_size,
+                direction=self.options.remove_grid_artifacts.direction,
             )
             data = data[i_slice].abs() * torch.exp(1j * phase)
         self.set_data(data)
 
-    def multislice_regularization_enabled(self, current_epoch: int):
-        if (
-            self.options.multislice_regularization_weight > 0
-            and self.optimization_enabled(current_epoch)
-            and (current_epoch - self.optimization_plan.start)
-            % self.options.multislice_regularization_stride
-            == 0
-        ):
-            return True
-        else:
-            return False
-
+    @timer()
     def regularize_multislice(self):
         """
         Regularize multislice by applying a low-pass transfer function to the
@@ -296,6 +269,8 @@ class PlanarObject(Object):
 
         Adapted from fold_slice (regulation_multilayers.m).
         """
+        if not self.is_multislice or self.options.multislice_regularization.weight <= 0:
+            return
         if self.preconditioner is None:
             raise ValueError("Regularization requires a preconditioner.")
 
@@ -308,7 +283,7 @@ class PlanarObject(Object):
         # Calculate force of regularization based on the idea that DoF = resolution^2/lambda
         w = 1 - torch.atan(
             (
-                self.options.multislice_regularization_weight
+                self.options.multislice_regularization.weight
                 * torch.abs(fourier_coords[0])
                 / torch.sqrt(fourier_coords[1] ** 2 + fourier_coords[2] ** 2 + 1e-3)
             )
@@ -334,17 +309,17 @@ class PlanarObject(Object):
         # During phase unwrapping, if the phase gradient is calculated using finite difference
         # with Fourier shift, these values can dangle around 0, causing the phase of the
         # complex gradient to flip between pi and -pi.
-        w_phase = torch.clip(10 * (self.preconditioner / self.preconditioner.max()), max=1, min=0.1)
-        w_phase = torch.where(w_phase < 1e-3, 0, w_phase)
+        w_phase = torch.clip(10 * (self.preconditioner / self.preconditioner.max()), max=1)
+        w_phase_clipped = torch.clip(w_phase, min=0.1)
 
-        if self.options.multislice_regularization_unwrap_phase:
+        if self.options.multislice_regularization.unwrap_phase:
             pobj = [
                 ip.unwrap_phase_2d(
                     obj[i_slice],
-                    weight_map=w_phase,
+                    weight_map=w_phase_clipped,
                     fourier_shift_step=0.5,
-                    image_grad_method=self.options.multislice_regularization_unwrap_image_grad_method,
-                    image_integration_method=self.options.multislice_regularization_unwrap_image_integration_method,
+                    image_grad_method=self.options.multislice_regularization.unwrap_image_grad_method,
+                    image_integration_method=self.options.multislice_regularization.unwrap_image_integration_method,
                 )
                 for i_slice in range(self.n_slices)
             ]
