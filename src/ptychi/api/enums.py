@@ -36,7 +36,7 @@ class Reconstructors(StrEnum):
     EPIE = auto()
     RPIE = auto()
     DM = auto()
-    FIFTH_RULE = auto()
+    BH = auto()
 
 
 class PositionCorrectionTypes(StrEnum):
