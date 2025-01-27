@@ -378,6 +378,11 @@ class PositionCorrectionOptions:
 
     correction_type: enums.PositionCorrectionTypes = enums.PositionCorrectionTypes.GRADIENT
     """Type of algorithm used to calculate the position correction update."""
+    
+    differentiation_method: enums.ImageGradientMethods = enums.ImageGradientMethods.GAUSSIAN
+    """The method for calculating the gradient of the object. Only used when `correction_type` 
+    is `GRADIENT`.
+    """
 
     cross_correlation_scale: int = 20000
     """The upsampling factor of the cross-correlation in real space."""
