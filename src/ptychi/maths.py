@@ -284,3 +284,18 @@ def ifft2_precise(x, norm=None):
     2D FFT with double precision.
     """
     return torch.fft.ifft2(x.type(torch.complex128), norm=norm).type(x.dtype)
+
+
+def reprod(a, b):
+    """
+    Real part of the product of 2 arrays
+    """
+    return a.real * b.real + a.imag * b.imag
+
+
+def redot(a, b, axis=None):
+    """
+    Real part of the dot product of 2 arrays
+    """
+    res = torch.sum(reprod(a, b), axis=axis)
+    return res
