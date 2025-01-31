@@ -1,6 +1,6 @@
 import torch
 import ptychi.data_structures.probe
-from ptychi.image_proc import find_cross_corr_peak, gaussian_gradient
+import ptychi.image_proc as ip
 import ptychi.data_structures.opr_mode_weights as base
 import ptychi.api as api
 from ptychi.timing.timer_utils import timer
@@ -15,10 +15,7 @@ class PositionCorrection:
         self,
         options: "api.options.base.PositionCorrectionOptions" = None,
     ):
-        self.correction_type = options.correction_type
-        self.cross_correlation_scale = options.cross_correlation_scale
-        self.cross_correlation_real_space_width = options.cross_correlation_real_space_width
-        self.cross_correlation_probe_threshold = options.cross_correlation_probe_threshold
+        self.options = options
 
     @timer()
     def get_update(
@@ -57,7 +54,7 @@ class PositionCorrection:
 
         if (
             probe.has_multiple_opr_modes
-            and self.correction_type is api.PositionCorrectionTypes.GRADIENT
+            and self.options.correction_type is api.PositionCorrectionTypes.GRADIENT
         ):
             # Shape of probe_m0:   (batch_size, h, w)
             probe_m0 = probe.get_unique_probes(
@@ -66,9 +63,9 @@ class PositionCorrection:
         else:
             probe_m0 = probe.get_mode_and_opr_mode(0, 0)
 
-        if self.correction_type is api.PositionCorrectionTypes.GRADIENT:
+        if self.options.correction_type is api.PositionCorrectionTypes.GRADIENT:
             return self.get_gradient_update(chi, obj_patches, probe_m0)
-        elif self.correction_type is api.PositionCorrectionTypes.CROSS_CORRELATION:
+        elif self.options.correction_type is api.PositionCorrectionTypes.CROSS_CORRELATION:
             return self.get_cross_correlation_update(
                 obj_patches, delta_o_patches, probe_m0, object_step_size
             )
@@ -95,15 +92,15 @@ class PositionCorrection:
         n_positions = len(obj_patches)
         delta_pos = torch.zeros((n_positions, 2))
 
-        probe_thresh = probe.abs().max() * self.cross_correlation_probe_threshold
+        probe_thresh = probe.abs().max() * self.options.cross_correlation_probe_threshold
         probe_mask = probe.abs() > probe_thresh
 
         for i in range(n_positions):
-            delta_pos[i] = -find_cross_corr_peak(
+            delta_pos[i] = -ip.find_cross_corr_peak(
                 updated_obj_patches[i] * probe_mask,
                 obj_patches[i] * probe_mask,
-                scale=self.cross_correlation_scale,
-                real_space_width=self.cross_correlation_real_space_width,
+                scale=self.options.cross_correlation_scale,
+                real_space_width=self.options.cross_correlation_real_space_width,
             )
 
         return delta_pos
@@ -124,8 +121,15 @@ class PositionCorrection:
         obj_patches = obj_patches[:, 0]
         
         chi_m0 = chi[:, 0, :, :]
-        dody, dodx = gaussian_gradient(obj_patches, sigma=0.33)
-
+        
+        if self.options.differentiation_method == api.ImageGradientMethods.GAUSSIAN:
+            dody, dodx = ip.gaussian_gradient(obj_patches, sigma=0.33)
+        elif self.options.differentiation_method == api.ImageGradientMethods.FOURIER_DIFFERENTIATION:
+            dody, dodx = ip.fourier_gradient(obj_patches)
+        elif self.options.differentiation_method == api.ImageGradientMethods.FOURIER_SHIFT:
+            dody, dodx = ip.fourier_shift_gradient(obj_patches)
+        elif self.options.differentiation_method == api.ImageGradientMethods.NEAREST:
+            dody, dodx = ip.nearest_neighbor_gradient(obj_patches)
         pdodx = dodx * probe
         dldx = (torch.real(pdodx.conj() * chi_m0)).sum(-1).sum(-1)
         denom_x = (pdodx.abs() ** 2).sum(-1).sum(-1)
