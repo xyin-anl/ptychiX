@@ -464,11 +464,3 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         top = self.redot(gradF, d2m1) + self.hessianF(psi_far, Ldm1, Ldm2, d)
         bottom = self.redot(gradF, d2m2) + self.hessianF(psi_far, Ldm2, Ldm2, d)
         return top / bottom
-
-    # supplementary functions
-    def reprod(self, a, b):
-        return a.real * b.real + a.imag * b.imag
-
-    def redot(self, a, b, axis=None):
-        res = torch.sum(self.reprod(a, b), axis=axis)
-        return res
