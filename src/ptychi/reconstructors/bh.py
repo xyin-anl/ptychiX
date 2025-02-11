@@ -7,6 +7,8 @@ from ptychi.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,
 )
 from ptychi.metrics import MSELossOfSqrt
+from ptychi.maths import reprod, redot
+from ptychi.utils import get_default_complex_dtype
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -48,6 +50,10 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         # constant to avoid divisions by 0 in calculations
         self.eps = 1e-8
+        # cg varibales
+        if self.options.method == "CG":
+            self.eta_op = torch.empty(dataset.patterns.shape,dtype=get_default_complex_dtype())[:,None,:,:]
+            self.eta_pos = torch.empty([dataset.patterns.shape[0],2])
 
     def build_loss_tracker(self):
         if self.displayed_loss_function is None:
@@ -164,7 +170,7 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
             eta_op = -grad_op
         elif self.options.method == "CG":
             eta_o = self.eta_o
-            eta_op = self.eta_op
+            eta_op = self.eta_op[self.indices]
 
             beta = self.calc_beta_object(p, d, psi_far, grad_op, eta_op)
             eta_o = -grad_o + beta * eta_o
@@ -172,7 +178,7 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         if self.options.method == "CG":
             self.eta_o = eta_o
-            self.eta_op = eta_op
+            self.eta_op[self.indices] = eta_op
 
         alpha = self.calc_alpha_object(p, grad_o, eta_o, d, psi_far, eta_op)
 
@@ -194,7 +200,7 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         elif self.options.method == "CG":
             # intermediate variables for the CG
             eta_o = self.eta_o
-            eta_op = self.eta_op
+            eta_op = self.eta_op[self.indices]
             eta_p = self.eta_p
 
             beta = self.calc_beta_object_probe(
@@ -206,7 +212,7 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         if self.options.method == "CG":
             self.eta_o = eta_o
-            self.eta_op = eta_op
+            self.eta_op[self.indices] = eta_op
             self.eta_p = eta_p
 
         alpha = self.calc_alpha_object_probe(
@@ -235,9 +241,9 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         elif self.options.method == "CG":
             # intermediate variables for the CG
             eta_o = self.eta_o
-            eta_op = self.eta_op
+            eta_op = self.eta_op[self.indices]
             eta_p = self.eta_p
-            eta_pos = self.eta_pos
+            eta_pos = self.eta_pos[self.indices]
 
             beta = self.calc_beta_object_probe_positions(
                 p, grad_p, eta_p, grad_pos, eta_pos, d, gradF, psi_far, op, grad_op, eta_op
@@ -249,9 +255,9 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         if self.options.method == "CG":
             self.eta_o = eta_o
-            self.eta_op = eta_op
+            self.eta_op[self.indices] = eta_op
             self.eta_p = eta_p
-            self.eta_pos = eta_pos
+            self.eta_pos[self.indices] = eta_pos
 
         alpha = self.calc_alpha_object_probe_positions(
             p, grad_o, grad_p, grad_pos, eta_o, eta_p, eta_pos, d, gradF, psi_far, op, eta_op
@@ -281,8 +287,8 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         l0 = psi_far / (torch.abs(psi_far) + self.eps)
         d0 = data / (torch.abs(psi_far) + self.eps)
-        v1 = torch.sum((1 - d0) * self.reprod(psi_far1, psi_far2))
-        v2 = torch.sum(d0 * self.reprod(l0, psi_far1) * self.reprod(l0, psi_far2))
+        v1 = torch.sum((1 - d0) * reprod(psi_far1, psi_far2))
+        v2 = torch.sum(d0 * reprod(l0, psi_far1) * reprod(l0, psi_far2))
         return 2 * (v1 + v2)
 
     def gradient_o(self, p, gradF):
@@ -314,15 +320,15 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         dt2 = 2 * torch.pi * 1j * torch.fft.ifft2(xi2 * tmp)
 
         grad_pos = torch.zeros([len(pos), 2])
-        grad_pos[:, 0] = self.redot(gradF, p * dt1, axis=(1, 2, 3))
-        grad_pos[:, 1] = self.redot(gradF, p * dt2, axis=(1, 2, 3))
+        grad_pos[:, 0] = redot(gradF, p * dt1, axis=(1, 2, 3))
+        grad_pos[:, 1] = redot(gradF, p * dt2, axis=(1, 2, 3))
 
         return grad_pos
 
     def calc_alpha_object(self, p, do1, do2, d, psi_far, dop2):
         """Step length for the object update"""
 
-        top = -self.redot(do1, do2)
+        top = -redot(do1, do2)
 
         dm2 = p * dop2
         Ldm2 = self.forward_model.free_space_propagator.propagate_forward(dm2)
@@ -332,13 +338,13 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
     def calc_alpha_object_probe(self, p, do1, dp1, do2, dp2, d, gradF, psi_far, op, dop2):
         """Step length for the object and probe update"""
 
-        top = -self.redot(do1, do2) - self.redot(dp1, dp2)
+        top = -redot(do1, do2) - redot(dp1, dp2)
         dp2 = self.parameter_group.probe.options.rho * dp2
 
         dm2 = dp2 * op + p * dop2
         d2m2 = 2 * dp2 * dop2
         Ldm2 = self.forward_model.free_space_propagator.propagate_forward(dm2)
-        bottom = self.redot(gradF, d2m2) + self.hessianF(psi_far, Ldm2, Ldm2, d)
+        bottom = redot(gradF, d2m2) + self.hessianF(psi_far, Ldm2, Ldm2, d)
         return top / bottom
 
     def calc_alpha_object_probe_positions(
@@ -346,7 +352,7 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
     ):
         """Step length for the object, probe and positions update"""
 
-        top = -self.redot(do1, do2) - self.redot(dp1, dp2) - torch.sum(dpos1 * dpos2)
+        top = -redot(do1, do2) - redot(dp1, dp2) - torch.sum(dpos1 * dpos2)
 
         dp2 = self.parameter_group.probe.options.rho * dp2
         dpos2 = self.parameter_group.probe_positions.options.rho * dpos2
@@ -373,7 +379,7 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         d2m2 = p * (2 * dt2 + d2t) + 2 * dp2 * dop2 + 2 * dp2 * dt
 
         Ldm2 = self.forward_model.free_space_propagator.propagate_forward(dm2)
-        bottom = self.redot(gradF, d2m2) + self.hessianF(psi_far, Ldm2, Ldm2, d)
+        bottom = redot(gradF, d2m2) + self.hessianF(psi_far, Ldm2, Ldm2, d)
         return top / bottom
 
     def calc_beta_object(self, p, d, psi_far, dop1, dop2):
@@ -404,8 +410,8 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         Ldm1 = self.forward_model.free_space_propagator.propagate_forward(dm1)
         Ldm2 = self.forward_model.free_space_propagator.propagate_forward(dm2)
 
-        top = self.redot(gradF, d2m1) + self.hessianF(psi_far, Ldm1, Ldm2, d)
-        bottom = self.redot(gradF, d2m2) + self.hessianF(psi_far, Ldm2, Ldm2, d)
+        top = redot(gradF, d2m1) + self.hessianF(psi_far, Ldm1, Ldm2, d)
+        bottom = redot(gradF, d2m2) + self.hessianF(psi_far, Ldm2, Ldm2, d)
         return top / bottom
 
     def calc_beta_object_probe_positions(
@@ -461,6 +467,6 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         Ldm1 = self.forward_model.free_space_propagator.propagate_forward(dm1)
         Ldm2 = self.forward_model.free_space_propagator.propagate_forward(dm2)
 
-        top = self.redot(gradF, d2m1) + self.hessianF(psi_far, Ldm1, Ldm2, d)
-        bottom = self.redot(gradF, d2m2) + self.hessianF(psi_far, Ldm2, Ldm2, d)
+        top = redot(gradF, d2m1) + self.hessianF(psi_far, Ldm1, Ldm2, d)
+        bottom = redot(gradF, d2m2) + self.hessianF(psi_far, Ldm2, Ldm2, d)
         return top / bottom
