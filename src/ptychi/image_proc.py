@@ -62,6 +62,7 @@ def batch_slice(image: Tensor, sy: Tensor, sx: Tensor, ey: Tensor, ex: Tensor) -
     return patches
     
 
+@timer()
 def batch_put(
     image: Tensor, 
     patches: Tensor, 
@@ -113,7 +114,10 @@ def batch_put(
         patches_flattened = patches.view(-1)
     except RuntimeError:
         patches_flattened = patches.reshape(-1)
-    image.index_put_((inds.view(-1),), patches_flattened, accumulate=(op == "add"))
+    if op == "add":
+        image.scatter_add_(0, inds.view(-1), patches_flattened)
+    else:
+        image.scatter_(0, inds.view(-1), patches_flattened)
     return image.reshape(h, w)
 
 
