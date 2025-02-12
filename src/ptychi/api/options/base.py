@@ -119,7 +119,7 @@ class ObjectMultisliceRegularizationOptions(FeatureOptions):
     """Whether to unwrap the phase of the object during multislice regularization."""
 
     unwrap_image_grad_method: enums.ImageGradientMethods = (
-        enums.ImageGradientMethods.FOURIER_SHIFT
+        enums.ImageGradientMethods.FOURIER_DIFFERENTIATION
     )
     """
     The method for calculating the phase gradient during phase unwrapping.
@@ -130,7 +130,7 @@ class ObjectMultisliceRegularizationOptions(FeatureOptions):
     """
 
     unwrap_image_integration_method: enums.ImageIntegrationMethods = (
-        enums.ImageIntegrationMethods.DECONVOLUTION
+        enums.ImageIntegrationMethods.FOURIER
     )
     """
     The method for integrating the phase gradient during phase unwrapping.
