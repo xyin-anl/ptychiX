@@ -114,10 +114,14 @@ def batch_put(
         patches_flattened = patches.view(-1)
     except RuntimeError:
         patches_flattened = patches.reshape(-1)
-    if op == "add":
-        image.scatter_add_(0, inds.view(-1), patches_flattened)
+    if pmath.get_allow_nondeterministic_algorithms():
+        # scatter_add_ and scatter_ are non-deterministic but faster.
+        if op == "add":
+            image.scatter_add_(0, inds.view(-1), patches_flattened)
+        else:
+            image.scatter_(0, inds.view(-1), patches_flattened)
     else:
-        image.scatter_(0, inds.view(-1), patches_flattened)
+        image.index_put_((inds.view(-1),), patches_flattened, accumulate=(op == "add"))
     return image.reshape(h, w)
 
 
@@ -1475,10 +1479,10 @@ def unwrap_phase_2d(
     fourier_shift_step: float = 0.5,
     image_grad_method: Literal[
         "fourier_shift", "fourier_differentiation", "nearest"
-    ] = "fourier_shift",
+    ] = "fourier_differentiation",
     image_integration_method: Literal[
         "fourier", "discrete", "deconvolution"
-    ] = "deconvolution",
+    ] = "fourier",
     weight_map: Optional[Tensor] = None,
     flat_region_mask: Optional[Tensor] = None,
     deramp_polyfit_order: int = 1,

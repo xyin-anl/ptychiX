@@ -52,6 +52,7 @@ class TestMultislicePtychoLSQML(tutils.BaseTester):
         options.reconstructor_options.num_epochs = 32
         options.reconstructor_options.default_device = api.Devices.GPU
         options.reconstructor_options.random_seed = 123
+        options.reconstructor_options.allow_nondeterministic_algorithms = False
         
         task = PtychographyTask(options)
         task.run()

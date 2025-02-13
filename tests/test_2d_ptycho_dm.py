@@ -40,7 +40,7 @@ class Test2DPtychoDM(tutils.TungstenDataTester):
 
         options.reconstructor_options.num_epochs = 8
         options.reconstructor_options.chunk_length = 100
-
+        options.reconstructor_options.allow_nondeterministic_algorithms = False
         task = PtychographyTask(options)
         task.run()
 
@@ -78,7 +78,7 @@ class Test2DPtychoDMPositionCorrection(tutils.TungstenDataTester):
 
         options.reconstructor_options.num_epochs = 8
         options.reconstructor_options.chunk_length = 100
-
+        options.reconstructor_options.allow_nondeterministic_algorithms = False
         task = PtychographyTask(options)
         task.run()
 
