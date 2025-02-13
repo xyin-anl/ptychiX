@@ -11,7 +11,7 @@ import ptychi.maths as pmath
 import ptychi.propagate as propagate
 from ptychi.timing.timer_utils import timer
 
-default_complex_dtype = torch.complex64
+_default_complex_dtype = torch.complex64
 
 
 def get_suggested_object_size(positions_px, probe_shape, extra=0):
@@ -324,12 +324,12 @@ def to_numpy(data: Union[ndarray, Tensor]) -> ndarray:
 
 
 def set_default_complex_dtype(dtype):
-    global default_complex_dtype
-    default_complex_dtype = dtype
+    global _default_complex_dtype
+    _default_complex_dtype = dtype
 
 
 def get_default_complex_dtype():
-    return default_complex_dtype
+    return _default_complex_dtype
 
 
 def chunked_processing(

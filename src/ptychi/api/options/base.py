@@ -119,7 +119,7 @@ class ObjectMultisliceRegularizationOptions(FeatureOptions):
     """Whether to unwrap the phase of the object during multislice regularization."""
 
     unwrap_image_grad_method: enums.ImageGradientMethods = (
-        enums.ImageGradientMethods.FOURIER_SHIFT
+        enums.ImageGradientMethods.FOURIER_DIFFERENTIATION
     )
     """
     The method for calculating the phase gradient during phase unwrapping.
@@ -130,7 +130,7 @@ class ObjectMultisliceRegularizationOptions(FeatureOptions):
     """
 
     unwrap_image_integration_method: enums.ImageIntegrationMethods = (
-        enums.ImageIntegrationMethods.DECONVOLUTION
+        enums.ImageIntegrationMethods.FOURIER
     )
     """
     The method for integrating the phase gradient during phase unwrapping.
@@ -207,6 +207,17 @@ class RemoveGridArtifactsOptions(FeatureOptions):
 
     direction: enums.Directions = enums.Directions.XY
     """The direction of grid artifact removal."""
+    
+
+@dataclasses.dataclass
+class RemoveObjectProbeAmbiguityOptions(FeatureOptions):
+    """Settings for removing the object-probe ambiguity, where the object is scaled by its norm
+    so that the mean transmission is kept around 1, and the probe is scaled accordingly.
+    """
+
+    enabled: bool = True
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=lambda: OptimizationPlan(stride=10))
 
 
 @dataclasses.dataclass
@@ -244,6 +255,18 @@ class ObjectOptions(ParameterOptions):
         enums.PatchInterpolationMethods.FOURIER
     )
     """The interpolation method used for extracting and updating patches of the object."""
+    
+    remove_object_probe_ambiguity: RemoveObjectProbeAmbiguityOptions = field(
+        default_factory=RemoveObjectProbeAmbiguityOptions
+    )
+    
+    build_preconditioner_with_all_modes: bool = False
+    """If True, the probe illumination map used for the preconditioner is 
+    built using the sum of intensities of all probe modes. This may help address
+    some issues if some probe modes contain highly localized high-intensity anomalies,
+    if the selected reconstructor uses preconditioner to regularize object updates.
+    However, it might lead to slower convergence speed.
+    """
 
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
@@ -278,7 +301,7 @@ class ProbeOrthogonalizeIncoherentModesOptions(FeatureOptions):
 
     optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
 
-    method: enums.OrthogonalizationMethods = enums.OrthogonalizationMethods.GS
+    method: enums.OrthogonalizationMethods = enums.OrthogonalizationMethods.SVD
     """The method to use for incoherent_mode orthogonalization."""
 
 
@@ -381,7 +404,9 @@ class PositionCorrectionOptions:
     
     differentiation_method: enums.ImageGradientMethods = enums.ImageGradientMethods.GAUSSIAN
     """The method for calculating the gradient of the object. Only used when `correction_type` 
-    is `GRADIENT`.
+    is `GRADIENT`. `"FOURIER_DIFFERENTIATION"` is usually the fastest, but it might be less
+    stable when the object is noisy or non-smooth, under which circumstance `"GAUSSIAN"` or
+    `"FOURIER_SHIFT"` may offer better stability. `"NEAREST"` is not recommended.
     """
 
     cross_correlation_scale: int = 20000
@@ -548,6 +573,13 @@ class ReconstructorOptions(Options):
 
     default_dtype: enums.Dtypes = enums.Dtypes.FLOAT32
     """The default data type to use for computation."""
+    
+    use_double_precision_for_fft: bool = True
+    """If True, use double precision for critical FFT operations. When set to `True`,
+    this option overrides `default_dtype`: even if `default_dtype` is set to `FLOAT32`,
+    the FFTs will still be performed using double precision. If `False`,
+    the FFTs will be performed using the precision specified by `default_dtype`.
+    """
 
     random_seed: Optional[int] = None
     """The random seed to use for reproducibility. If None, no seed will be set."""

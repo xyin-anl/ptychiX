@@ -18,7 +18,7 @@ from ptychi.timing.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group
-    import ptychi.data_structures.base as ds
+    import ptychi.data_structures.base as dsbase
 
 
 class ForwardModel(torch.nn.Module):
@@ -47,7 +47,7 @@ class ForwardModel(torch.nn.Module):
 
         self.parameter_group = parameter_group
         self.retain_intermediates = retain_intermediates
-        self.optimizable_parameters: ModuleList[ds.ReconstructParameter] = ModuleList()
+        self.optimizable_parameters: ModuleList[dsbase.ReconstructParameter] = ModuleList()
         self.propagator = None
         self.detector_size = detector_size
         self.intermediate_variables = {}
@@ -135,6 +135,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             "obj_patches": None,
             "psi": None,
             "psi_far": None,
+            "shifted_unique_probes": None,
         }
 
         self.check_inputs()
@@ -181,10 +182,11 @@ class PlanarPtychographyForwardModel(ForwardModel):
             else:
                 self.free_space_propagator = AngularSpectrumPropagator(params)
 
-    def get_probe(self, indices: Tensor) -> Tensor:
+    def get_unique_probes(self, indices: Tensor) -> Tensor:
         """
-        Get the probe. If OPR modes are present, this will return the unique
-        probe for all positions
+        Get the unique probes for all positions in the batch. 
+        If OPR modes are present, this will return the unique
+        probe for all positions.
 
         Parameters
         ----------
@@ -194,8 +196,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         Returns
         -------
         Tensor
-            The probe. The shape is (batch_size, n_modes, h, w) if OPR modes
-            are present, and (n_modes, h, w) otherwise.
+            A (batch_size, n_modes, h, w) tensor of unique probes.
         """
         if self.probe.has_multiple_opr_modes:
             # Shape of probe:     (batch_size, n_modes, h, w)
@@ -204,9 +205,43 @@ class PlanarPtychographyForwardModel(ForwardModel):
             )
         else:
             # Shape of probe:     (n_modes, h, w)
-            probe = self.probe.data
+            probe = self.probe.data.repeat(indices.shape[0], 1, 1, 1)
         return probe
+    
+    def shift_unique_probes(self, indices: Tensor, unique_probes: Tensor, first_mode_only: bool = False):
+        """Apply subpixel shifts to the unique probes to compensate for the fractional
+        probe positions not accounted for when extracting object patches.
+        
+        Parameters
+        ----------
+        indices : Tensor
+            Indices of diffraction pattern in the batch.
+        unique_probes : Tensor
+            A (batch_size, n_modes, h, w) tensor of unique probes.
+        first_mode_only : bool
+            If True, only the first mode is shifted.
+        """
+        orig_shape = unique_probes.shape
+        fractional_shifts = self.probe_positions.data[indices] - self.probe_positions.data[indices].round()
+        
+        if first_mode_only:
+            unique_probe_to_shift = unique_probes[..., 0, :, :]
+        else:
+            unique_probe_to_shift = unique_probes.reshape(unique_probes.shape[0] * unique_probes.shape[1], *unique_probes.shape[2:])
 
+        unique_probe_shifted = ip.shift_images(
+            unique_probe_to_shift, 
+            fractional_shifts, 
+            method=self.parameter_group.object.options.patch_interpolation_method,
+            adjoint=False
+        )
+        
+        if first_mode_only:
+            unique_probes = torch.cat([unique_probe_shifted[..., None, :, :], unique_probes[..., 1:, :, :]], dim=-3)
+        else:
+            unique_probes = unique_probe_shifted.reshape(orig_shape)
+        return unique_probes
+        
     @timer()
     def propagate_through_object(self, probe, obj_patches, return_slice_psis=False):
         """
@@ -283,7 +318,9 @@ class PlanarPtychographyForwardModel(ForwardModel):
             exiting plane.
         """
         # Shape of obj_patches:   (batch_size, n_slices, h, w)
-        probe = self.get_probe(indices)
+        probe = self.get_unique_probes(indices)
+        probe = self.shift_unique_probes(indices, probe, first_mode_only=True)
+        self.record_intermediate_variable("shifted_unique_probes", probe)
         slice_psi = self.propagate_through_object(probe, obj_patches, return_slice_psis=False)
         return slice_psi
 
@@ -388,7 +425,10 @@ class PlanarPtychographyForwardModel(ForwardModel):
             Predicted intensities (squared magnitudes).
         """
         positions = self.probe_positions.tensor[indices]
-        obj_patches = self.object.extract_patches(positions, self.probe.get_spatial_shape())
+        obj_patches = self.object.extract_patches(
+            positions.round().int(), self.probe.get_spatial_shape(),
+            integer_mode=True
+        )
 
         self.record_intermediate_variable("positions", positions)
         self.record_intermediate_variable("obj_patches", obj_patches)
@@ -446,12 +486,17 @@ class PlanarPtychographyForwardModel(ForwardModel):
             Predicted intensities (squared magnitudes).
         """
         positions = self.probe_positions.tensor[indices]
-        obj_patches = self.object.extract_patches(positions, self.probe.get_spatial_shape())
+        obj_patches = self.object.extract_patches(
+            positions.round().int(), self.probe.get_spatial_shape(),
+            integer_mode=True
+        )
 
         self.record_intermediate_variable("positions", positions)
         self.record_intermediate_variable("obj_patches", obj_patches)
 
-        probe = self.get_probe(indices)
+        probe = self.get_unique_probes(indices)
+        probe = self.shift_unique_probes(indices, probe, first_mode_only=True)
+        self.record_intermediate_variable("shifted_unique_probes", probe)
         slice_psis = []
         y = 0.0
         for i_mode in range(self.probe.n_modes):
@@ -531,18 +576,37 @@ class PlanarPtychographyForwardModel(ForwardModel):
         (2) divide it by (abs(o) ** 2).max() to make up the ePIE scaling factor
             (but we can assume this is 1.0);
         (3) divide it by batch_size to make up the mean over the batch dimension.
+        
+        For probe positions and OPR weights, we just compensate for the mean reduction:
+        (1) multiply it by h * w.
         """
         # Directly modify the gradients here. Tensor.register_hook has memory leak issue.
         if self.object.optimizable:
-            self.object.tensor.data.grad = (
-                self.object.tensor.data.grad
+            self.object.set_grad(
+                self.object.get_grad()
                 / self.probe.get_all_mode_intensity().max()
                 * patterns.numel()
             )
         # Assuming (obj_patches.abs() ** 2).max() == 1.0
         if self.probe.optimizable:
-            self.probe.tensor.data.grad = self.probe.tensor.data.grad * (
-                patterns.numel() / len(patterns)
+            self.probe.set_grad(
+                self.probe.get_grad() * (
+                    patterns.numel() / len(patterns)
+                )
+            )
+            
+        if self.probe_positions.optimizable:
+            self.probe_positions.set_grad(
+                self.probe_positions.get_grad() * (
+                    patterns.numel() / len(patterns)
+                )
+            )
+            
+        if self.opr_mode_weights.optimizable:
+            self.opr_mode_weights.set_grad(
+                self.opr_mode_weights.get_grad() * (
+                    patterns.numel() / len(patterns)
+                )
             )
 
 

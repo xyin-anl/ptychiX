@@ -1,7 +1,11 @@
 from typing import Literal, Optional, Tuple, Union
 
 import torch
+import numpy as np
+
 from ptychi.timing.timer_utils import timer
+
+_use_double_precision_for_fft = True
 
 
 @timer()
@@ -41,6 +45,15 @@ def trim_mean(
         return torch.nanmean(x, dim=dim, keepdim=keepdim)
     else:
         return torch.mean(x, dim=dim, keepdim=keepdim)
+    
+    
+def get_use_double_precision_for_fft():
+    return _use_double_precision_for_fft
+
+
+def set_use_double_precision_for_fft(use_double_precision_for_fft: bool):
+    global _use_double_precision_for_fft
+    _use_double_precision_for_fft = use_double_precision_for_fft
     
 
 def angle(x: torch.Tensor, eps=1e-5) -> torch.Tensor:
@@ -142,6 +155,13 @@ def orthogonalize_svd(
     # Straighten dimensions given by `dim`.`
     # Shape of x:        (bcast_dims_shape, prod(dim_shape), group_dim_shape)
     x = x.reshape(batch_dim_shape + [-1] + group_dim_shape)
+    
+    # Use higher precision.
+    orig_dtype = x.dtype
+    if orig_dtype.is_complex:
+        x = x.type(torch.complex128)
+    else:
+        x = x.type(torch.float64)
 
     # Creat an shape(group_dim) x shape(group_dim) covariance matrix and eigendecompose it.
     if x.ndim == 2:
@@ -174,7 +194,7 @@ def orthogonalize_svd(
         new_norm = norm(x, dim=list(dim) + [group_dim], keepdims=True)
         x = x * (orig_norm / new_norm)
 
-    return x
+    return x.type(orig_dtype)
 
 
 def project(a, b, dim=None):
@@ -272,18 +292,141 @@ def polyval(x: torch.Tensor, coeffs: torch.Tensor):
     return (coeffs * x.view(-1, 1) ** torch.arange(len(coeffs) - 1, -1, -1)).sum(1)
 
 
+def real_dtype_to_complex(dtype: torch.dtype) -> torch.dtype:
+    """Convert a real dtype to a complex dtype with the same precision.
+    If a complex dtype is provided, it is returned unchanged.
+
+    Parameters
+    ----------
+    dtype : torch.dtype
+        The real dtype to convert.
+
+    Returns
+    -------
+    torch.dtype
+        The complex dtype with the same precision.
+    """
+    if dtype.is_complex:
+        return dtype
+    elif dtype == torch.float64:
+        return torch.complex128
+    elif dtype == torch.float32:
+        return torch.complex64
+    elif dtype == torch.float16:
+        return torch.complex32
+    else:
+        raise ValueError(f"Unsupported dtype: {dtype}")
+    
+
+def complex_dtype_to_real(dtype: torch.dtype) -> torch.dtype:
+    """Convert a complex dtype to a real dtype with the same precision.
+    If a real dtype is provided, it is returned unchanged.
+
+    Parameters
+    ----------
+    dtype : torch.dtype
+        The complex dtype to convert.
+
+    Returns
+    -------
+    torch.dtype
+        The real dtype with the same precision.
+    """
+    if not dtype.is_complex:
+        return dtype
+    elif dtype == torch.complex128:
+        return torch.float64
+    elif dtype == torch.complex64:
+        return torch.float32
+    elif dtype == torch.complex32:
+        return torch.float16
+    else:
+        raise ValueError(f"Unsupported dtype: {dtype}")
+
+
 def fft2_precise(x, norm=None):
     """
     2D FFT with double precision.
     """
-    return torch.fft.fft2(x.type(torch.complex128), norm=norm).type(x.dtype)
+    if get_use_double_precision_for_fft():
+        final_dtype = real_dtype_to_complex(x.dtype)
+        return torch.fft.fft2(x.type(torch.complex128), norm=norm).type(final_dtype)
+    else:
+        return torch.fft.fft2(x, norm=norm)
 
 
 def ifft2_precise(x, norm=None):
     """
     2D FFT with double precision.
     """
-    return torch.fft.ifft2(x.type(torch.complex128), norm=norm).type(x.dtype)
+    if get_use_double_precision_for_fft():
+        final_dtype = real_dtype_to_complex(x.dtype)
+        return torch.fft.ifft2(x.type(torch.complex128), norm=norm).type(final_dtype)
+    else:
+        return torch.fft.ifft2(x, norm=norm)
+
+
+def is_all_integer(x: torch.Tensor) -> bool:
+    """Check if all elements in a tensor are integers."""
+    return torch.allclose(torch.eq(x, torch.round(x)), atol=1e-7)
+
+
+def masked_argmax(
+    x: torch.Tensor | np.ndarray, 
+    mask: torch.Tensor | np.ndarray
+) -> torch.Tensor | np.ndarray:
+    """
+    Find the index of the maximum value in a tensor within a mask.
+    
+    This function works for both torch and numpy arrays.
+    
+    Parameters
+    ----------
+    x : torch.Tensor | np.ndarray
+        The input tensor.
+    mask : torch.Tensor | np.ndarray
+        The mask. Search is only performed within the masked region.
+    
+    Returns
+    -------
+    torch.Tensor | np.ndarray
+        The index of the maximum value in the tensor within the mask.
+    """
+    if isinstance(x, torch.Tensor):
+        x = torch.where(mask, x, -torch.inf)
+        return torch.argmax(x)
+    else:
+        x = np.where(mask, x, -np.inf)
+        return np.argmax(x)
+
+
+def masked_argmin(
+    x: torch.Tensor | np.ndarray, 
+    mask: torch.Tensor | np.ndarray
+) -> torch.Tensor | np.ndarray:
+    """
+    Find the index of the minimum value in a tensor within a mask.
+    
+    This function works for both torch and numpy arrays.
+    
+    Parameters
+    ----------
+    x : torch.Tensor | np.ndarray
+        The input tensor.
+    mask : torch.Tensor | np.ndarray
+        The mask. Search is only performed within the masked region.
+    
+    Returns
+    -------
+    torch.Tensor | np.ndarray
+        The index of the minimum value in the tensor within the mask.
+    """
+    if isinstance(x, torch.Tensor):
+        x = torch.where(mask, x, torch.inf)
+        return torch.argmin(x)
+    else:
+        x = np.where(mask, x, np.inf)
+        return np.argmin(x)
 
 
 def reprod(a, b):

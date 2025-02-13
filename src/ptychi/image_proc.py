@@ -24,6 +24,181 @@ logger = logging.getLogger(__name__)
 
 
 @timer()
+def batch_slice(image: Tensor, sy: Tensor, sx: Tensor, ey: Tensor, ex: Tensor) -> Tensor:
+    """
+    Slice patches from an image at given window positions. The patch size is determined
+    from the starting and ending coordinates in each direction, and is assumed to be
+    the same for all patches.
+    
+    Parameters
+    ----------
+    image : Tensor
+        A (H, W) tensor of the image.
+    sy : Tensor
+        A (N,) tensor of integers giving the starting y-coordinates of the patches.
+    sx : Tensor
+        A (N,) tensor of integers giving the starting x-coordinates of the patches.
+    ey : Tensor
+        A (N,) tensor of integers giving the ending y-coordinates of the patches.
+    ex : Tensor
+        A (N,) tensor of integers giving the ending x-coordinates of the patches.
+
+    Returns
+    -------
+    Tensor
+        A tensor of shape (N, h, w) containing the extracted patches.
+    """
+    h, w = image.shape[-2:]
+    patch_size = [ey[0] - sy[0], ex[0] - sx[0]]
+    x = torch.arange(patch_size[1])[None, :]
+    y = torch.arange(patch_size[0])[None, :]
+    x = x.expand(len(sx), x.shape[1])
+    y = y.expand(len(sy), y.shape[1])
+    x = x + sx[:, None]
+    y = y + sy[:, None]
+    inds = (y * w).unsqueeze(-1) + x.unsqueeze(1)
+    patches = image.view(-1)[inds.view(-1)]
+    patches = patches.reshape(len(sy), patch_size[0], patch_size[1])
+    return patches
+    
+
+@timer()
+def batch_put(
+    image: Tensor, 
+    patches: Tensor, 
+    sy: Tensor, 
+    sx: Tensor, 
+    ey: Tensor, 
+    ex: Tensor, 
+    op: Literal["add", "set"] = "add"
+) -> Tensor:
+    """
+    Slice patches from an image at given window positions. The patch size is determined
+    from the starting and ending coordinates in each direction, and is assumed to be
+    the same for all patches.
+    
+    Parameters
+    ----------
+    image : Tensor
+        A (H, W) tensor of the buffer to place the patches into.
+    patches : Tensor
+        A (N, h, w) tensor of the patches.
+    sy : Tensor
+        A (N,) tensor of integers giving the starting y-coordinates of the patches.
+    sx : Tensor
+        A (N,) tensor of integers giving the starting x-coordinates of the patches.
+    ey : Tensor
+        A (N,) tensor of integers giving the ending y-coordinates of the patches.
+    ex : Tensor
+        A (N,) tensor of integers giving the ending x-coordinates of the patches.
+    op : Literal["add", "set"]
+        The operation to perform. "add" adds the patches to the image, 
+        "set" sets the patches to the image replacing the existing values.
+    
+    Returns
+    -------
+    Tensor
+        A tensor of shape (H, W) containing the image with patches added or set.
+    """
+    h, w = image.shape[-2:]
+    patch_size = [ey[0] - sy[0], ex[0] - sx[0]]
+    x = torch.arange(patch_size[1])[None, :]
+    y = torch.arange(patch_size[0])[None, :]
+    x = x.expand(len(sx), x.shape[1])
+    y = y.expand(len(sy), y.shape[1])
+    x = x + sx[:, None]
+    y = y + sy[:, None]
+    inds = (y * w).unsqueeze(-1) + x.unsqueeze(1)
+    image = image.reshape(-1)
+    try:
+        patches_flattened = patches.view(-1)
+    except RuntimeError:
+        patches_flattened = patches.reshape(-1)
+    if op == "add":
+        image.scatter_add_(0, inds.view(-1), patches_flattened)
+    else:
+        image.scatter_(0, inds.view(-1), patches_flattened)
+    return image.reshape(h, w)
+
+
+@timer()
+def extract_patches_integer(
+    image: Tensor, positions: Tensor, shape: Tuple[int, int]
+) -> Tensor:
+    """
+    Extract patches from 2D object, assuming the positions are at the
+    exact center between pixels, so that no interpolation is needed. 
+    If a patch's footprint goes outside the image,
+    the image is padded with zeros to account for the missing pixels.
+
+    Parameters
+    ----------
+    image : Tensor
+        The whole image.
+    positions : Tensor
+        A tensor of shape (N, 2) giving the center positions of the patches in pixels.
+        The origin of the given positions are assumed to be the TOP LEFT corner of the image.
+        For even patch shapes, the positions are assumed be at half pixels (i.e., positions % 1 == 0.5)
+        so that the starting and ending coordinates of the patches are integers.
+    shape : tuple of int
+        A tuple giving the patch shape in pixels.
+
+    Returns
+    -------
+    Tensor
+        A tensor of shape (N, H, W) containing the extracted patches.
+    """
+    sys = (positions[:, 0] - (shape[0] - 1.0) / 2.0).round().int()
+    sxs = (positions[:, 1] - (shape[1] - 1.0) / 2.0).round().int()
+    eys = sys + shape[0]
+    exs = sxs + shape[1]
+    patches = batch_slice(image, sys, sxs, eys, exs)
+    return patches
+
+
+@timer()
+def place_patches_integer(
+    image: Tensor, 
+    positions: Tensor, 
+    patches: Tensor, 
+    op: Literal["add", "set"] = "add"
+) -> Tensor:
+    """
+    Place patches into a 2D object, assuming the positions are at the
+    exact center between pixels, so that no interpolation is needed. 
+    If a patch's footprint goes outside the image,
+    the image is padded with zeros to account for the missing pixels.
+
+    Parameters
+    ----------
+    image : Tensor
+        The whole image to place the patches into.
+    positions : Tensor
+        A tensor of shape (N, 2) giving the center positions of the patches in pixels.
+        The origin of the given positions are assumed to be the TOP LEFT corner of the image.
+        For even patch shapes, the positions are assumed be at half pixels (i.e., positions % 1 == 0.5)
+        so that the starting and ending coordinates of the patches are integers.
+    patches : Tensor
+        A (N, H, W) or (H, W) tensor of image patches.
+    op : Literal["add", "set"]
+        The operation to perform. "add" adds the patches to the image, 
+        "set" sets the patches to the image replacing the existing values.
+
+    Returns
+    -------
+    Tensor
+        A tensor with the same shape as the object with patches added onto it.
+    """
+    shape = patches.shape[-2:]
+    sys = (positions[:, 0] - (shape[0] - 1.0) / 2.0).round().int()
+    sxs = (positions[:, 1] - (shape[1] - 1.0) / 2.0).round().int()
+    eys = sys + shape[0]
+    exs = sxs + shape[1]
+    image = batch_put(image, patches, sys, sxs, eys, exs, op=op)
+    return image
+
+
+@timer()
 def extract_patches_fourier_shift(
     image: Tensor, positions: Tensor, shape: Tuple[int, int]
 ) -> Tensor:
@@ -72,14 +247,11 @@ def extract_patches_fourier_shift(
     sxs = sxs + pad_lengths[0]
     exs = exs + pad_lengths[0]
 
-    patches = []
-    for sy, ey, sx, ex in zip(sys, eys, sxs, exs):
-        p = image[sy:ey, sx:ex]
-        patches.append(p)
-    patches = torch.stack(patches)
+    patches = batch_slice(image, sys, sxs, eys, exs)
 
     # Apply Fourier shift to account for fractional shifts
-    patches = fourier_shift(patches, -fractional_shifts)
+    if not torch.allclose(fractional_shifts, torch.zeros_like(fractional_shifts), atol=1e-7):
+        patches = fourier_shift(patches, -fractional_shifts)
     patches = patches[:, patch_padding:-patch_padding, patch_padding:-patch_padding]
     return patches
 
@@ -160,17 +332,14 @@ def place_patches_fourier_shift(
     sxs = sxs + pad_lengths[0]
     exs = exs + pad_lengths[0]
 
-    patches = fourier_shift(patches, fractional_shifts)
+    if not torch.allclose(fractional_shifts, torch.zeros_like(fractional_shifts), atol=1e-7):
+        patches = fourier_shift(patches, fractional_shifts)
     if not adjoint_mode:
         patches = patches[:, abs(patch_padding):-abs(patch_padding), abs(patch_padding):-abs(patch_padding)]
 
     inline_timer = InlineTimer("add or set patches on image")
     inline_timer.start()
-    for i in range(patches.shape[0]):
-        if op == "add":
-            image[sys[i] : eys[i], sxs[i] : exs[i]] += patches[i]
-        elif op == "set":
-            image[sys[i] : eys[i], sxs[i] : exs[i]] = patches[i]
+    image = batch_put(image, patches, sys, sxs, eys, exs, op=op)
     inline_timer.end()
 
     # Undo padding
@@ -283,6 +452,46 @@ def place_patches_bilinear_shift(
 
 
 @timer()
+def shift_images(
+    images: Tensor, 
+    shifts: Tensor, 
+    method: Literal["bilinear", "fourier"] = "bilinear",
+    adjoint: bool = False
+) -> Tensor:
+    """Shift a batch of images by a given amount.
+    
+    Parameters
+    ----------
+    images : Tensor
+        A [N, H, W] tensor of images.
+    shifts : Tensor
+        A [N, 2] tensor of shifts in pixels. Use the same shift values as the
+        forward shift operation even if `adjoint` is True; do not flip the sign.
+    method : Literal["bilinear", "fourier"]
+        The method to use for shifting.
+    adjoint : bool
+        If True, the adjoint of the shift operation is performed. For Fourier
+        shift, it shifts the image by `-shifts`. For bilinear shift, it computes
+        the adjoint of the bilinear shift operation.
+    
+    Returns
+    -------
+    Tensor
+        Shifted images.
+    """
+    if method == "bilinear":
+        if adjoint:
+            return adjoint_bilinear_shift(images, shifts)
+        return bilinear_shift(images, shifts)
+    elif method == "fourier":
+        if adjoint:
+            return fourier_shift(images, -shifts)
+        return fourier_shift(images, shifts)
+    else:
+        raise ValueError(f"Invalid shift method: {method}")
+
+
+@timer()
 def fourier_shift(images: Tensor, shifts: Tensor, strictly_preserve_zeros: bool = False) -> Tensor:
     """
     Apply Fourier shift to a batch of images.
@@ -309,7 +518,7 @@ def fourier_shift(images: Tensor, shifts: Tensor, strictly_preserve_zeros: bool 
         zero_mask = images == 0
         zero_mask = zero_mask.float()
         zero_mask_shifted = fourier_shift(zero_mask, shifts, strictly_preserve_zeros=False)
-    ft_images = torch.fft.fft2(images)
+    ft_images = pmath.fft2_precise(images)
     freq_y, freq_x = torch.meshgrid(
         torch.fft.fftfreq(images.shape[-2]), torch.fft.fftfreq(images.shape[-1]), indexing="ij"
     )
@@ -324,13 +533,110 @@ def fourier_shift(images: Tensor, shifts: Tensor, strictly_preserve_zeros: bool 
         * (freq_x * shifts[:, 1].view(-1, 1, 1) + freq_y * shifts[:, 0].view(-1, 1, 1))
     )
     ft_images = ft_images * mult
-    shifted_images = torch.fft.ifft2(ft_images)
+    shifted_images = pmath.ifft2_precise(ft_images)
     if not images.dtype.is_complex:
         shifted_images = shifted_images.real
     if strictly_preserve_zeros:
         shifted_images[zero_mask_shifted > 0] = 0
     return shifted_images
 
+
+def bilinear_shift(images: Tensor, shifts: Tensor) -> Tensor:
+    """
+    Apply bilinear shift to a batch of images.
+    
+    Parameters
+    ----------
+    images : Tensor
+        A [N, H, W] tensor of images.
+    shifts : Tensor
+        A [N, 2] tensor of shifts in pixels.
+
+    Returns
+    -------
+    Tensor
+        Shifted images.
+    """
+    if torch.allclose(shifts, torch.zeros_like(shifts)):
+        return images
+    y, x = torch.meshgrid(torch.arange(images.shape[-2]), torch.arange(images.shape[-1]), indexing="ij")
+    y = y.to(images.device)
+    x = x.to(images.device)
+    y = y.repeat(images.shape[0], 1, 1)
+    x = x.repeat(images.shape[0], 1, 1)
+    
+    # We want to sample the image at these positions.
+    y = y - shifts[:, 0].view(-1, 1, 1)
+    x = x - shifts[:, 1].view(-1, 1, 1)
+    
+    y_f = y.floor().int()
+    y_c = (y + 1).floor().int()
+    x_f = x.floor().int()
+    x_c = (x + 1).floor().int()
+    
+    w_00 = (y_c - y) * (x_c - x)
+    w_01 = (y_c - y) * (x - x_f)
+    w_10 = (y - y_f) * (x_c - x)
+    w_11 = (y - y_f) * (x - x_f)
+    
+    y_f = y_f.clip(0, images.shape[-2] - 1).view(-1)
+    y_c = y_c.clip(0, images.shape[-2] - 1).view(-1)
+    x_f = x_f.clip(0, images.shape[-1] - 1).view(-1)
+    x_c = x_c.clip(0, images.shape[-1] - 1).view(-1)
+    
+    orig_shape = images.shape
+    batch_inds = torch.arange(images.shape[0]).int().repeat_interleave(images.shape[-1] * images.shape[-2])
+    images = \
+        w_00.view(-1) * images[batch_inds, y_f, x_f] + \
+        w_01.view(-1) * images[batch_inds, y_f, x_c] + \
+        w_10.view(-1) * images[batch_inds, y_c, x_f] + \
+        w_11.view(-1) * images[batch_inds, y_c, x_c]
+    images = images.reshape(orig_shape)
+    return images
+
+
+def adjoint_bilinear_shift(images: Tensor, shifts: Tensor) -> Tensor:
+    """
+    Adjoint of bilinear shift.
+    """
+    if torch.allclose(shifts, torch.zeros_like(shifts)):
+        return images
+    y, x = torch.meshgrid(torch.arange(images.shape[-2]), torch.arange(images.shape[-1]), indexing="ij")
+    y = y.to(images.device)
+    x = x.to(images.device)
+    y = y.repeat(images.shape[0], 1, 1)
+    x = x.repeat(images.shape[0], 1, 1)
+    
+    # We want to sample the image at these positions.
+    y = y - shifts[:, 0].view(-1, 1, 1)
+    x = x - shifts[:, 1].view(-1, 1, 1)
+    
+    y_f = y.floor().int()
+    y_c = (y + 1).floor().int()
+    x_f = x.floor().int()
+    x_c = (x + 1).floor().int()
+    
+    w_00 = (y_c - y) * (x_c - x)
+    w_01 = (y_c - y) * (x - x_f)
+    w_10 = (y - y_f) * (x_c - x)
+    w_11 = (y - y_f) * (x - x_f)
+    
+    y_f = y_f.clip(0, images.shape[-2] - 1).view(-1)
+    y_c = y_c.clip(0, images.shape[-2] - 1).view(-1)
+    x_f = x_f.clip(0, images.shape[-1] - 1).view(-1)
+    x_c = x_c.clip(0, images.shape[-1] - 1).view(-1)
+    
+    orig_shape = images.shape
+    batch_inds = torch.arange(images.shape[0]).int().repeat_interleave(images.shape[-1] * images.shape[-2])
+    
+    adjoint = torch.zeros_like(images)
+    adjoint.index_put_((batch_inds, y_f, x_f), (w_00 * images).view(-1), accumulate=True)
+    adjoint.index_put_((batch_inds, y_f, x_c), (w_01 * images).view(-1), accumulate=True)
+    adjoint.index_put_((batch_inds, y_c, x_f), (w_10 * images).view(-1), accumulate=True)
+    adjoint.index_put_((batch_inds, y_c, x_c), (w_11 * images).view(-1), accumulate=True)
+    adjoint = adjoint.reshape(orig_shape)
+    return adjoint
+    
 
 @timer()
 def nearest_neighbor_gradient(
@@ -568,14 +874,17 @@ def integrate_image_2d_fourier(grad_y: Tensor, grad_x: Tensor) -> Tensor:
         The integrated image.
     """
     shape = grad_y.shape
-    f = torch.fft.fft2(grad_x + 1j * grad_y)
+    f = pmath.fft2_precise(grad_x + 1j * grad_y)
     y, x = torch.fft.fftfreq(shape[0]), torch.fft.fftfreq(shape[1])
 
-    r = torch.exp(2j * torch.pi * (x + y[:, None]))
+    # In PtychoShelves' get_img_int_2D.m, they set the numerator of r to be
+    # exp(2j * pi * (x + y[:, None])) to shift it by 1 pixel. We should NOT
+    # do this in order to get the same result as PtychoShelves.
+    r = 1.0
     r = r / (2j * torch.pi * (x + 1j * y[:, None]))
     r[0, 0] = 0
     integrated_image = f * r
-    integrated_image = torch.fft.ifft2(integrated_image)
+    integrated_image = pmath.ifft2_precise(integrated_image)
     if not torch.is_complex(grad_x):
         integrated_image = integrated_image.real
     return integrated_image
@@ -619,10 +928,10 @@ def integrate_image_2d_deconvolution(
     if tf_y is None or tf_x is None:
         tf_y = 2j * torch.pi * u
         tf_x = 2j * torch.pi * v
-    f_grad_y = torch.fft.fft2(grad_y)
-    f_grad_x = torch.fft.fft2(grad_x)
+    f_grad_y = pmath.fft2_precise(grad_y)
+    f_grad_x = pmath.fft2_precise(grad_x)
     img = (f_grad_y * tf_y + f_grad_x * tf_x) / (tf_y.abs() ** 2 + tf_x.abs() ** 2 + 1e-5)
-    img = -torch.fft.ifft2(img)
+    img = -pmath.ifft2_precise(img)
     img = img + bc_center - img[img.shape[0] // 2, img.shape[1] // 2]
     return img
 
@@ -964,7 +1273,7 @@ def remove_grid_artifacts(
     center_y, center_x = math.floor(ny / 2) + 1, math.floor(nx / 2) + 1
 
     k_max = 0.5 / pixel_size_m
-    f_img = torch.fft.fftshift(torch.fft.fft2(img))
+    f_img = torch.fft.fftshift(pmath.fft2_precise(img))
     # Frequencies of the artifacts.
     dk_s_y, dk_s_x = 1 / period_y_m, 1 / period_x_m
 
@@ -1024,7 +1333,26 @@ def median_filter_1d(x: Tensor, window_size: int = 5):
 
 
 @timer()
-def vignett(img: Tensor, margin: int = 20, sigma: float = 1.0):
+def generate_vignette_mask(
+    shape: tuple[int, int], 
+    margin: int = 20, 
+    sigma: float = 1.0, 
+    method: Literal["gaussian", "linear"] = "gaussian"
+):
+    """
+    Generate a vignette mask for an image of shape `shape`.
+    """
+    mask = torch.ones(shape, device=torch.get_default_device())
+    mask = vignette(mask, margin, sigma, method=method)
+    return mask
+
+
+@timer()
+def vignette(
+    img: Tensor, 
+    margin: int = 20, 
+    sigma: float = 1.0, 
+    method: Literal["gaussian", "linear"] = "gaussian"):
     """
     Vignett an image so that it gradually decays near the boundary.
     For each dimension of the image, a mask with a width of `2 * margin`
@@ -1044,6 +1372,8 @@ def vignett(img: Tensor, margin: int = 20, sigma: float = 1.0):
         The margin of image where the decay takes place.
     sigma : float
         The standard deviation of the Gaussian kernel.
+    method : Literal["gaussian", "linear"]
+        The method to use to generate the vignette mask.
     """
     img = img.clone()
     for i_dim in range(img.ndim):
@@ -1054,15 +1384,26 @@ def vignett(img: Tensor, margin: int = 20, sigma: float = 1.0):
             + [2 * margin]
             + [img.shape[i] for i in range(i_dim + 1, img.ndim)]
         )
-        mask = torch.zeros(mask_shape, device=img.device)
-        mask_slicer = [slice(None)] * i_dim + [slice(margin, None)]
-        mask[*mask_slicer] = 1.0
-        gauss_win = torch.signal.windows.gaussian(margin // 2, std=sigma)
-        gauss_win = gauss_win / torch.sum(gauss_win)
-        mask = convolve1d(mask, gauss_win, dim=i_dim, padding="same")
-        mask_final_slicer = [slice(None)] * i_dim + [slice(len(gauss_win), len(gauss_win) + margin)]
-        mask = mask[*mask_final_slicer]
-        mask = torch.where(mask < 1e-3, 0, mask)
+        if method == "gaussian":
+            mask = torch.zeros(mask_shape, device=img.device)
+            mask_slicer = [slice(None)] * i_dim + [slice(margin, None)]
+            mask[*mask_slicer] = 1.0
+            gauss_win = torch.signal.windows.gaussian(margin // 2, std=sigma)
+            gauss_win = gauss_win / torch.sum(gauss_win)
+            mask = convolve1d(mask, gauss_win, dim=i_dim, padding="same")
+            mask_final_slicer = [slice(None)] * i_dim + [slice(len(gauss_win), len(gauss_win) + margin)]
+            mask = mask[*mask_final_slicer]
+            mask = torch.where(mask < 1e-3, 0, mask)
+        elif method == "linear":
+            ramp = torch.linspace(0, 1, margin)
+            new_shape = [1] * img.ndim
+            new_shape[i_dim] = margin
+            ramp = ramp.reshape(new_shape)
+            rep = list(img.shape)
+            rep[i_dim] = 1
+            mask = ramp.repeat(rep)
+        else:
+            raise ValueError(f"Unknown method: {method}")
 
         slicer = [slice(None)] * i_dim + [slice(0, margin)]
         img[slicer] = img[slicer] * mask
@@ -1199,7 +1540,7 @@ def unwrap_phase_2d(
         img = torch.nn.functional.pad(
             img[None, None, :, :], (padding[1], padding[1], padding[0], padding[0]), mode="reflect"
         )[0, 0]
-        img = vignett(img, margin=10, sigma=2.5)
+        img = vignette(img, margin=10, sigma=2.5)
 
     gy, gx = get_phase_gradient(
         img, fourier_shift_step=fourier_shift_step, image_grad_method=image_grad_method

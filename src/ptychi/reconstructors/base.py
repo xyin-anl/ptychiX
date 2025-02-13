@@ -13,7 +13,7 @@ import ptychi.maps as maps
 import ptychi.forward_models as fm
 import ptychi.api.enums as enums
 import ptychi.io_handles as io
-
+import ptychi.image_proc as ip
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg
     import ptychi.api as api
@@ -331,7 +331,7 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             )
         return super().build_dataloader(batch_sampler=batch_sampler)
 
-    def update_preconditioners(self, use_all_probe_modes_for_object_preconditioner=False):
+    def update_preconditioners(self):
         # Update preconditioner of the object only if:
         # - the preconditioner does not exist, or
         # - it is within the 10 epochs after the probe starts being optimized, or
@@ -346,37 +346,15 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                 )
             )
         ):
-            self.update_object_preconditioner(
-                use_all_modes=use_all_probe_modes_for_object_preconditioner
+            self.parameter_group.object.update_preconditioner(
+                probe=self.parameter_group.probe,
+                probe_positions=self.parameter_group.probe_positions,
+                patterns=self.dataset.patterns,
+                use_all_modes=self.parameter_group.object.options.build_preconditioner_with_all_modes
             )
-
-    def update_object_preconditioner(self, use_all_modes=False):
-        positions_all = self.parameter_group.probe_positions.tensor
-        # Shape of probe:        (n_probe_modes, h, w)
-        object_ = self.parameter_group.object.get_slice(0)
-
-        if use_all_modes:
-            probe_int = self.parameter_group.probe.get_all_mode_intensity(opr_mode=0)[None, :, :]
-        else:
-            probe_int = self.parameter_group.probe.get_mode_and_opr_mode(mode=0, opr_mode=0)[None, ...].abs() ** 2
-        # Shape of probe_int:    (n_scan_points, h, w)
-        probe_int = probe_int.repeat(len(positions_all), 1, 1)
-
-        # Stitch probes of all positions on the object buffer
-        # TODO: allow setting chunk size externally
-        probe_sq_map = chunked_processing(
-            func=self.parameter_group.object.place_patches_function,
-            common_kwargs={"op": "add"},
-            chunkable_kwargs={
-                "positions": positions_all + self.parameter_group.object.center_pixel,
-                "patches": probe_int,
-            },
-            iterated_kwargs={
-                "image": torch.zeros_like(object_.real).type(torch.get_default_dtype())
-            },
-            chunk_size=64,
-        )
-        self.parameter_group.object.preconditioner = probe_sq_map
+            
+    def run_pre_epoch_hooks(self) -> None:
+        self.update_preconditioners()
 
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
@@ -442,7 +420,11 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             # Apply probe center constraint.
             if probe.options.center_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 probe.center_probe()
-                
+
+            # Remove object-probe ambiguity.
+            if object_.options.remove_object_probe_ambiguity.is_enabled_on_this_epoch(self.current_epoch):
+                object_.remove_object_probe_ambiguity(probe, update_probe_in_place=True)
+            
             # Smooth OPR weights.
             opr_mode_weights = self.parameter_group.opr_mode_weights
             if not opr_mode_weights.is_dummy:
@@ -616,3 +598,44 @@ class AnalyticalIterativePtychographyReconstructor(
             / ((psi.abs() ** 2).sum(1, keepdims=True).sqrt() + 1e-7)
             * torch.sqrt(actual_pattern_intensity + 1e-7)[:, None]
         )
+        
+    @timer()
+    def adjoint_shift_probe_update_direction(self, indices, delta_p, first_mode_only=False):
+        """
+        Apply the adjoint operator of the subpixel shift to the probe done in forward model.
+        
+        Parameters
+        ----------
+        indices : Tensor
+            Indices of diffraction patterns in the current batch.
+        delta_p : Tensor
+            A (batch_size, n_probe_modes, h, w) tensor giving the probe update direction.
+        first_mode_only : bool
+            If True, only the first mode is shifted.
+
+        Returns
+        -------
+        Tensor
+            A (batch_size, n_probe_modes, h, w) tensor giving the shifted probe update direction.
+        """
+        pos = self.parameter_group.probe_positions.data[indices]
+        orig_shape = delta_p.shape
+        fractional_shifts = pos - pos.round()
+        
+        if first_mode_only:
+            delta_p_to_shift = delta_p[..., 0, :, :]
+        else:
+            delta_p_to_shift = delta_p.reshape(delta_p.shape[0] * delta_p.shape[1], *delta_p.shape[2:])
+        
+        delta_p_shifted = ip.shift_images(
+            delta_p_to_shift, 
+            fractional_shifts, 
+            method=self.parameter_group.object.options.patch_interpolation_method,
+            adjoint=True
+        )
+        
+        if first_mode_only:
+            delta_p = torch.cat([delta_p_shifted[..., None, :, :], delta_p[..., 1:, :, :]], dim=-3)
+        else:
+            delta_p = delta_p_shifted.reshape(orig_shape)
+        return delta_p
