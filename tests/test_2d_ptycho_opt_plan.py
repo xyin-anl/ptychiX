@@ -58,6 +58,7 @@ class Test2dPtychoOptPlan(tutils.TungstenDataTester):
         options.reconstructor_options.batch_size = 40
         options.reconstructor_options.default_device = api.Devices.GPU
         options.reconstructor_options.displayed_loss_function = api.LossFunctions.MSE_SQRT
+        options.reconstructor_options.allow_nondeterministic_algorithms = False
         
         task = PtychographyTask(options)
         task.run()

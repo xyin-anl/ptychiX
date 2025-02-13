@@ -40,7 +40,7 @@ class Test2DPtychoLSQMLMomentum(tutils.TungstenDataTester):
         options.reconstructor_options.momentum_acceleration_gain = 0.5
         options.reconstructor_options.batching_mode = api.BatchingModes.COMPACT
         options.reconstructor_options.num_epochs = 12
-        
+        options.reconstructor_options.allow_nondeterministic_algorithms = False
         task = PtychographyTask(options)
         task.run()
         

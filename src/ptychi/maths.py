@@ -6,6 +6,7 @@ import numpy as np
 from ptychi.timing.timer_utils import timer
 
 _use_double_precision_for_fft = True
+_allow_nondeterministic_algorithms = False
 
 
 @timer()
@@ -55,6 +56,15 @@ def set_use_double_precision_for_fft(use_double_precision_for_fft: bool):
     global _use_double_precision_for_fft
     _use_double_precision_for_fft = use_double_precision_for_fft
     
+    
+def get_allow_nondeterministic_algorithms():
+    return _allow_nondeterministic_algorithms
+
+
+def set_allow_nondeterministic_algorithms(allow: bool):
+    global _allow_nondeterministic_algorithms
+    _allow_nondeterministic_algorithms = allow
+
 
 def angle(x: torch.Tensor, eps=1e-5) -> torch.Tensor:
     """

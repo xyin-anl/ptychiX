@@ -43,6 +43,7 @@ class Test2DPtychoLSQMLUniform(tutils.TungstenDataTester):
         options.reconstructor_options.num_epochs = 8
         options.reconstructor_options.batching_mode = api.BatchingModes.UNIFORM
         options.reconstructor_options.compact_mode_update_clustering = True
+        options.reconstructor_options.allow_nondeterministic_algorithms = False
         
         task = PtychographyTask(options)
         task.run()

@@ -89,6 +89,7 @@ class PtychographyTask(Task):
             torch.manual_seed(self.reconstructor_options.random_seed)
             np.random.seed(self.reconstructor_options.random_seed)
             random.seed(self.reconstructor_options.random_seed)
+        pmath.set_allow_nondeterministic_algorithms(self.reconstructor_options.allow_nondeterministic_algorithms)
 
     def build_default_device(self):
         torch.set_default_device(maps.get_device_by_enum(self.reconstructor_options.default_device))

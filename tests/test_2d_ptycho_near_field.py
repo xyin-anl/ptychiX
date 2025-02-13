@@ -40,6 +40,7 @@ class Test2dPtychoNearField(tutils.TungstenDataTester):
         options.reconstructor_options.batch_size = 96
         options.reconstructor_options.noise_model = api.NoiseModels.GAUSSIAN
         options.reconstructor_options.num_epochs = 8
+        options.reconstructor_options.allow_nondeterministic_algorithms = False
         
         task = PtychographyTask(options)
         task.run()
@@ -75,6 +76,7 @@ class Test2dPtychoNearField(tutils.TungstenDataTester):
         
         options.reconstructor_options.batch_size = 96
         options.reconstructor_options.num_epochs = 8
+        options.reconstructor_options.allow_nondeterministic_algorithms = False
         
         task = PtychographyTask(options)
         task.run()

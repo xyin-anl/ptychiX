@@ -581,6 +581,12 @@ class ReconstructorOptions(Options):
     the FFTs will be performed using the precision specified by `default_dtype`.
     """
 
+    allow_nondeterministic_algorithms: bool = True
+    """If True, allow nondeterministic algorithms to be used. Non-deterministic algorithms
+    include `scatter_add_` and `scatter_`. They can be faster, but may produce larger
+    run-to-run variations.
+    """
+
     random_seed: Optional[int] = None
     """The random seed to use for reproducibility. If None, no seed will be set."""
 

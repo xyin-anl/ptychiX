@@ -114,10 +114,14 @@ def batch_put(
         patches_flattened = patches.view(-1)
     except RuntimeError:
         patches_flattened = patches.reshape(-1)
-    if op == "add":
-        image.scatter_add_(0, inds.view(-1), patches_flattened)
+    if pmath.get_allow_nondeterministic_algorithms():
+        # scatter_add_ and scatter_ are non-deterministic but faster.
+        if op == "add":
+            image.scatter_add_(0, inds.view(-1), patches_flattened)
+        else:
+            image.scatter_(0, inds.view(-1), patches_flattened)
     else:
-        image.scatter_(0, inds.view(-1), patches_flattened)
+        image.index_put_((inds.view(-1),), patches_flattened, accumulate=(op == "add"))
     return image.reshape(h, w)
 
 
