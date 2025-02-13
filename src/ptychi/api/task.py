@@ -21,7 +21,7 @@ from ptychi.io_handles import PtychographyDataset
 from ptychi.reconstructors.base import Reconstructor
 from ptychi.utils import to_tensor
 import ptychi.utils as utils
-# from ptychi.timer_utils import clear_timer_globals
+import ptychi.maths as pmath
 from ptychi.timing import timer_utils
 
 logger = logging.getLogger(__name__)
@@ -109,6 +109,9 @@ class PtychographyTask(Task):
         torch.set_default_dtype(maps.get_dtype_by_enum(self.reconstructor_options.default_dtype))
         utils.set_default_complex_dtype(
             maps.get_complex_dtype_by_enum(self.reconstructor_options.default_dtype)
+        )
+        pmath.set_use_double_precision_for_fft(
+            self.reconstructor_options.use_double_precision_for_fft
         )
 
     def build_data(self):

@@ -5,6 +5,8 @@ import numpy as np
 
 from ptychi.timing.timer_utils import timer
 
+_use_double_precision_for_fft = True
+
 
 @timer()
 def trim_mean(
@@ -43,6 +45,15 @@ def trim_mean(
         return torch.nanmean(x, dim=dim, keepdim=keepdim)
     else:
         return torch.mean(x, dim=dim, keepdim=keepdim)
+    
+    
+def get_use_double_precision_for_fft():
+    return _use_double_precision_for_fft
+
+
+def set_use_double_precision_for_fft(use_double_precision_for_fft: bool):
+    global _use_double_precision_for_fft
+    _use_double_precision_for_fft = use_double_precision_for_fft
     
 
 def angle(x: torch.Tensor, eps=1e-5) -> torch.Tensor:
@@ -337,16 +348,22 @@ def fft2_precise(x, norm=None):
     """
     2D FFT with double precision.
     """
-    final_dtype = real_dtype_to_complex(x.dtype)
-    return torch.fft.fft2(x.type(torch.complex128), norm=norm).type(final_dtype)
+    if get_use_double_precision_for_fft():
+        final_dtype = real_dtype_to_complex(x.dtype)
+        return torch.fft.fft2(x.type(torch.complex128), norm=norm).type(final_dtype)
+    else:
+        return torch.fft.fft2(x, norm=norm)
 
 
 def ifft2_precise(x, norm=None):
     """
     2D FFT with double precision.
     """
-    final_dtype = real_dtype_to_complex(x.dtype)
-    return torch.fft.ifft2(x.type(torch.complex128), norm=norm).type(final_dtype)
+    if get_use_double_precision_for_fft():
+        final_dtype = real_dtype_to_complex(x.dtype)
+        return torch.fft.ifft2(x.type(torch.complex128), norm=norm).type(final_dtype)
+    else:
+        return torch.fft.ifft2(x, norm=norm)
 
 
 def is_all_integer(x: torch.Tensor) -> bool:
