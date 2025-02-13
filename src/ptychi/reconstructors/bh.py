@@ -9,6 +9,7 @@ from ptychi.reconstructors.base import (
 from ptychi.metrics import MSELossOfSqrt
 from ptychi.maths import reprod, redot
 from ptychi.utils import get_default_complex_dtype
+import ptychi.image_proc as ip
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -118,8 +119,13 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         op = self.forward_model.intermediate_variables["obj_patches"]
 
         psi_far = self.forward_model.intermediate_variables["psi_far"]
-        p = probe.get_opr_mode(0)  # to do for multi modes
         pos = self.positions
+        # `p` is a (n_positions, n_modes, h, w) tensor giving the unique probes
+        # at each scan point that are uniquely
+        # (1) created by combining the OPR modes using the weights for that scan 
+        # point, if OPR is enabled, and
+        # (2) shifted to account for the subpixel position of that scan point.
+        p = self.forward_model.intermediate_variables["shifted_unique_probes"]
 
         # sqrt of data
         d = torch.sqrt(y_true)[:, torch.newaxis]
@@ -297,17 +303,32 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         tmp = torch.conj(p) * gradF
 
         obj = self.parameter_group.object
-        o = obj.place_patches_on_empty_buffer(self.positions, tmp[:, 0])
-        patches = obj.extract_patches_function(
-            o, self.positions + obj.center_pixel, self.parameter_group.probe.get_spatial_shape()
+        o = obj.place_patches_on_empty_buffer(self.positions.round().int(), tmp[:, 0], integer_mode=True)
+        patches = ip.extract_patches_integer(
+            o, self.positions.round().int() + obj.center_pixel, self.parameter_group.probe.get_spatial_shape()
         )
         patches = patches[:, None]
         return o, patches
 
     def gradient_p(self, op, gradF):
-        """Gradient with respect to the probe"""
-
-        return torch.sum(torch.conj(op) * gradF, axis=0)
+        """Gradient with respect to the probe.
+        
+        Parameters
+        ----------
+        op : Tensor
+            A (n_positions, n_slices, h, w) tensor of object patches.
+        gradF : Tensor
+            A (n_positions, n_modes, h, w) tensor of the exit wave gradient.
+            
+        Returns
+        -------
+        Tensor
+            A (n_mode, h, w) tensor of the probe gradient, calculated as the 
+            sum of adjoint-shifted probe gradients for all positions..
+        """
+        dp = torch.conj(op) * gradF
+        dp = self.adjoint_shift_probe_update_direction(self.indices, dp, first_mode_only=True)
+        return torch.sum(dp, axis=0)
 
     def gradient_pos(self, op, p, pos, gradF):
         """Gradient with respect to positions"""
