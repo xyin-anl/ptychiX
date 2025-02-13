@@ -23,6 +23,7 @@ from ptychi.utils import to_tensor
 import ptychi.utils as utils
 import ptychi.maths as pmath
 from ptychi.timing import timer_utils
+from ptychi.movies import movie_utils
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +194,7 @@ class PtychographyTask(Task):
             The number of epochs to run. If None, use the number of epochs specified in the
             option object.
         """
+        movie_utils.reset_movies()
         timer_utils.clear_timer_globals()
         self.reconstructor.run(n_epochs=n_epochs)
 
