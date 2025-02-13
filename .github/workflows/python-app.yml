@@ -49,11 +49,11 @@ jobs:
       run: |
         $CONDA_EXE env list
         source $CONDA_ROOT/bin/activate $ENVNAME
-        python -m pip install --upgrade pip
-        pip install pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install -e .
-        pip install torch==2.4.1 torchvision==0.19.1 numpy==2.1.2
+        $CONDA_ROOT/envs/$ENVNAME/bin/python -m $CONDA_ROOT/envs/$ENVNAME/bin/pip install --upgrade pip
+        $CONDA_ROOT/envs/$ENVNAME/bin/pip install pytest
+        if [ -f requirements.txt ]; then $CONDA_ROOT/envs/$ENVNAME/bin/pip install -r requirements.txt; fi
+        $CONDA_ROOT/envs/$ENVNAME/bin/pip install -e .
+        $CONDA_ROOT/envs/$ENVNAME/bin/pip install torch==2.4.1 torchvision==0.19.1 numpy==2.1.2
 
     - name: List build environment
       run: $CONDA_EXE list -n $ENVNAME
