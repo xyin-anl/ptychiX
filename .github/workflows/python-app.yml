@@ -49,7 +49,7 @@ jobs:
       run: |
         $CONDA_EXE env list
         source $CONDA_ROOT/bin/activate $ENVNAME
-        $CONDA_ROOT/envs/$ENVNAME/bin/python -m $CONDA_ROOT/envs/$ENVNAME/bin/pip install --upgrade pip
+        $CONDA_ROOT/envs/$ENVNAME/bin/pip install --upgrade pip
         $CONDA_ROOT/envs/$ENVNAME/bin/pip install pytest
         if [ -f requirements.txt ]; then $CONDA_ROOT/envs/$ENVNAME/bin/pip install -r requirements.txt; fi
         $CONDA_ROOT/envs/$ENVNAME/bin/pip install -e .
