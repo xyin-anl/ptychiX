@@ -3,7 +3,6 @@ import h5py
 from PIL import Image
 import cv2
 import os
-import matplotlib.cm as cm
 from .settings import MovieFileTypes
 
 

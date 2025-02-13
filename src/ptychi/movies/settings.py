@@ -1,7 +1,7 @@
 import dataclasses
 from enum import StrEnum, auto
 from typing import Sequence
-
+import cv2
 
 class MovieFileTypes(StrEnum):
     GIF = auto()
@@ -31,6 +31,15 @@ class SnapshotSettings:
 
 
 @dataclasses.dataclass
+class MovieFileSettings:
+    fps: int = 5
+
+    high_contrast: bool = False
+
+    colormap: int = cv2.COLORMAP_BONE
+
+
+@dataclasses.dataclass
 class ObjectMovieSettings:
     process_function: ProcessFunctionType = ProcessFunctionType.PHASE
 
@@ -38,6 +47,8 @@ class ObjectMovieSettings:
     "Index of the object to select"
 
     snapshot: SnapshotSettings = dataclasses.field(default_factory=SnapshotSettings)
+
+    movie_file: MovieFileSettings = dataclasses.field(default_factory=MovieFileSettings)
 
 
 @dataclasses.dataclass
@@ -53,3 +64,5 @@ class ProbeMovieSettings:
     """
 
     snapshot: SnapshotSettings = dataclasses.field(default_factory=SnapshotSettings)
+
+    movie_file: MovieFileSettings = dataclasses.field(default_factory=MovieFileSettings)
