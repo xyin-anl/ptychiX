@@ -4,6 +4,7 @@ from PIL import Image
 import cv2
 import os
 import matplotlib.cm as cm
+from .settings import MovieFileTypes
 
 
 dataset_name = "frames"
@@ -34,12 +35,26 @@ def append_array_to_h5(array: np.ndarray, file_path: str, create_new_file: bool 
             dset[-1] = array  # Append new 2D array at the last depth
 
 
+def save_movie_to_file(
+    array: np.ndarray,
+    file_type: MovieFileTypes,
+    output_path: str,
+    fps: int = 30,
+    colormap: int = cv2.COLORMAP_BONE,
+    enhance_contrast: bool = False,
+):
+    if file_type == MovieFileTypes.GIF:
+        numpy_to_gif(array, output_path, fps, colormap, enhance_contrast)
+    elif file_type == MovieFileTypes.MP4:
+        numpy_to_mp4(array, output_path, fps, colormap, enhance_contrast)
+
+
 def numpy_to_gif(
     array: np.ndarray,
     output_path: str,
     fps: int = 30,
     colormap: int = cv2.COLORMAP_BONE,
-    enhance_contrast: bool = True,
+    enhance_contrast: bool = False,
 ):
     """
     Convert a 3D NumPy array (frames along the first axis) to a GIF file.
@@ -83,7 +98,7 @@ def numpy_to_mp4(
     output_path: str,
     fps: int = 30,
     colormap: int = cv2.COLORMAP_BONE,
-    enhance_contrast: bool = True,
+    enhance_contrast: bool = False,
 ):
     """
     Convert a 3D NumPy array (frames along the first axis) to an MP4 file.
