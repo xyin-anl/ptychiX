@@ -1475,10 +1475,10 @@ def unwrap_phase_2d(
     fourier_shift_step: float = 0.5,
     image_grad_method: Literal[
         "fourier_shift", "fourier_differentiation", "nearest"
-    ] = "fourier_shift",
+    ] = "fourier_differentiation",
     image_integration_method: Literal[
         "fourier", "discrete", "deconvolution"
-    ] = "deconvolution",
+    ] = "fourier",
     weight_map: Optional[Tensor] = None,
     flat_region_mask: Optional[Tensor] = None,
     deramp_polyfit_order: int = 1,
