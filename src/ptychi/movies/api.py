@@ -1,11 +1,12 @@
 from typing import Optional
-from .movie_utils import SubjectList
+from .movie_utils import MoviesManager
 from .mappings import movie_setting_types
 from .settings import MovieFileTypes, MovieFileSettings
 from ptychi.timing.timer_utils import timer
 import ptychi.reconstructors.base as base
 
-MOVIE_LIST = SubjectList()
+MOVIES_MANAGER = MoviesManager()
+ENABLE_MOVIES = False
 
 
 def toggle_movies(enable: bool):
@@ -14,26 +15,26 @@ def toggle_movies(enable: bool):
 
 
 def clear_movie_globals():
-    global MOVIE_LIST
-    MOVIE_LIST = SubjectList()
+    global MOVIES_MANAGER
+    MOVIES_MANAGER = MoviesManager()
 
 
-def add_to_movie_list(settings: movie_setting_types, folder: str, movie_name: str):
-    global MOVIE_LIST
-    if MOVIE_LIST is None:
-        MOVIE_LIST = SubjectList()
-    MOVIE_LIST.add_subject(settings, folder, movie_name)
+def add_new_movie_builder(settings: movie_setting_types, folder: str, movie_name: str):
+    global MOVIES_MANAGER
+    if MOVIES_MANAGER is None:
+        MOVIES_MANAGER = MoviesManager()
+    MOVIES_MANAGER.add_movie_builder(settings, folder, movie_name)
 
 
 @timer()
-def update_movies(reconstructor: "base.Reconstructor"):
-    global MOVIE_LIST
-    MOVIE_LIST.record_all_frames(reconstructor)
+def update_movie_builders(reconstructor: "base.Reconstructor"):
+    global MOVIES_MANAGER
+    MOVIES_MANAGER.record_all_frames(reconstructor)
 
 
 def create_all_movies(file_type: MovieFileTypes):
-    global MOVIE_LIST
-    MOVIE_LIST.create_all_movies(file_type)
+    global MOVIES_MANAGER
+    MOVIES_MANAGER.create_all_movies(file_type)
 
 
 def create_movie(
@@ -41,27 +42,32 @@ def create_movie(
     file_type: MovieFileTypes,
     movie_file_settings: Optional[MovieFileSettings] = None,
 ):
-    if not check_if_movie_exists(movie_name):
+    if not check_if_movie_builder_exists(movie_name):
         return
-    global MOVIE_LIST
-    MOVIE_LIST.subject_list[movie_name].create_movie(file_type, movie_file_settings)
+    global MOVIES_MANAGER
+    MOVIES_MANAGER.movie_builders[movie_name].create_movie(file_type, movie_file_settings)
 
 
-def get_movie_settings(movie_name: str) -> movie_setting_types:
-    if not check_if_movie_exists(movie_name):
+def get_movie_builder_settings(movie_name: str) -> movie_setting_types:
+    if not check_if_movie_builder_exists(movie_name):
         return
-    global MOVIE_LIST
-    return MOVIE_LIST.subject_list[movie_name].settings
+    global MOVIES_MANAGER
+    return MOVIES_MANAGER.movie_builders[movie_name].settings
 
 
-def reset_movies():
-    global MOVIE_LIST
-    MOVIE_LIST.reset_all()
+def reset_movie_builders():
+    global MOVIES_MANAGER
+    MOVIES_MANAGER.reset_all()
 
 
-def check_if_movie_exists(movie_name: SystemError):
-    global MOVIE_LIST
-    if movie_name not in MOVIE_LIST.subject_list.keys():
+def delete_intermediate_movie_files():
+    global MOVIES_MANAGER
+    MOVIES_MANAGER.delete_intermediate_movie_files()
+
+
+def check_if_movie_builder_exists(movie_name: str) -> bool:
+    global MOVIES_MANAGER
+    if movie_name not in MOVIES_MANAGER.movie_builders.keys():
         print(f"{movie_name} is not found")
         return False
     else:

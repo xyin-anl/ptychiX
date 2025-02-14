@@ -8,30 +8,33 @@ from .settings import ProbeMovieSettings
 from .io import append_array_to_h5, save_movie_to_file
 import os
 import h5py
-from collections import defaultdict
 
 import ptychi.reconstructors.base as base
 
-ENABLE_MOVIES = False
 dataset_name = "frames"
 
 
-class MovieSubject:
+class MovieBuilder:
     current_frame: int = 0
-    frames: np.ndarray
+    frames: np.ndarray = None
+    epochs: list[int] = []
 
     def __init__(
         self,
         settings: movie_setting_types,
         folder: str,
         movie_name: str,
-        save_intermediate_data_to_hdf5: bool = False,
     ):
         self.settings = settings
         self.folder = folder
         self.movie_name = movie_name
-        self.save_intermediate_data_to_hdf5 = save_intermediate_data_to_hdf5
-        self.hdf5_file_path = os.path.join(self.folder, self.movie_name + ".hdf5")
+        if self.settings.save_intermediate_data_to_hdf5:
+            self.hdf5_file_path = os.path.join(self.folder, self.movie_name + ".hdf5")
+        else:
+            self.hdf5_file_path = None
+
+        if not os.path.exists(self.folder):
+            os.mkdir(self.folder)
 
     def save_frame_enabled_this_epoch(self, current_epoch: int):
         if current_epoch % self.settings.snapshot.stride == 0:
@@ -40,7 +43,7 @@ class MovieSubject:
             return False
 
     def record_frame(self, movie_frame_array: np.ndarray):
-        if self.save_intermediate_data_to_hdf5:
+        if self.settings.save_intermediate_data_to_hdf5:
             append_array_to_h5(
                 array=movie_frame_array,
                 file_path=self.hdf5_file_path,
@@ -51,6 +54,7 @@ class MovieSubject:
                 self.frames = movie_frame_array[None]
             else:
                 self.frames = np.append(self.frames, movie_frame_array[None], axis=0)
+        self.epochs += [self.current_frame * self.settings.snapshot.stride]
         self.current_frame += 1
 
     def create_movie(
@@ -59,7 +63,7 @@ class MovieSubject:
         if movie_file_settings is None:
             movie_file_settings = self.settings.movie_file
         output_path = os.path.join(self.folder, self.movie_name + "." + file_type)
-        if self.save_intermediate_data_to_hdf5:
+        if self.settings.save_intermediate_data_to_hdf5:
             with h5py.File(self.hdf5_file_path) as F:
                 frames = F[dataset_name][:]
         else:
@@ -75,38 +79,40 @@ class MovieSubject:
 
     def reset(self):
         self.current_frame = 0
+        self.epochs = []
+        self.frames = None
 
 
-class SubjectList:
-    subject_list: dict[str, MovieSubject] = {}
+class MoviesManager:
+    """Class that handles the updating of `MovieBuilder` instances."""
 
-    def add_subject(
+    movie_builders: dict[str, MovieBuilder] = {}
+
+    def add_movie_builder(
         self,
         settings: movie_setting_types,
         folder: str,
         movie_name: str,
     ):
-        if self.is_duplicate(settings):
-            return
-        else:
-            self.subject_list[movie_name] = MovieSubject(settings, folder, movie_name)
+        self.movie_builders[movie_name] = MovieBuilder(settings, folder, movie_name)
 
     def record_all_frames(self, reconstructor: "base.Reconstructor"):
-        for subject in self.subject_list.values():
-            if subject.save_frame_enabled_this_epoch(reconstructor.current_epoch):
-                movie_frame_array = prepare_movie_subject(reconstructor, subject.settings)
-                subject.record_frame(movie_frame_array)
+        for movie_builder in self.movie_builders.values():
+            if movie_builder.save_frame_enabled_this_epoch(reconstructor.current_epoch):
+                movie_frame_array = prepare_movie_subject(reconstructor, movie_builder.settings)
+                movie_builder.record_frame(movie_frame_array)
 
     def create_all_movies(self, file_type: MovieFileTypes):
-        for subject in self.subject_list.values():
-            subject.create_movie(file_type)
+        for movie_builder in self.movie_builders.values():
+            movie_builder.create_movie(file_type)
 
     def reset_all(self):
-        for subject in self.subject_list.values():
-            subject.reset()
+        for movie_builder in self.movie_builders.values():
+            movie_builder.reset()
 
-    def is_duplicate(self, settings: movie_setting_types):
-        for subject in self.subject_list.values():
-            if subject.settings == settings:
-                return True
-        return False
+    def delete_intermediate_movie_files(self):
+        for movie_builder in self.movie_builders.values():
+            file_path = movie_builder.hdf5_file_path
+            if file_path is not None and os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"Intermediate file {os.path.basename(file_path)} has been deleted.")

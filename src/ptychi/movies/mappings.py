@@ -44,10 +44,16 @@ def prepare_probe(reconstructor: "base.Reconstructor", movie_settings: ProbeMovi
     if movie_settings.plot_type is ProbePlotTypes.INCOHERENT_SUM:
         array_out = (array_out[0].abs() ** 2).sum(0)
     elif movie_settings.plot_type is ProbePlotTypes.SEPERATE_MODES:
-        array_out = array_out[0, movie_settings.mode_indices]
+        if movie_settings.mode_indices is None:
+            mode_idx = range(0, reconstructor.parameter_group.probe.n_modes)
+        else:
+            mode_idx = movie_settings.mode_indices
+        array_out = array_out[0, mode_idx]
         array_out = process_function(array_out, movie_settings.process_function)
-        spatial_shape = array_out.shape[2:]
-        n_modes = array_out.shape[1]
-        new_dims = (spatial_shape[0], spatial_shape[1] * n_modes)
-        array_out = array_out[0].reshape(new_dims)
+        # Reshape so each probe mode is next to eachother
+        probe_width = array_out.shape[1]
+        array_out = array_out.permute((0, 2, 1))
+        array_out = array_out.reshape(shape=(-1, probe_width))
+        array_out = array_out.transpose(1, 0)
+
     return array_out

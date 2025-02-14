@@ -194,7 +194,7 @@ class PtychographyTask(Task):
             The number of epochs to run. If None, use the number of epochs specified in the
             option object.
         """
-        movies.api.reset_movies()
+        movies.api.reset_movie_builders()
         timer_utils.clear_timer_globals()
         self.reconstructor.run(n_epochs=n_epochs)
 

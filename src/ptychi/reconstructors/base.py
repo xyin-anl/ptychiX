@@ -305,7 +305,7 @@ class IterativeReconstructor(Reconstructor):
             self.loss_tracker.conclude_epoch(epoch=self.current_epoch)
             self.loss_tracker.print_latest()
 
-            movies.api.update_movies(self)
+            movies.api.update_movie_builders(self)
 
             self.current_epoch += 1
 

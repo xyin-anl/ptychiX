@@ -1,7 +1,8 @@
 import dataclasses
 from enum import StrEnum, auto
-from typing import Sequence
+from typing import Sequence, Optional
 import cv2
+
 
 class MovieFileTypes(StrEnum):
     GIF = auto()
@@ -26,13 +27,18 @@ class ProbePlotTypes(StrEnum):
 @dataclasses.dataclass
 class SnapshotSettings:
     stride: int = 1
+    "The number of epochs between each frame acquisition"
 
     scale: int = 4
+    "How much each acquired frame is downsampled by"
 
 
 @dataclasses.dataclass
 class MovieFileSettings:
+    "Settings related to look and playback of the movie file."
+
     fps: int = 5
+    "Frames per second in the saved movie file"
 
     high_contrast: bool = False
 
@@ -50,14 +56,21 @@ class ObjectMovieSettings:
 
     movie_file: MovieFileSettings = dataclasses.field(default_factory=MovieFileSettings)
 
+    save_intermediate_data_to_hdf5: bool = False
+
 
 @dataclasses.dataclass
 class ProbeMovieSettings:
     process_function: ProcessFunctionType = ProcessFunctionType.MAGNITUDE
 
     plot_type: ProbePlotTypes = ProbePlotTypes.INCOHERENT_SUM
+    """
+    Determines what type of plot to make for the probe. You can choose 
+    between plotting the total intensity (INCOHERENT_SUM) and plotting
+    each mode seperately (SEPERATE_MODES).
+    """
 
-    mode_indices: Sequence[int] = (0,)
+    mode_indices: Optional[Sequence[int]] = None
     """
     Indices of modes to be selected for plotting. This is only used 
     when `plot_type` is `SEPERATE_MODES`.
@@ -66,3 +79,5 @@ class ProbeMovieSettings:
     snapshot: SnapshotSettings = dataclasses.field(default_factory=SnapshotSettings)
 
     movie_file: MovieFileSettings = dataclasses.field(default_factory=MovieFileSettings)
+
+    save_intermediate_data_to_hdf5: bool = False
