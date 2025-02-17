@@ -1,6 +1,6 @@
 import numpy as np
 import h5py
-from PIL import Image
+from PIL import Image, Image, ImageDraw, ImageFont
 import cv2
 import os
 from .settings import MovieFileTypes
@@ -41,9 +41,11 @@ def save_movie_to_file(
     fps: int = 30,
     colormap: int = cv2.COLORMAP_BONE,
     enhance_contrast: bool = False,
+    titles: list[str] = None,
+    compress: bool = True,
 ):
     if file_type == MovieFileTypes.GIF:
-        numpy_to_gif(array, output_path, fps, colormap, enhance_contrast)
+        numpy_to_gif(array, output_path, fps, colormap, enhance_contrast, titles, compress=compress)
     elif file_type == MovieFileTypes.MP4:
         numpy_to_mp4(array, output_path, fps, colormap, enhance_contrast)
 
@@ -54,6 +56,9 @@ def numpy_to_gif(
     fps: int = 30,
     colormap: int = cv2.COLORMAP_BONE,
     enhance_contrast: bool = False,
+    titles: list[str] = None,
+    font_size: int = 20,
+    compress: bool = True,
 ):
     """
     Convert a 3D NumPy array (frames along the first axis) to a GIF file.
@@ -69,6 +74,9 @@ def numpy_to_gif(
     is_grayscale = len(array.shape) == 3
     gif_frames = []
 
+    if titles and len(titles) != frames:
+        raise ValueError("Length of titles list must match the number of frames.")
+
     for i in range(frames):
         frame = array[i]
 
@@ -83,11 +91,35 @@ def numpy_to_gif(
             frame = cv2.applyColorMap(frame, colormap)  # Apply colormap to grayscale frame
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert to RGB for PIL
-        gif_frames.append(Image.fromarray(frame))
+        # gif_frames.append(Image.fromarray(frame))
+
+        pil_frame = Image.fromarray(frame)
+
+        # Draw title if provided
+        if titles:
+            draw = ImageDraw.Draw(pil_frame)
+            try:
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except IOError:
+                font = ImageFont.load_default()
+
+            text = titles[i]
+            text_bbox = draw.textbbox((0, 0), text, font=font)  # Get text bounding box
+            text_width = text_bbox[2] - text_bbox[0]  # Width of the text
+            # text_height = text_bbox[3] - text_bbox[1]  # Height of the text
+            position = ((width - text_width) // 2, 10)  # Centered at the top
+            draw.text(position, text, font=font, fill=(255, 255, 255))
+
+        gif_frames.append(pil_frame)
 
     # Save frames as GIF
     gif_frames[0].save(
-        output_path, save_all=True, append_images=gif_frames[1:], duration=int(1000 / fps), loop=0
+        output_path,
+        save_all=True,
+        append_images=gif_frames[1:],
+        duration=int(1000 / fps),
+        loop=0,
+        optimize=compress,
     )
     print(f"GIF saved to {output_path}")
 

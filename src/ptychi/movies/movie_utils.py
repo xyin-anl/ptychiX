@@ -75,6 +75,8 @@ class MovieBuilder:
             fps=self.settings.movie_file.fps,
             enhance_contrast=self.settings.movie_file.high_contrast,
             colormap=self.settings.movie_file.colormap,
+            titles=[str(i) for i in self.epochs],
+            compress=self.settings.movie_file.compress,
         )
 
     def reset(self):

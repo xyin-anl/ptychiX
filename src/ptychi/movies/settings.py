@@ -44,6 +44,8 @@ class MovieFileSettings:
 
     colormap: int = cv2.COLORMAP_BONE
 
+    compress: bool = True
+
 
 @dataclasses.dataclass
 class ObjectMovieSettings:
