@@ -175,6 +175,13 @@ class PlanarPtychographyForwardModel(ForwardModel):
                 "If you are using a bright-field probe, it is recommended to set `pad_for_shift` "
                 "to a positive integer to avoid aliasing. Currently it is 0."
             )
+        
+        if not self.apply_subpixel_shifts_on_probe and not self.pad_for_shift:
+            ValueError(
+                "Using `pad_for_shift == 0` with `apply_subpixel_shifts_on_probe == False` is "
+                "prohibited because this causes serious image artifacts when applying subpixel "
+                "shifts to object patches. Please set `pad_for_shift` to at least 1 and try again."
+            )
 
     def build_in_object_propagator(self):
         if not self.object.is_multislice:
@@ -251,7 +258,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             if always_return_probe_batch:
                 probe = self.probe.data.repeat(indices.shape[0], 1, 1, 1)
             else:
-                probe = self.probe.data
+                probe = self.probe.get_opr_mode(0)
         return probe
     
     def shift_unique_probes(self, indices: Tensor, unique_probes: Tensor, first_mode_only: bool = False):
