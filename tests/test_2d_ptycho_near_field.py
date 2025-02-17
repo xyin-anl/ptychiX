@@ -9,18 +9,23 @@ from ptychi.utils import get_suggested_object_size, get_default_complex_dtype, g
 import test_utils as tutils
 
 
-class Test2dPtychoNearField(tutils.TungstenDataTester):
+class Test2dPtychoNearField(tutils.BaseTester):
     
-    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_near_field_lsqml')
+    @tutils.BaseTester.wrap_recon_tester(name='test_2d_ptycho_near_field_lsqml')
     def test_2d_ptycho_near_field_lsqml(self):        
         self.setup_ptychi(cpu_only=False)
 
-        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(pos_type='true')
+        data, probe, pixel_size_m, positions_px = self.load_data_ptychodus(
+            *self.get_default_input_data_file_paths('2d_nf_ptycho'),
+            subtract_position_mean=False,
+            scale_probe_magnitude=False
+        )
         
         options = api.LSQMLOptions()
         options.data_options.data = data
-        options.data_options.wavelength_m = 1e-9
-        options.data_options.free_space_propagation_distance_m = 1.0
+        options.data_options.wavelength_m = 1240 / 33.35 * 1e-12
+        options.data_options.free_space_propagation_distance_m = 0.0043
+        options.data_options.fft_shift = False
         
         options.object_options.initial_guess = torch.ones([1, *get_suggested_object_size(positions_px, probe.shape[-2:], extra=100)], dtype=get_default_complex_dtype())
         options.object_options.pixel_size_m = pixel_size_m
@@ -37,10 +42,11 @@ class Test2dPtychoNearField(tutils.TungstenDataTester):
         options.probe_position_options.position_y_px = positions_px[:, 0]
         options.probe_position_options.optimizable = False
         
-        options.reconstructor_options.batch_size = 96
+        options.reconstructor_options.batch_size = 16
         options.reconstructor_options.noise_model = api.NoiseModels.GAUSSIAN
-        options.reconstructor_options.num_epochs = 8
+        options.reconstructor_options.num_epochs = 32
         options.reconstructor_options.allow_nondeterministic_algorithms = False
+        options.reconstructor_options.forward_model_options.pad_for_shift = 50
         
         task = PtychographyTask(options)
         task.run()
@@ -48,16 +54,21 @@ class Test2dPtychoNearField(tutils.TungstenDataTester):
         recon = task.get_data_to_cpu('object', as_numpy=True)[0]
         return recon
     
-    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_near_field_ad')
+    @tutils.BaseTester.wrap_recon_tester(name='test_2d_ptycho_near_field_ad')
     def test_2d_ptycho_near_field_ad(self):        
         self.setup_ptychi(cpu_only=False)
 
-        data, probe, pixel_size_m, positions_px = self.load_tungsten_data(pos_type='true')
+        data, probe, pixel_size_m, positions_px = self.load_data_ptychodus(
+            *self.get_default_input_data_file_paths('2d_nf_ptycho'),
+            subtract_position_mean=False,
+            scale_probe_magnitude=False
+        )
         
         options = api.AutodiffPtychographyOptions()
         options.data_options.data = data
-        options.data_options.wavelength_m = 1e-9
-        options.data_options.free_space_propagation_distance_m = 1.0
+        options.data_options.wavelength_m = 1240 / 33.35 * 1e-12
+        options.data_options.free_space_propagation_distance_m = 0.0043
+        options.data_options.fft_shift = False
         
         options.object_options.initial_guess = torch.ones([1, *get_suggested_object_size(positions_px, probe.shape[-2:], extra=100)], dtype=get_default_complex_dtype())
         options.object_options.pixel_size_m = pixel_size_m
@@ -74,9 +85,10 @@ class Test2dPtychoNearField(tutils.TungstenDataTester):
         options.probe_position_options.position_y_px = positions_px[:, 0]
         options.probe_position_options.optimizable = False
         
-        options.reconstructor_options.batch_size = 96
-        options.reconstructor_options.num_epochs = 8
+        options.reconstructor_options.batch_size = 16
+        options.reconstructor_options.num_epochs = 32
         options.reconstructor_options.allow_nondeterministic_algorithms = False
+        options.reconstructor_options.forward_model_options.pad_for_shift = 50
         
         task = PtychographyTask(options)
         task.run()

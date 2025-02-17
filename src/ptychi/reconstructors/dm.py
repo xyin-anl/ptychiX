@@ -277,7 +277,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         object_numerator = torch.zeros_like(object_.get_slice(0))
         for i in range(len(start_pts)):
             indices = torch.arange(start_pts[i], end_pts[i], device=object_numerator.device).long()
-            p = self.forward_model.get_unique_probes(indices)
+            p = self.forward_model.get_unique_probes(indices, always_return_probe_batch=True)
             p = self.forward_model.shift_unique_probes(indices, p, first_mode_only=True)
             
             object_numerator = ip.place_patches_integer(
@@ -315,7 +315,7 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         "Calculate the probe position update. Only gradient based updates are allowed for now."
 
         probe_positions = self.parameter_group.probe_positions
-        probe = self.forward_model.get_unique_probes(indices)
+        probe = self.forward_model.get_unique_probes(indices, always_return_probe_batch=True)
         probe = self.forward_model.shift_unique_probes(indices, probe, first_mode_only=True)
 
         delta_pos = probe_positions.position_correction.get_update(

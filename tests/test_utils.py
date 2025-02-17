@@ -13,7 +13,6 @@ import subprocess
 import socket
 
 from ptychi.utils import rescale_probe, add_additional_opr_probe_modes_to_probe, set_default_complex_dtype, to_tensor
-# from ptychi.timer_utils import ADVANCED_TIME_DICT, ELAPSED_TIME_DICT, toggle_timer
 import ptychi.timing.timer_utils as timer_utils
 from ptychi.timing.io import save_timing_data_to_unique_file_path
 
@@ -173,13 +172,15 @@ class BaseTester:
         if not cpu_only:
             os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, gpu_indices))
 
-    def load_data_ptychodus(self, diffraction_pattern_file, parameter_file, subtract_position_mean=False, additional_opr_modes=0):
+    def load_data_ptychodus(self, diffraction_pattern_file, parameter_file, subtract_position_mean=False, additional_opr_modes=0, scale_probe_magnitude=True):
         patterns = h5py.File(diffraction_pattern_file, 'r')['dp'][...]
 
         f_meta = h5py.File(parameter_file, 'r')
         probe = f_meta['probe'][...]
-        probe = rescale_probe(probe, patterns)
-        probe = probe[None, :, :, :]
+        if scale_probe_magnitude:
+            probe = rescale_probe(probe, patterns)
+        if probe.ndim == 3:
+            probe = probe[None, :, :, :]
         probe = to_tensor(probe)
         if additional_opr_modes > 0:
             probe = add_additional_opr_probe_modes_to_probe(probe, n_opr_modes_to_add=additional_opr_modes)

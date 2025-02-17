@@ -1,4 +1,5 @@
 import math
+import logging
 
 from typing import Optional, TYPE_CHECKING
 import torch
@@ -19,6 +20,8 @@ from ptychi.timing.timer_utils import timer
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group
     import ptychi.data_structures.base as dsbase
+    
+logger = logging.getLogger(__name__)
 
 
 class ForwardModel(torch.nn.Module):
@@ -78,6 +81,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
         detector_size: Optional[tuple[int, int]] = None,
         wavelength_m: Optional[float] = None,
         free_space_propagation_distance_m: Optional[float] = torch.inf,
+        pad_for_shift: Optional[int] = 0,
+        apply_subpixel_shifts_on_probe: bool = True,
         low_memory_mode: bool = False,
         *args,
         **kwargs,
@@ -99,6 +104,16 @@ class PlanarPtychographyForwardModel(ForwardModel):
             The wavelength of the probe in meters.
         free_space_propagation_distance_m : float, optional
             The free-space propagation distance in meters, or `inf` for far-field.
+        pad_for_shift : int, optional
+            If given, the probe (or object when `apply_subpixel_shifts_on_probe == False`) 
+            is padded with border values by this amount before shifting.
+        apply_subpixel_shifts_on_probe : bool
+            If True, the subpixel parts of probe positions are accounted for by uniquely shifting
+            the probe for each position, while all object patches are extracted at integer positions.
+            This creates a unique probe for each position, stored in 
+            `self.intermediate_variables["shifted_unique_probes"]`. If False, subpixel sihfts
+            are applied on the object patches, and a common probe is used for all positions.
+            The choice of the subpixel handling scheme must be consistent with the reconstructor.
         low_memory_mode : bool
             If True, incoherent probe modes are propagated sequentially rather than in parallel
             which reduces the memory usage.
@@ -119,6 +134,9 @@ class PlanarPtychographyForwardModel(ForwardModel):
 
         self.wavelength_m = wavelength_m
         self.free_space_propagation_distance_m = free_space_propagation_distance_m
+        
+        self.apply_subpixel_shifts_on_probe = apply_subpixel_shifts_on_probe
+        self.pad_for_shift = pad_for_shift
         
         # Build free space propagator.
         self.free_space_propagator = None
@@ -149,6 +167,14 @@ class PlanarPtychographyForwardModel(ForwardModel):
         if self.object.is_multislice:
             if self.wavelength_m is None:
                 raise ValueError("Wavelength must be given when the object is multislice.")
+            
+        if self.free_space_propagation_distance_m < torch.inf and not self.pad_for_shift:
+            logger.warning(
+                "It seems that you are running near-field propagation "
+                f"(free_space_propagation_distance_m = {self.free_space_propagation_distance_m}). "
+                "If you are using a bright-field probe, it is recommended to set `pad_for_shift` "
+                "to a positive integer to avoid aliasing. Currently it is 0."
+            )
 
     def build_in_object_propagator(self):
         if not self.object.is_multislice:
@@ -181,10 +207,24 @@ class PlanarPtychographyForwardModel(ForwardModel):
                 self.free_space_propagator = FresnelTransformPropagator(params)
             else:
                 self.free_space_propagator = AngularSpectrumPropagator(params)
+                
+    def extract_object_patches(self, indices: Tensor) -> Tensor:
+        positions = self.probe_positions.data[indices]
+        if self.apply_subpixel_shifts_on_probe:
+            obj_patches = self.object.extract_patches(
+                positions.round().int(), self.probe.get_spatial_shape(),
+                integer_mode=True
+            )
+        else:
+            obj_patches = self.object.extract_patches(
+                positions, self.probe.get_spatial_shape(),
+                pad_for_shift=self.pad_for_shift,
+                integer_mode=False
+            )
+        return obj_patches
 
-    def get_unique_probes(self, indices: Tensor) -> Tensor:
-        """
-        Get the unique probes for all positions in the batch. 
+    def get_unique_probes(self, indices: Tensor, always_return_probe_batch: bool = True) -> Tensor:
+        """Get the unique probes for all positions in the batch. 
         If OPR modes are present, this will return the unique
         probe for all positions.
 
@@ -192,6 +232,10 @@ class PlanarPtychographyForwardModel(ForwardModel):
         ----------
         indices : Tensor
             Indices of diffraction pattern in the batch.
+        always_return_probe_batch : bool
+            If True, the probe is always returned as a (batch_size, n_modes, h, w) tensor even if
+            there is only one OPR mode. Otherwise, the probe is returned as a (n_modes, h, w) 
+            tensor if there is only one OPR mode.
 
         Returns
         -------
@@ -204,8 +248,10 @@ class PlanarPtychographyForwardModel(ForwardModel):
                 self.opr_mode_weights.get_weights(indices), mode_to_apply=0
             )
         else:
-            # Shape of probe:     (n_modes, h, w)
-            probe = self.probe.data.repeat(indices.shape[0], 1, 1, 1)
+            if always_return_probe_batch:
+                probe = self.probe.data.repeat(indices.shape[0], 1, 1, 1)
+            else:
+                probe = self.probe.data
         return probe
     
     def shift_unique_probes(self, indices: Tensor, unique_probes: Tensor, first_mode_only: bool = False):
@@ -233,7 +279,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
             unique_probe_to_shift, 
             fractional_shifts, 
             method=self.parameter_group.object.options.patch_interpolation_method,
-            adjoint=False
+            adjoint=False,
+            pad=self.pad_for_shift
         )
         
         if first_mode_only:
@@ -318,9 +365,10 @@ class PlanarPtychographyForwardModel(ForwardModel):
             exiting plane.
         """
         # Shape of obj_patches:   (batch_size, n_slices, h, w)
-        probe = self.get_unique_probes(indices)
-        probe = self.shift_unique_probes(indices, probe, first_mode_only=True)
-        self.record_intermediate_variable("shifted_unique_probes", probe)
+        probe = self.get_unique_probes(indices, always_return_probe_batch=self.apply_subpixel_shifts_on_probe)
+        if self.apply_subpixel_shifts_on_probe:
+            probe = self.shift_unique_probes(indices, probe, first_mode_only=True)
+            self.record_intermediate_variable("shifted_unique_probes", probe)
         slice_psi = self.propagate_through_object(probe, obj_patches, return_slice_psis=False)
         return slice_psi
 
@@ -425,10 +473,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             Predicted intensities (squared magnitudes).
         """
         positions = self.probe_positions.tensor[indices]
-        obj_patches = self.object.extract_patches(
-            positions.round().int(), self.probe.get_spatial_shape(),
-            integer_mode=True
-        )
+        obj_patches = self.extract_object_patches(indices)
 
         self.record_intermediate_variable("positions", positions)
         self.record_intermediate_variable("obj_patches", obj_patches)
@@ -486,17 +531,15 @@ class PlanarPtychographyForwardModel(ForwardModel):
             Predicted intensities (squared magnitudes).
         """
         positions = self.probe_positions.tensor[indices]
-        obj_patches = self.object.extract_patches(
-            positions.round().int(), self.probe.get_spatial_shape(),
-            integer_mode=True
-        )
+        obj_patches = self.extract_object_patches(indices)
 
         self.record_intermediate_variable("positions", positions)
         self.record_intermediate_variable("obj_patches", obj_patches)
 
-        probe = self.get_unique_probes(indices)
-        probe = self.shift_unique_probes(indices, probe, first_mode_only=True)
-        self.record_intermediate_variable("shifted_unique_probes", probe)
+        probe = self.get_unique_probes(indices, always_return_probe_batch=self.apply_subpixel_shifts_on_probe)
+        if self.apply_subpixel_shifts_on_probe:
+            probe = self.shift_unique_probes(indices, probe, first_mode_only=True)
+            self.record_intermediate_variable("shifted_unique_probes", probe)
         slice_psis = []
         y = 0.0
         for i_mode in range(self.probe.n_modes):

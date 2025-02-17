@@ -20,31 +20,6 @@ class Options:
             raise AttributeError(f"{name} is not a valid field in {self.__class__.__name__}.")
         # If it exists, allow setting the value.
         super().__setattr__(name, value)
-    
-    def uninherited_fields(self) -> dict:
-        """
-        Find fields that are not inherited from the generic options parent
-        class (typically the direct subclass of `ParameterOptions` or
-        `Options`), and return them as a dictionary.
-        """
-        parent_classes = [
-            ObjectOptions,
-            ProbeOptions,
-            ReconstructorOptions,
-            ProbePositionOptions,
-            OPRModeWeightsOptions,
-        ]
-        parent_class = [
-            parent_class for parent_class in parent_classes if isinstance(self, parent_class)
-        ][0]
-        if parent_class == object:
-            return self.__dict__
-        parent_fields = [f.name for f in dataclasses.fields(parent_class)]
-        d = {}
-        for k, v in self.__dict__.items():
-            if k not in parent_fields:
-                d[k] = v
-        return d
 
 
 @dataclasses.dataclass
@@ -82,7 +57,7 @@ class ParameterOptions(Options):
 
 
 @dataclasses.dataclass
-class FeatureOptions(ABC):
+class FeatureOptions(Options):
     """
     Abstract base class that is inherited by sub-feature dataclasses. This class is used to
     determining if/when a feature is used.
@@ -396,7 +371,7 @@ class ProbeOptions(ParameterOptions):
 
 
 @dataclasses.dataclass
-class PositionCorrectionOptions:
+class PositionCorrectionOptions(Options):
     """Options used for specifying the position correction function."""
 
     correction_type: enums.PositionCorrectionTypes = enums.PositionCorrectionTypes.GRADIENT
@@ -533,6 +508,17 @@ class OPRModeWeightsOptions(ParameterOptions):
         d = super().get_non_data_fields()
         del d["initial_weights"]
         return d
+    
+    
+@dataclasses.dataclass
+class ForwardModelOptions(Options):
+    low_memory_mode: bool = False
+    """If True, forward propagation of ptychography will be done using less vectorized code.
+    This reduces the speed, but also lowers memory usage.
+    """
+    
+    pad_for_shift: Optional[int] = 0
+    """If not None, the image is padded with border values by this amount before shifting."""
 
 
 @dataclasses.dataclass
@@ -597,11 +583,10 @@ class ReconstructorOptions(Options):
     and is not involved in the reconstruction math.
     """
 
-    use_low_memory_forward_model: bool = False
-    """
-    If True, forward propagation of ptychography will be done using less vectorized code.
-    This reduces the speed, but also lowers memory usage.
-    """
+    forward_model_options: ForwardModelOptions = dataclasses.field(
+        default_factory=ForwardModelOptions
+    )
+    
 
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.base
