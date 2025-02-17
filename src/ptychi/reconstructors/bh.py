@@ -9,6 +9,7 @@ from ptychi.reconstructors.base import (
 from ptychi.metrics import MSELossOfSqrt
 from ptychi.maths import reprod, redot
 from ptychi.utils import get_default_complex_dtype
+import ptychi.forward_models as fm
 
 if TYPE_CHECKING:
     import ptychi.api as api
@@ -54,6 +55,19 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         if self.options.method == "CG":
             self.eta_op = torch.empty(dataset.patterns.shape,dtype=get_default_complex_dtype())[:,None,:,:]
             self.eta_pos = torch.empty([dataset.patterns.shape[0],2])
+            
+    def build_forward_model(self):
+        # BHReconstructor requires subpixel shifts on the object, not the probe.
+        self.forward_model = fm.PlanarPtychographyForwardModel(
+            parameter_group=self.parameter_group, 
+            retain_intermediates=True,
+            detector_size=tuple(self.dataset.patterns.shape[-2:]),
+            wavelength_m=self.dataset.wavelength_m,
+            free_space_propagation_distance_m=self.dataset.free_space_propagation_distance_m,
+            pad_for_shift=self.options.forward_model_options.pad_for_shift,
+            low_memory_mode=self.options.forward_model_options.low_memory_mode,
+            apply_subpixel_shifts_on_probe=False
+        )
 
     def build_loss_tracker(self):
         if self.displayed_loss_function is None:
