@@ -1,4 +1,5 @@
 import math
+import logging
 
 from typing import Optional, TYPE_CHECKING
 import torch
@@ -19,6 +20,8 @@ from ptychi.timing.timer_utils import timer
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group
     import ptychi.data_structures.base as dsbase
+    
+logger = logging.getLogger(__name__)
 
 
 class ForwardModel(torch.nn.Module):
@@ -78,6 +81,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         detector_size: Optional[tuple[int, int]] = None,
         wavelength_m: Optional[float] = None,
         free_space_propagation_distance_m: Optional[float] = torch.inf,
+        pad_for_shift: Optional[int] = 0,
         low_memory_mode: bool = False,
         *args,
         **kwargs,
@@ -120,6 +124,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
         self.wavelength_m = wavelength_m
         self.free_space_propagation_distance_m = free_space_propagation_distance_m
         
+        self.pad_for_shift = pad_for_shift
+        
         # Build free space propagator.
         self.free_space_propagator = None
         self.build_free_space_propagator()
@@ -149,6 +155,14 @@ class PlanarPtychographyForwardModel(ForwardModel):
         if self.object.is_multislice:
             if self.wavelength_m is None:
                 raise ValueError("Wavelength must be given when the object is multislice.")
+            
+        if self.free_space_propagation_distance_m < torch.inf and not self.pad_for_shift:
+            logger.warning(
+                "It seems that you are running near-field propagation "
+                f"(free_space_propagation_distance_m = {self.free_space_propagation_distance_m}). "
+                "If you are using a bright-field probe, it is recommended to set `pad_for_shift` "
+                "to a positive integer to avoid aliasing. Currently it is 0."
+            )
 
     def build_in_object_propagator(self):
         if not self.object.is_multislice:
@@ -233,7 +247,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
             unique_probe_to_shift, 
             fractional_shifts, 
             method=self.parameter_group.object.options.patch_interpolation_method,
-            adjoint=False
+            adjoint=False,
+            pad=self.pad_for_shift
         )
         
         if first_mode_only:

@@ -553,6 +553,8 @@ class AnalyticalIterativePtychographyReconstructor(
             detector_size=tuple(self.dataset.patterns.shape[-2:]),
             wavelength_m=self.dataset.wavelength_m,
             free_space_propagation_distance_m=self.dataset.free_space_propagation_distance_m,
+            pad_for_shift=self.options.forward_model_options.pad_for_shift,
+            low_memory_mode=self.options.forward_model_options.low_memory_mode,
         )
 
     def run_post_epoch_hooks(self) -> None:

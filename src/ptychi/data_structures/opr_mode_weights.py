@@ -7,11 +7,11 @@ from torch import Tensor
 import ptychi.data_structures.base as dsbase
 import ptychi.image_proc as ip
 import ptychi.maths as pmath
-from ptychi.data_structures.probe import Probe
 from ptychi.timing.timer_utils import timer
 
 if TYPE_CHECKING:
     import ptychi.api as api
+    from ptychi.data_structures.probe import Probe
 
 logger = logging.getLogger(__name__)
 

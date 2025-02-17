@@ -116,10 +116,16 @@ class PtychographyTask(Task):
         )
 
     def build_data(self):
+        if self.data_options.free_space_propagation_distance_m < np.inf and self.data_options.fft_shift:
+            logger.warning(
+                "It seems that you are reconstructing near-field data with FFT-shifted diffraction data. "
+                "Is this intended? If not, set `data_options.fft_shift=False`."
+            )
         self.dataset = PtychographyDataset(
             self.data_options.data, 
             wavelength_m=self.data_options.wavelength_m,
             free_space_propagation_distance_m=self.data_options.free_space_propagation_distance_m,
+            fft_shift=self.data_options.fft_shift,
             save_data_on_device=self.data_options.save_data_on_device,
         )
 
