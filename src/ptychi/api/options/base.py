@@ -508,6 +508,17 @@ class OPRModeWeightsOptions(ParameterOptions):
         d = super().get_non_data_fields()
         del d["initial_weights"]
         return d
+    
+    
+@dataclasses.dataclass
+class ForwardModelOptions(Options):
+    low_memory_mode: bool = False
+    """If True, forward propagation of ptychography will be done using less vectorized code.
+    This reduces the speed, but also lowers memory usage.
+    """
+    
+    pad_for_shift: Optional[int] = 0
+    """If not None, the image is padded with border values by this amount before shifting."""
 
 
 @dataclasses.dataclass
@@ -572,11 +583,9 @@ class ReconstructorOptions(Options):
     and is not involved in the reconstruction math.
     """
 
-    use_low_memory_forward_model: bool = False
-    """
-    If True, forward propagation of ptychography will be done using less vectorized code.
-    This reduces the speed, but also lowers memory usage.
-    """
+    forward_model_options: ForwardModelOptions = dataclasses.field(
+        default_factory=ForwardModelOptions
+    )
     
 
     def get_reconstructor_type(self) -> enums.Reconstructors:

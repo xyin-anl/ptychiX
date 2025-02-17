@@ -446,7 +446,8 @@ def shift_images(
     images: Tensor, 
     shifts: Tensor, 
     method: Literal["bilinear", "fourier"] = "bilinear",
-    adjoint: bool = False
+    adjoint: bool = False,
+    pad: Optional[int] = 0,
 ) -> Tensor:
     """Shift a batch of images by a given amount.
     
@@ -463,22 +464,32 @@ def shift_images(
         If True, the adjoint of the shift operation is performed. For Fourier
         shift, it shifts the image by `-shifts`. For bilinear shift, it computes
         the adjoint of the bilinear shift operation.
+    pad : Optional[int]
+        If not None, the image is padded with edge values by this amount before
+        shifting.
     
     Returns
     -------
     Tensor
         Shifted images.
     """
+    if pad is not None and pad > 0:
+        images = torch.nn.functional.pad(images, (pad, pad, pad, pad), mode="replicate")
     if method == "bilinear":
         if adjoint:
-            return adjoint_bilinear_shift(images, shifts)
-        return bilinear_shift(images, shifts)
+            images = adjoint_bilinear_shift(images, shifts)
+        else:
+            images = bilinear_shift(images, shifts)
     elif method == "fourier":
         if adjoint:
-            return fourier_shift(images, -shifts)
-        return fourier_shift(images, shifts)
+            images = fourier_shift(images, -shifts)
+        else:
+            images = fourier_shift(images, shifts)
     else:
         raise ValueError(f"Invalid shift method: {method}")
+    if pad is not None and pad > 0:
+        images = images[..., pad:-pad, pad:-pad]
+    return images
 
 
 @timer()

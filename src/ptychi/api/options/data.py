@@ -22,6 +22,9 @@ class PtychographyDataOptions(base.Options):
     wavelength_m: float = 1e-9
     """The wavelength in meters."""
 
+    fft_shift: bool = True
+    """Whether to FFT-shift the diffraction data."""
+
     detector_pixel_size_m: float = 1e-8
     """The detector pixel size in meters."""
 
