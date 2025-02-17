@@ -243,7 +243,7 @@ def extract_patches_fourier_shift(
     # Apply Fourier shift to account for fractional shifts
     if not torch.allclose(fractional_shifts, torch.zeros_like(fractional_shifts), atol=1e-7):
         patches = fourier_shift(patches, -fractional_shifts)
-    patches = patches[:, pad:-pad, pad:-pad]
+    patches = patches[:, pad : patches.shape[-2] - pad, pad : patches.shape[-1] - pad]
     return patches
 
 
@@ -332,7 +332,11 @@ def place_patches_fourier_shift(
     if not torch.allclose(fractional_shifts, torch.zeros_like(fractional_shifts), atol=1e-7):
         patches = fourier_shift(patches, fractional_shifts)
     if not adjoint_mode:
-        patches = patches[:, abs(patch_padding):-abs(patch_padding), abs(patch_padding):-abs(patch_padding)]
+        patches = patches[
+            :, 
+            abs(patch_padding) : patches.shape[-2] - abs(patch_padding), 
+            abs(patch_padding) : patches.shape[-1] - abs(patch_padding)
+        ]
 
     inline_timer = InlineTimer("add or set patches on image")
     inline_timer.start()
