@@ -24,6 +24,9 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+movies = ["opencv-python"]
+
 [docs]
 dependencies = [
     "sphinx",

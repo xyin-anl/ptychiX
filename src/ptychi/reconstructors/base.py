@@ -7,6 +7,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 import tqdm
 from ptychi.timing.timer_utils import timer
+import ptychi.movies as movies
 
 from ptychi.utils import to_numpy, chunked_processing
 import ptychi.maps as maps
@@ -303,6 +304,9 @@ class IterativeReconstructor(Reconstructor):
             self.run_post_epoch_hooks()
             self.loss_tracker.conclude_epoch(epoch=self.current_epoch)
             self.loss_tracker.print_latest()
+
+            if movies.MOVIES_INSTALLED:
+                movies.api.update_movie_builders(self)
 
             self.current_epoch += 1
 
