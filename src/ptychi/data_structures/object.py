@@ -159,6 +159,7 @@ class PlanarObject(Object):
         positions: Tensor, 
         patch_shape: Tuple[int, int], 
         integer_mode: bool = False,
+        pad_for_shift: Optional[int] = 1,
     ):
         """
         Extract (n_patches, n_slices, h', w') patches from the object.
@@ -173,6 +174,9 @@ class PlanarObject(Object):
         integer_mode : bool, optional
             If True, the patches are extracted at the exact center between pixels,
             so that no interpolation is needed.
+        pad_for_shift : int, optional
+            If given, patches larger than the intended size by this amount are cropped
+            out from the object before shifting.
 
         Returns
         -------
@@ -190,7 +194,7 @@ class PlanarObject(Object):
                 )
             else:
                 patches = self.extract_patches_function(
-                    self.get_slice(i_slice), positions, patch_shape
+                    self.get_slice(i_slice), positions, patch_shape, pad=pad_for_shift
                 )
             patches_all_slices.append(patches)
         patches_all_slices = torch.stack(patches_all_slices, dim=1)
@@ -202,6 +206,7 @@ class PlanarObject(Object):
         positions: Tensor, 
         patches: Tensor, 
         integer_mode: bool = False,
+        pad_for_shift: Optional[int] = 1,
         *args, **kwargs
     ):
         """
@@ -217,6 +222,9 @@ class PlanarObject(Object):
         integer_mode : bool, optional
             If True, the patches are placed at the exact center between pixels,
             so that no interpolation is needed.
+        pad_for_shift : int, optional
+            If given, patches are either padded (for adjoint mode) or cropped 
+            (for forward mode) before applying subpixel shifts.
         """
         positions = positions + self.center_pixel
         updated_slices = []
@@ -227,7 +235,8 @@ class PlanarObject(Object):
                 )
             else:
                 image = self.place_patches_function(
-                    self.get_slice(i_slice), positions, patches[:, i_slice, ...], op="add"
+                    self.get_slice(i_slice), positions, patches[:, i_slice, ...], op="add",
+                    pad=pad_for_shift,
                 )
             updated_slices.append(image)
         updated_slices = torch.stack(updated_slices, dim=0)
@@ -239,6 +248,7 @@ class PlanarObject(Object):
         positions: Tensor, 
         patches: Tensor, 
         integer_mode: bool = False,
+        pad_for_shift: Optional[int] = 1,
         *args, **kwargs
     ):
         """
@@ -254,6 +264,9 @@ class PlanarObject(Object):
         integer_mode : bool, optional
             If True, the patches are placed at the exact center between pixels,
             so that no interpolation is needed.
+        pad_for_shift : int, optional
+            If given, patches are either padded (for adjoint mode) or cropped 
+            (for forward mode) before applying subpixel shifts.
 
         Returns
         -------
@@ -267,7 +280,9 @@ class PlanarObject(Object):
         if integer_mode:
             image = ip.place_patches_integer(image, positions, patches, op="add")
         else:
-            image = self.place_patches_function(image, positions, patches, op="add")
+            image = self.place_patches_function(
+                image, positions, patches, op="add", pad=pad_for_shift
+            )
         return image
     
     def get_object_in_roi(self):
