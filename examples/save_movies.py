@@ -1,13 +1,15 @@
+import ptychi.movies as movies
+if not movies.MOVIES_INSTALLED:
+    raise ImportError("Dependencies needed by ptychi.movies are not installed!")
+
 import sys
 import os
-
 import torch
-import cv2
 import numpy as np
+import cv2
 import ptychi.api as api
 from ptychi.api.task import PtychographyTask
 from ptychi.utils import get_suggested_object_size, get_default_complex_dtype
-import ptychi.movies as movies
 
 # Add the folder containing "tests/" to the path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

@@ -21,9 +21,11 @@ dependencies = [
     "torch>=2.4.1",
     "torchvision",
     "tqdm",
-    "cv2",
 ]
 dynamic = ["version"]
+
+[project.optional-dependencies]
+movies = ["opencv-python"]
 
 [docs]
 dependencies = [
