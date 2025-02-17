@@ -190,7 +190,7 @@ def place_patches_integer(
 
 @timer()
 def extract_patches_fourier_shift(
-    image: Tensor, positions: Tensor, shape: Tuple[int, int]
+    image: Tensor, positions: Tensor, shape: Tuple[int, int], pad: Optional[int] = 1
 ) -> Tensor:
     """
     Extract patches from 2D object. If a patch's footprint goes outside the image,
@@ -205,6 +205,9 @@ def extract_patches_fourier_shift(
         The origin of the given positions are assumed to be the TOP LEFT corner of the image.
     shape : tuple of int
         A tuple giving the patch shape in pixels.
+    pad : Optional[int]
+        If given, patches with larger size than the intended size by this amount are cropped
+        out from the patches before shifting.
 
     Returns
     -------
@@ -215,15 +218,13 @@ def extract_patches_fourier_shift(
     sys_float = positions[:, 0] - (shape[0] - 1.0) / 2.0
     sxs_float = positions[:, 1] - (shape[1] - 1.0) / 2.0
 
-    patch_padding = 1
-
     # Crop one more pixel each side for Fourier shift
-    sys = sys_float.floor().int() - patch_padding
-    eys = sys + shape[0] + 2 * patch_padding
-    sxs = sxs_float.floor().int() - patch_padding
-    exs = sxs + shape[1] + 2 * patch_padding
+    sys = sys_float.floor().int() - pad
+    eys = sys + shape[0] + 2 * pad
+    sxs = sxs_float.floor().int() - pad
+    exs = sxs + shape[1] + 2 * pad
 
-    fractional_shifts = torch.stack([sys_float - sys - patch_padding, sxs_float - sxs - patch_padding], -1)
+    fractional_shifts = torch.stack([sys_float - sys - pad, sxs_float - sxs - pad], -1)
 
     pad_lengths = [
         max(-sxs.min(), 0),
@@ -237,12 +238,12 @@ def extract_patches_fourier_shift(
     sxs = sxs + pad_lengths[0]
     exs = exs + pad_lengths[0]
 
-    patches = batch_slice(image, sys, sxs, patch_size=[shape[i] + 2 * patch_padding for i in range(2)])
+    patches = batch_slice(image, sys, sxs, patch_size=[shape[i] + 2 * pad for i in range(2)])
 
     # Apply Fourier shift to account for fractional shifts
     if not torch.allclose(fractional_shifts, torch.zeros_like(fractional_shifts), atol=1e-7):
         patches = fourier_shift(patches, -fractional_shifts)
-    patches = patches[:, patch_padding:-patch_padding, patch_padding:-patch_padding]
+    patches = patches[:, pad:-pad, pad:-pad]
     return patches
 
 
@@ -253,6 +254,7 @@ def place_patches_fourier_shift(
     patches: Tensor, 
     op: Literal["add", "set"] = "add",
     adjoint_mode: bool = True,
+    pad: Optional[int] = 1,
 ) -> Tensor:
     """
     Place patches into a 2D object. If a patch's footprint goes outside the image,
@@ -280,6 +282,11 @@ def place_patches_fourier_shift(
         for placing patches that are not gradients. In that case, set this to False,
         and it will skip the zero-padding and crop the patches before placing them
         to remove Fourier shift wrap-arounds.
+    pad : Optional[int]
+        If given, patches are padded (or cropped) by this amount before shifting. 
+        The actual operations depend on `adjoint_mode`: when `adjoint_mode` is True, 
+        the patches are padded with zeros; otherwise, pathces are cropped by this amount
+        after shifting to remove the wrap-around portions.
 
     Returns
     -------
@@ -294,10 +301,10 @@ def place_patches_fourier_shift(
     shape = patches.shape[-2:]
     
     if adjoint_mode:
-        patch_padding = 1
+        patch_padding = pad
         patches = torch.nn.functional.pad(patches, [patch_padding] * 4)
     else:
-        patch_padding = -1
+        patch_padding = -pad
 
     sys_float = positions[:, 0] - (shape[0] - 1.0) / 2.0
     sxs_float = positions[:, 1] - (shape[1] - 1.0) / 2.0
@@ -395,6 +402,7 @@ def extract_patches_bilinear_shift(
     positions: Tensor,
     shape: Tuple[int, int],
     round_positions: bool = False,
+    *args, **kwargs,
 ) -> Tensor:
     if round_positions:
         positions = torch.round(positions).to(int)
@@ -417,6 +425,7 @@ def place_patches_bilinear_shift(
     patches: Tensor,
     op: Literal["add", "set"] = "add",
     round_positions: bool = False,
+    *args, **kwargs,
 ) -> Tensor:
     if op == "set":
         raise NotImplementedError("\"set\" operation is not supported.")
