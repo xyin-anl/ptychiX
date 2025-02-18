@@ -1,6 +1,7 @@
 import numpy as np
+from typing import Optional
 import h5py
-from PIL import Image, Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 import cv2
 import os
 from .settings import MovieFileTypes
@@ -43,7 +44,14 @@ def save_movie_to_file(
     enhance_contrast: bool = False,
     titles: list[str] = None,
     compress: bool = True,
+    upper_bound: Optional[float] = None,
+    lower_bound: Optional[float] = None,
 ):
+    if upper_bound is not None:
+        array = np.clip(array, a_max=upper_bound, a_min=None)
+    if lower_bound is not None:
+        array = np.clip(array, a_min=lower_bound, a_max=None)
+
     if file_type == MovieFileTypes.GIF:
         numpy_to_gif(array, output_path, fps, colormap, enhance_contrast, titles, compress=compress)
     elif file_type == MovieFileTypes.MP4:
@@ -64,11 +72,11 @@ def numpy_to_gif(
     Convert a 3D NumPy array (frames along the first axis) to a GIF file.
 
     Parameters:
-        array (np.ndarray): 3D NumPy array of shape (frames, height, width) with values between 0 and 1.
+        array (np.ndarray): 3D NumPy array of shape (frames, height, width)
         output_path (str): Path to save the GIF file.
         fps (int): Frames per second for the output video.
-        colormap (int): OpenCV colormap to apply if input is grayscale.
-        enhance_contrast (bool): Whether to apply contrast enhancement (default: True).
+        colormap (int): OpenCV colormap to apply.
+        enhance_contrast (bool): Whether to apply contrast enhancement (default: False).
     """
     frames, height, width = array.shape[:3]
     is_grayscale = len(array.shape) == 3
@@ -76,22 +84,21 @@ def numpy_to_gif(
 
     if titles and len(titles) != frames:
         raise ValueError("Length of titles list must match the number of frames.")
+    
+    # Apply contrast enhancement if needed
+    if enhance_contrast:
+        array = np.power(array, 0.5)  # Apply gamma correction to boost small values
+
+    # Normalize to [0, 255] and convert to uint8
+    array = cv2.normalize(array, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
     for i in range(frames):
         frame = array[i]
-
-        # Apply contrast enhancement if needed
-        if enhance_contrast:
-            frame = np.power(frame, 0.5)  # Apply gamma correction to boost small values
-
-        # Normalize to [0, 255] and convert to uint8
-        frame = cv2.normalize(frame, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
         if is_grayscale:
             frame = cv2.applyColorMap(frame, colormap)  # Apply colormap to grayscale frame
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert to RGB for PIL
-        # gif_frames.append(Image.fromarray(frame))
 
         pil_frame = Image.fromarray(frame)
 
@@ -135,11 +142,11 @@ def numpy_to_mp4(
     Convert a 3D NumPy array (frames along the first axis) to an MP4 file.
 
     Parameters:
-        array (np.ndarray): 3D NumPy array of shape (frames, height, width) with values between 0 and 1.
+        array (np.ndarray): 3D NumPy array of shape (frames, height, width).
         output_path (str): Path to save the MP4 file.
         fps (int): Frames per second for the output video.
-        colormap (int): OpenCV colormap to apply if input is grayscale.
-        enhance_contrast (bool): Whether to apply contrast enhancement (default: True).
+        colormap (int): OpenCV colormap to apply.
+        enhance_contrast (bool): Whether to apply contrast enhancement (default: False).
     """
     frames, height, width = array.shape[:3]
     is_grayscale = len(array.shape) == 3

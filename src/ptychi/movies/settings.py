@@ -46,6 +46,10 @@ class MovieFileSettings:
 
     compress: bool = True
 
+    upper_bound: Optional[float] = None
+
+    lower_bound: Optional[float] = None
+
 
 @dataclasses.dataclass
 class ObjectMovieSettings:

@@ -77,6 +77,8 @@ class MovieBuilder:
             colormap=self.settings.movie_file.colormap,
             titles=[str(i) for i in self.epochs],
             compress=self.settings.movie_file.compress,
+            upper_bound=self.settings.movie_file.upper_bound,
+            lower_bound=self.settings.movie_file.lower_bound,
         )
 
     def reset(self):
