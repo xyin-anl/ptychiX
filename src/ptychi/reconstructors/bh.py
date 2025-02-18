@@ -311,9 +311,15 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
         tmp = torch.conj(p) * gradF
 
         obj = self.parameter_group.object
-        o = obj.place_patches_on_empty_buffer(self.positions, tmp[:, 0])
+        o = obj.place_patches_on_empty_buffer(
+            self.positions, 
+            tmp[:, 0], 
+            pad_for_shift=self.options.forward_model_options.pad_for_shift
+        )
         patches = obj.extract_patches_function(
-            o, self.positions + obj.center_pixel, self.parameter_group.probe.get_spatial_shape()
+            o, self.positions + obj.center_pixel, 
+            self.parameter_group.probe.get_spatial_shape(), 
+            pad=self.options.forward_model_options.pad_for_shift
         )
         patches = patches[:, None]
         return o, patches
