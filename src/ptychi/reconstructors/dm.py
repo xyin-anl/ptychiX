@@ -16,6 +16,7 @@ from ptychi.reconstructors.base import (
 from ptychi.api.options.dm import DMReconstructorOptions
 from ptychi.timing.timer_utils import timer
 import ptychi.image_proc as ip
+
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg
 
@@ -163,20 +164,35 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         # Update the probe
         if probe.optimization_enabled(self.current_epoch):
-            probe.set_data(
-                probe_numerator
-                / torch.sqrt(probe_denominator**2 + (0.05 * probe_denominator.max()) ** 2)
-            )
+            probe_update = self.calculate_probe_update(probe_numerator, probe_denominator)
+            self.update_probe(probe_update)
 
         # Update the object
         if object_.optimization_enabled(self.current_epoch):
-            self.update_object(start_pts, end_pts)
+            updated_object = self.calculate_object_update(start_pts, end_pts)
+            self.update_object(updated_object)
 
         if probe_positions.optimization_enabled(self.current_epoch):
             probe_positions.set_grad(-delta_pos)
             probe_positions.optimizer.step()
 
         return dm_error_squared
+
+    @timer()
+    def calculate_probe_update(self, probe_numerator: Tensor, probe_denominator: Tensor) -> Tensor:
+        probe = self.parameter_group.probe
+        probe_update = probe_numerator / torch.sqrt(
+            probe_denominator**2 + (0.05 * probe_denominator.max()) ** 2
+        )
+        probe_update = (
+            probe.options.inertia * probe.data + (1 - probe.options.inertia) * probe_update
+        )
+        return probe_update
+
+    @timer()
+    def update_probe(self, probe_update: Tensor):
+        probe = self.parameter_group.probe
+        probe.set_data(probe_update)
 
     @timer()
     def calculate_exit_wave_chunk(
@@ -254,19 +270,23 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
     ):
         "Add to the running totals for the probe update numerator and denominator"
         indices = torch.arange(start_pt, end_pt, device=probe_numerator.device).long()
-        numerator_update = (obj_patches.conj() * self.psi[start_pt:end_pt])
-        denominator_update = (obj_patches.abs() ** 2)
+        numerator_update = obj_patches.conj() * self.psi[start_pt:end_pt]
+        denominator_update = obj_patches.abs() ** 2
         # Before summing in the batch dimension, the updates should be adjointly shifted to backpropagate
-        # through the subpixel shifts of the probe. 
-        numerator_update = self.adjoint_shift_probe_update_direction(indices, numerator_update, first_mode_only=True)
-        denominator_update = self.adjoint_shift_probe_update_direction(indices, denominator_update, first_mode_only=True)
+        # through the subpixel shifts of the probe.
+        numerator_update = self.adjoint_shift_probe_update_direction(
+            indices, numerator_update, first_mode_only=True
+        )
+        denominator_update = self.adjoint_shift_probe_update_direction(
+            indices, denominator_update, first_mode_only=True
+        )
         numerator_update = numerator_update.sum(0)
         denominator_update = denominator_update.sum(0)
         probe_numerator += numerator_update
         probe_denominator += denominator_update
 
     @timer()
-    def update_object(self, start_pts: list[int], end_pts: list[int]):
+    def calculate_object_update(self, start_pts: list[int], end_pts: list[int]) -> Tensor:
         "Calculate and apply the object update."
 
         object_ = self.parameter_group.object
@@ -275,38 +295,46 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
         # Calculate object update
         # Iterating over the object numerator calculation is more memory efficient
         object_numerator = torch.zeros_like(object_.get_slice(0))
+        object_denominator = torch.zeros_like(object_.get_slice(0), dtype=positions.dtype)
         for i in range(len(start_pts)):
             indices = torch.arange(start_pts[i], end_pts[i], device=object_numerator.device).long()
             p = self.forward_model.get_unique_probes(indices, always_return_probe_batch=True)
             p = self.forward_model.shift_unique_probes(indices, p, first_mode_only=True)
-            
+
             object_numerator = ip.place_patches_integer(
                 object_numerator,
                 positions[start_pts[i] : end_pts[i]].round().int() + object_.center_pixel,
-                (p.conj() * self.psi[start_pts[i] : end_pts[i]]).sum(1),
+                patches=(p.conj() * self.psi[start_pts[i] : end_pts[i]]).sum(1),
                 op="add",
             )
 
-            self.parameter_group.object.update_preconditioner(
-                probe=self.parameter_group.probe,
-                probe_positions=self.parameter_group.probe_positions,
-                patterns=self.dataset.patterns,
-                use_all_modes=True
+            object_denominator = ip.place_patches_integer(
+                object_denominator,
+                positions[start_pts[i] : end_pts[i]].round().int() + object_.center_pixel,
+                patches=(p.abs() ** 2).sum(1),
+                op="add",
             )
-        object_denominator = self.parameter_group.object.preconditioner
 
-        updated_object = object_numerator / torch.sqrt(
+        # Calculate DM object update
+        object_update = object_numerator / torch.sqrt(
             object_denominator**2 + (0.05 * object_denominator.max()) ** 2
         )
-
-        # Clamp the object amplitude
-        idx = updated_object.abs() > object_.options.amplitude_clamp_limit
-        updated_object[idx] = (
-            updated_object[idx] / (updated_object[idx].abs())
+        # Apply inertia
+        object_update = object_.get_slice(0) * object_.options.inertia + object_update * (
+            1 - object_.options.inertia
+        )
+        # Clamp the object amplitude -- this is rarely needed
+        idx = object_update.abs() > object_.options.amplitude_clamp_limit
+        object_update[idx] = (
+            object_update[idx] / (object_update[idx].abs())
         ) * object_.options.amplitude_clamp_limit
 
+        return object_update
+
+    @timer()
+    def update_object(self, object_update: Tensor):
         # Apply object update
-        object_.set_data(updated_object)
+        self.parameter_group.object.set_data(object_update)
 
     @timer()
     def get_positions_update_chunk(

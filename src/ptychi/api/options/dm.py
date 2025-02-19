@@ -25,10 +25,12 @@ class DMObjectOptions(base.ObjectOptions):
     """Maximum allowed amplitude for the object reconstruction. Values above this will be clamped 
     to this value."""
 
+    inertia: float = 0
+
 
 @dataclasses.dataclass
 class DMProbeOptions(base.ProbeOptions):
-    pass
+    inertia: float = 0
 
 
 @dataclasses.dataclass
