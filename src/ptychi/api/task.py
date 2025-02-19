@@ -58,6 +58,7 @@ class Task:
 class PtychographyTask(Task):
     def __init__(self, options: api.options.task.PtychographyTaskOptions, *args, **kwargs) -> None:
         super().__init__(options, *args, **kwargs)
+        self.options = options
         self.data_options = options.data_options
         self.object_options = options.object_options
         self.probe_options = options.probe_options
@@ -72,7 +73,11 @@ class PtychographyTask(Task):
         self.opr_mode_weights = None
         self.reconstructor: Reconstructor | None = None
 
+        self.check_options()
         self.build()
+        
+    def check_options(self):
+        self.options.check()
 
     def build(self):
         self.build_random_seed()

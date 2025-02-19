@@ -1,5 +1,4 @@
-from abc import ABC
-from typing import Optional, Union, Sequence
+from typing import Optional, Union, TYPE_CHECKING
 import dataclasses
 from dataclasses import field
 import logging
@@ -9,6 +8,11 @@ from torch import Tensor
 
 import ptychi.api.enums as enums
 from ptychi.api.options.plan import OptimizationPlan
+
+if TYPE_CHECKING:
+    import ptychi.api.options.task as task_options
+    
+logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
@@ -20,6 +24,11 @@ class Options:
             raise AttributeError(f"{name} is not a valid field in {self.__class__.__name__}.")
         # If it exists, allow setting the value.
         super().__setattr__(name, value)
+        
+    def check(self, *args, **kwargs) -> None:
+        """Check if options values are valid.
+        """
+        return
 
 
 @dataclasses.dataclass
@@ -50,6 +59,9 @@ class ParameterOptions(Options):
     Settings for the optimizer of the parameter. For additional information on
     optimizer parameters, see: https://pytorch.org/docs/stable/optim.html
     """
+    
+    def check(self, options: "task_options.PtychographyTaskOptions"):
+        return super().check(options)
 
     def get_non_data_fields(self) -> dict:
         d = self.__dict__.copy()
@@ -360,9 +372,15 @@ class ProbeOptions(ParameterOptions):
     A separate step size for eigenmode update.
     """
 
-    def check(self):
+    def check(self, options: "task_options.PtychographyTaskOptions"):
+        super().check(options)
         if not (self.initial_guess is not None and self.initial_guess.ndim == 4):
             raise ValueError("Probe initial_guess must be a (n_opr_modes, n_modes, h, w) tensor.")
+        if self.power_constraint.enabled and options.object_options.remove_object_probe_ambiguity.enabled:
+            logger.warning(
+                "`ObjectOptions.remove_object_probe_ambiguity` and `ProbeOptions.power_constraint` "
+                "are both enabled, which may lead to unexpected results."
+            )
 
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
@@ -495,7 +513,8 @@ class OPRModeWeightsOptions(ParameterOptions):
     A separate step size for eigenmode weight update.
     """
 
-    def check(self):
+    def check(self, options: "task_options.PtychographyTaskOptions"):
+        super().check(options)
         if self.optimizable:
             if not (self.optimize_intensity_variation or self.optimize_eigenmode_weights):
                 raise ValueError(

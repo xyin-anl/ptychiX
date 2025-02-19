@@ -19,3 +19,15 @@ class PtychographyTaskOptions(base.TaskOptions):
     probe_position_options: base.ProbePositionOptions = field(default_factory=base.ProbePositionOptions)
 
     opr_mode_weight_options: base.OPRModeWeightsOptions = field(default_factory=base.OPRModeWeightsOptions)
+
+    def check(self, *args, **kwargs):
+        super().check(*args, **kwargs)
+        for options in (
+            self.data_options,
+            self.reconstructor_options,
+            self.object_options,
+            self.probe_options,
+            self.probe_position_options,
+            self.opr_mode_weight_options,
+        ):
+            options.check(self)
