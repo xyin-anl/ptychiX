@@ -1,10 +1,13 @@
 from typing import Optional
 import dataclasses
 from dataclasses import field
+import logging
 
 import ptychi.api.options.base as base
 import ptychi.api.options.task as task_options
 import ptychi.api.enums as enums
+
+logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
@@ -51,6 +54,22 @@ class LSQMLReconstructorOptions(base.ReconstructorOptions):
     Using `None` usually provides better stability. However, it may cause the speed of convergence to be
     too slow in some cases. Set this parameter to 1 to reproduce the behavior in PtychoShelves.
     """
+    
+    rescale_probe_intensity_in_first_epoch: bool = True
+    """
+    If True, probe intensity is rescaled in the first epoch using the average intensity of all
+    diffraction patterns. Set this to False if you want the probe intensity to stay constant.
+    You may also want to check `ObjectOptions.remove_object_probe_ambiguity`.
+    """
+    
+    def check(self, options: "LSQMLOptions"):
+        super().check(options)
+        if self.rescale_probe_intensity_in_first_epoch:
+            if options.probe_options.power_constraint.enabled:
+                logger.warning(
+                    "`rescale_probe_intensity_in_first_epoch` and `ProbeOptions.power_constraint` "
+                    "are both enabled, which may lead to unexpected results."
+                )
     
     def get_reconstructor_type(self) -> enums.Reconstructors:
         return enums.Reconstructors.LSQML

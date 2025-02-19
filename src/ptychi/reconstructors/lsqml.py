@@ -985,7 +985,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
     @timer()
     def run_post_epoch_hooks(self) -> None:
-        if self.current_epoch > 0:
+        if self.current_epoch > 0 or (not self.options.rescale_probe_intensity_in_first_epoch):
             if (
                 self.parameter_group.object.optimization_enabled(self.current_epoch)
                 and self.options.batching_mode == enums.BatchingModes.COMPACT
@@ -1016,7 +1016,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.indices.append(indices)
         y_pred = self.forward_model(*input_data)
         self.update_fourier_error(y_pred, y_true)
-        if self.current_epoch == 0:
+        if self.current_epoch == 0 and self.options.rescale_probe_intensity_in_first_epoch:
             self._update_accumulated_intensities(y_true, y_pred)
         else:
             psi_opt = self.run_reciprocal_space_step(y_pred, y_true, indices)
