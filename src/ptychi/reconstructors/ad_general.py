@@ -63,7 +63,7 @@ class AutodiffReconstructor(IterativeReconstructor):
         """
         Apply Tikonov regularizers.
         """
-        reg = 0.0
+        reg = torch.tensor(0.0)
         return reg
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):

@@ -89,7 +89,8 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
             obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]
             reg = reg + object_.options.total_variation.weight * metrics.TotalVariationLoss(reduction="mean")(obj_data)
             
-        reg.backward()
+        if reg.requires_grad:
+            reg.backward()
         return reg
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):        
