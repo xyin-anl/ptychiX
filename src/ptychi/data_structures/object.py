@@ -695,8 +695,16 @@ class DIPPlanarObject(DIPObject, PlanarObject):
         expected_phase_shape = (self.n_slices, *self.lateral_shape)
         if tuple(phase.shape) != expected_phase_shape:
             logger.warning(
-                f"Shape of phase output by NN is expected to be (n_slices, h, w) = {expected_phase_shape} but got {phase.shape}."
+                "Shape of phase output by NN is expected to be "
+                f"(n_slices, h, w) = {expected_phase_shape} but got {phase.shape}. "
+                "Padding/cropping generated object to match expected shape."
             )
+            mag_resized, phase_resized = [], []
+            for i_slice in range(expected_phase_shape[0]):
+                mag_resized.append(ip.central_crop_or_pad(mag[i_slice], expected_phase_shape[1:]))
+                phase_resized.append(ip.central_crop_or_pad(phase[i_slice], expected_phase_shape[1:]))
+            mag = torch.stack(mag_resized)
+            phase = torch.stack(phase_resized)
         
         if self.options.deep_image_prior_options.constrain_object_outside_network:
             mag = torch.sigmoid(mag)
