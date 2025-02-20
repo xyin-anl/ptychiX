@@ -87,12 +87,12 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                 "Selecting optimizer for OPRModeWeights is not supported for "
                 "LSQMLReconstructor and will be disregarded."
             )
-        if not isinstance(self.parameter_group.opr_mode_weights, dsbase.DummyParameter):
-            if self.parameter_group.opr_mode_weights.data[:, 1:].abs().max() < 1e-9:
-                raise ValueError(
-                    "Weights of eigenmodes (the second and following OPR modes) in LSQMLReconstructor "
-                    "should not be all zero, which can cause numerical instability!"
-                )
+        if (self.parameter_group.opr_mode_weights.n_opr_modes > 1 and 
+            self.parameter_group.opr_mode_weights.data[:, 1:].abs().max() < 1e-9):
+            raise ValueError(
+                "Weights of eigenmodes (the second and following OPR modes) in LSQMLReconstructor "
+                "should not be all zero, which can cause numerical instability!"
+            )
 
     def build(self) -> None:
         super().build()
@@ -242,7 +242,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             delta_p_i = self.adjoint_shift_probe_update_direction(indices, delta_p_i_unshifted, first_mode_only=True)
             delta_p_hat = self._precondition_probe_update_direction(delta_p_i)  # Eq. 25a
             if i_slice == 0:
-                if not self.parameter_group.opr_mode_weights.is_dummy:
+                if self.parameter_group.opr_mode_weights.optimization_enabled(self.current_epoch):
                     self.parameter_group.opr_mode_weights.update_variable_probe(
                         self.parameter_group.probe,
                         indices,

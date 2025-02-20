@@ -491,6 +491,13 @@ class OPRModeWeightsOptions(ParameterOptions):
     - a (n_opr_modes,) array that gives the weights of each OPR mode. These weights
         will be duplicated for every point.
     """
+    
+    optimizable: bool = False
+    """
+    The master switch of optimizability of OPR mode weights. This option must be set
+    to True for either `optimize_eigenmode_weights` or `optimize_intensity_variation`
+    to take effect.
+    """
 
     optimize_eigenmode_weights: bool = True
     """
@@ -527,6 +534,34 @@ class OPRModeWeightsOptions(ParameterOptions):
                     "optimize_intensity_variation and optimize_eigenmode_weights "
                     "should be set to True."
                 )
+        n_opr_modes_in_probe = options.probe_options.initial_guess.shape[0]
+        if n_opr_modes_in_probe > 1:
+            if self.initial_weights is None:
+                raise ValueError(
+                    f"You have {n_opr_modes_in_probe} OPR modes in the probe initial guess, "
+                    "but initial OPR weights are not provided."
+                )
+            elif self.initial_weights.shape[-1] != n_opr_modes_in_probe:
+                raise ValueError(
+                    f"You have {n_opr_modes_in_probe} OPR modes in the probe initial guess, "
+                    f"but the number of modes in your provided OPR weights is {self.initial_weights.shape[-1]}."
+                )
+        else:
+            if self.initial_weights is None:
+                logging.info(
+                    "Unspecified OPR weight initial guess will be automatically populated with 1s."
+                )
+            elif self.initial_weights.shape[-1] != n_opr_modes_in_probe:
+                raise ValueError(
+                    f"You have {n_opr_modes_in_probe} OPR modes in the probe initial guess, "
+                    f"but the number of modes in your provided OPR weights is {self.initial_weights.shape[-1]}."
+                )
+        if self.initial_weights is not None and self.optimizable:
+            logging.warning(
+                "The default value of OPRModeWeightsOptions has been changed to False. "
+                "You have provided initial OPR weights, but optimizable is set to False. "
+                "Is this intended?"            
+            )
 
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()

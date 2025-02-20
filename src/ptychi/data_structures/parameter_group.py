@@ -32,7 +32,7 @@ class PtychographyParameterGroup(ParameterGroup):
 
     probe_positions: "probepos.ProbePositions"
 
-    opr_mode_weights: Optional["oprweights.OPRModeWeights"] = dataclasses.field(default_factory=dsbase.DummyParameter)
+    opr_mode_weights: "oprweights.OPRModeWeights"
 
     def __post_init__(self):
         if self.probe.has_multiple_opr_modes and self.opr_mode_weights is None:

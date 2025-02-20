@@ -132,7 +132,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             delta_p_i = self.adjoint_shift_probe_update_direction(indices, delta_p_i, first_mode_only=True)
 
         # Calculate and apply opr mode updates
-        if not self.parameter_group.opr_mode_weights.is_dummy:
+        if self.parameter_group.opr_mode_weights.optimization_enabled(self.current_epoch):
             opr_mode_weights.update_variable_probe(
                 probe,
                 indices,

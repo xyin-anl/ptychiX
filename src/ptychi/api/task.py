@@ -16,7 +16,6 @@ import ptychi.data_structures.probe as probe
 import ptychi.data_structures.probe_positions as probepos
 import ptychi.data_structures.parameter_group as paramgrp
 import ptychi.maps as maps
-from ptychi.data_structures.base import DummyParameter
 from ptychi.io_handles import PtychographyDataset
 from ptychi.reconstructors.base import Reconstructor
 from ptychi.utils import to_tensor
@@ -154,23 +153,18 @@ class PtychographyTask(Task):
         self.probe_positions = probepos.ProbePositions(data=data, options=self.position_options)
 
     def build_opr_mode_weights(self):
-        n_opr_modes = self.probe_options.initial_guess.shape[0]
-        if n_opr_modes == 1:
-            self.opr_mode_weights = DummyParameter()
-            return
         if self.opr_mode_weight_options.initial_weights is None:
-            self.opr_mode_weights = DummyParameter()
-            return
+            initial_weights = torch.ones([self.data_options.data.shape[0], 1])
         else:
             initial_weights = to_tensor(self.opr_mode_weight_options.initial_weights)
-            if self.opr_mode_weight_options.initial_weights.ndim == 1:
-                # If a 1D array is given, expand it to all scan points.
-                initial_weights = initial_weights.unsqueeze(0).repeat(
-                    len(self.position_options.position_x_px), 1
-                )
-            self.opr_mode_weights = oprweights.OPRModeWeights(
-                data=initial_weights, options=self.opr_mode_weight_options
+        if initial_weights.ndim == 1:
+            # If a 1D array is given, expand it to all scan points.
+            initial_weights = initial_weights.unsqueeze(0).repeat(
+                len(self.position_options.position_x_px), 1
             )
+        self.opr_mode_weights = oprweights.OPRModeWeights(
+            data=initial_weights, options=self.opr_mode_weight_options
+        )
 
     def build_reconstructor(self):
         par_group = paramgrp.PlanarPtychographyParameterGroup(
