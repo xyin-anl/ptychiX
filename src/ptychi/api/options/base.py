@@ -241,7 +241,12 @@ class ObjectOptions(ParameterOptions):
     patch_interpolation_method: enums.PatchInterpolationMethods = (
         enums.PatchInterpolationMethods.FOURIER
     )
-    """The interpolation method used for extracting and updating patches of the object."""
+    """
+    Selects the interpolation method used for extracting and updating 
+    patches of the object IF patch extraction/placement is done using 
+    the object's methods `extract_patches_function` or 
+    `place_patches_function`.
+    """
     
     remove_object_probe_ambiguity: RemoveObjectProbeAmbiguityOptions = field(
         default_factory=RemoveObjectProbeAmbiguityOptions

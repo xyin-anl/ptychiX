@@ -26,11 +26,13 @@ class DMObjectOptions(base.ObjectOptions):
     to this value."""
 
     inertia: float = 0
+    "Inertia of the object update. Should be between 0 and 1."
 
 
 @dataclasses.dataclass
 class DMProbeOptions(base.ProbeOptions):
     inertia: float = 0
+    "Inertia of the probe update. Should be between 0 and 1."
 
 
 @dataclasses.dataclass
