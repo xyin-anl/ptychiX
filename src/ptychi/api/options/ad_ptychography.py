@@ -47,7 +47,7 @@ class AutodiffPtychographyObjectOptions(base.ObjectOptions):
 
 @dataclasses.dataclass
 class AutodiffPtychographyProbeOptions(base.ProbeOptions):
-    pass
+    deep_image_prior_options: Optional[DeepImagePriorOptions] = dataclasses.field(default_factory=DeepImagePriorOptions)
 
 
 @dataclasses.dataclass

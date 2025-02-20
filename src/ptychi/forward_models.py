@@ -7,6 +7,7 @@ from torch import Tensor
 from torch.nn import ModuleList
 
 import ptychi.data_structures.object
+import ptychi.data_structures.probe
 from ptychi.propagate import (
     WavefieldPropagatorParameters,
     AngularSpectrumPropagator,
@@ -483,6 +484,14 @@ class PlanarPtychographyForwardModel(ForwardModel):
         self.in_object_propagator.update(self.in_object_prop_params)
         slice_psi_prop = self.in_object_propagator.propagate_backward(psi)
         return slice_psi_prop
+    
+    def dip_generate(self):
+        """Run embedded NN models in deep image prior parameters to generate data.
+        """
+        if isinstance(self.object, ptychi.data_structures.object.DIPObject):
+            self.object.generate()
+        if isinstance(self.probe, ptychi.data_structures.probe.DIPProbe):
+            self.probe.generate()
 
     @timer()
     def forward(self, indices: Tensor, return_object_patches: bool = False) -> Tensor:
@@ -503,8 +512,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         """
         self.intermediate_variables = self.PlanarPtychographyIntermediateVariables()
         
-        if isinstance(self.object, ptychi.data_structures.object.DIPObject):
-            self.object.generate()
+        self.dip_generate()
         
         positions = self.probe_positions.tensor[indices]
         obj_patches = self.extract_object_patches(indices)
@@ -564,8 +572,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         Tensor
             Predicted intensities (squared magnitudes).
         """
-        if isinstance(self.object, ptychi.data_structures.object.DIPObject):
-            self.object.generate()
+        self.dip_generate()
 
         positions = self.probe_positions.tensor[indices]
         obj_patches = self.extract_object_patches(indices)
@@ -618,7 +625,10 @@ class PlanarPtychographyForwardModel(ForwardModel):
         nothing is done. If the normalization is "backward" (default in `torch.fft`),
         all gradients are scaled by 1 / sqrt(N).
         """
-        if isinstance(self.object, ptychi.data_structures.object.DIPObject):
+        if (
+            isinstance(self.object, ptychi.data_structures.object.DIPObject) or 
+            isinstance(self.probe, ptychi.data_structures.probe.DIPProbe)
+        ):
             return
         if not isinstance(self.free_space_propagator, FourierPropagator):
             return
@@ -663,7 +673,10 @@ class PlanarPtychographyForwardModel(ForwardModel):
         For probe positions and OPR weights, we just compensate for the mean reduction:
         (1) multiply it by h * w.
         """
-        if isinstance(self.object, ptychi.data_structures.object.DIPObject):
+        if (
+            isinstance(self.object, ptychi.data_structures.object.DIPObject) or 
+            isinstance(self.probe, ptychi.data_structures.probe.DIPProbe)
+        ):
             return
         # Directly modify the gradients here. Tensor.register_hook has memory leak issue.
         if self.object.optimizable:
