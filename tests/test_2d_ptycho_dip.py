@@ -143,11 +143,15 @@ class Test2dPtychoDIP(tutils.TungstenDataTester):
             "num_levels": 4,
             "base_channels": 32,
             "use_batchnorm": True,
+            "zero_conv": True,
+            "sigmoid_on_magnitude": False,
+            "scaled_tanh_on_phase": False
         }
+        options.probe_options.deep_image_prior_options.residual_generation = True
         options.probe_options.deep_image_prior_options.constrain_object_outside_network = False
         options.probe_options.optimizable = True
         options.probe_options.optimizer = api.Optimizers.ADAM
-        options.probe_options.step_size = 1e-5
+        options.probe_options.step_size = 1e-4
 
         options.probe_position_options.position_x_px = positions_px[:, 1]
         options.probe_position_options.position_y_px = positions_px[:, 0]
@@ -159,7 +163,7 @@ class Test2dPtychoDIP(tutils.TungstenDataTester):
         
         task = PtychographyTask(options)
         task.run()
-        
+
         recon = task.get_data_to_cpu('object', as_numpy=True)[0, 250:500, 250:500]
         return recon
 

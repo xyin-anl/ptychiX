@@ -472,6 +472,10 @@ class DIPProbe(Probe):
         nn_input = self.get_nn_input()
         self.register_buffer("nn_input", nn_input)
         
+        self.initial_data = None
+        if self.options.deep_image_prior_options.residual_generation:
+            self.initial_data = self.data.clone()            
+        
     def build_model(self):
         if not self.options.deep_image_prior_options.enabled:
             return
@@ -515,6 +519,9 @@ class DIPProbe(Probe):
             self.dip_output_magnitude = mag.clone()
             self.dip_output_phase = phase.clone()
         
+        if self.options.deep_image_prior_options.residual_generation:
+            init_data = torch.stack([self.initial_data.real, self.initial_data.imag], dim=-1)
+            p = p + init_data
         self.tensor.data = p
         return self.data
 
