@@ -54,7 +54,7 @@ class LossTracker:
 
     def conclude_epoch(self, epoch: Optional[int] = None) -> None:
         self.epoch_loss = self.epoch_loss / self.accumulated_num_batches
-        self.epoch_reg_loss = self.epoch_reg_loss / self.accumulated_num_reg_batches
+        self.epoch_reg_loss = self.epoch_reg_loss / max(self.accumulated_num_reg_batches, 1)
         if epoch is None:
             epoch = self.epoch
             self.epoch += 1
