@@ -132,6 +132,7 @@ class PtychographyTask(Task):
             free_space_propagation_distance_m=self.data_options.free_space_propagation_distance_m,
             fft_shift=self.data_options.fft_shift,
             save_data_on_device=self.data_options.save_data_on_device,
+            valid_pixel_mask=self.data_options.valid_pixel_mask
         )
 
     def build_object(self):
