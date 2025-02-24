@@ -230,7 +230,7 @@ class Probe(dsbase.ReconstructParameter):
         self.set_data(probe)
 
     def constrain_opr_mode_orthogonality(
-        self, weights: "oprweights.OPRModeWeights", eps=1e-5, *, update_weights_in_place: bool
+        self, weights: "oprweights.OPRModeWeights", *, update_weights_in_place: bool
     ):
         """
         Add the following constraints to variable probe weights
@@ -276,46 +276,55 @@ class Probe(dsbase.ReconstructParameter):
         # TODO: remove outliars by polynomial fitting (remove_variable_probe_ambiguities.m)
 
         # Normalize eigenmodes and adjust weights.
-        eigenmodes = probe[1:, ...]
+        eigenmodes = probe[1:, 0, ...]
         vnorm = pmath.mnorm(eigenmodes, dim=(-2, -1), keepdims=True)
-        eigenmodes /= vnorm + eps
+        eigenmodes /= vnorm
+        probe[1:, 0, ...] = eigenmodes
         # Shape of weights:      (n_points, n_opr_modes).
         # Currently, only the first incoherent mode has OPR modes, and the
         # stored weights are for that mode.
-        weights_data[:, 1:] = weights_data[:, 1:] * vnorm[:, 0, 0, 0]
+        weights_data[:, 1:] = weights_data[:, 1:] * vnorm[:, 0, 0]
 
         # Orthogonalize variable probes. With Gram-Schmidt, the first
         # OPR mode (i.e., the main mode) should not change during orthogonalization.
-        probe = pmath.orthogonalize_gs(
-            probe,
+        probe[:, 0] = pmath.orthogonalize_gs(
+            probe[:, 0],
             dim=(-2, -1),
             group_dim=0,
         )
+        # Orthognalize OPR weights.
+        weights_data = pmath.orthogonalize_gs(
+            weights_data.T,
+            dim=1,
+            group_dim=0
+        )
+        weights_data = weights_data.T
+        
+        if torch.any(torch.isnan(weights_data)) or torch.any(torch.isnan(probe)):
+            raise RuntimeError(
+                "After Gram-Schmidt orthogonalization, the probe or OPR weights (or both) "
+                "contains NaNs. This might be because the quantity is already orthogonal."
+            )
 
-        if False:
-            # Compute the energies of variable OPR modes (i.e., the second and following)
-            # in order to sort probes by energy.
-            # Shape of power:         (n_opr_modes - 1,).
-            power = pmath.norm(weights_data[..., 1:], dim=0) ** 2
+        # Compute the energies of variable OPR modes (i.e., the second and following)
+        # in order to sort probes by energy.
+        # Shape of power:         (n_opr_modes - 1,).
+        energies = pmath.norm(weights_data[..., 1:], dim=0)
 
-            # Sort the probes by energy
-            sorted = torch.argsort(-power)
-            weights_data[:, 1:] = weights_data[:, sorted + 1]
-            # Apply only to the first incoherent mode.
-            probe[1:, 0, :, :] = probe[sorted + 1, 0, :, :]
+        # Sort the probes by energy
+        sorted = torch.argsort(-energies)
+        weights_data[:, 1:] = weights_data[:, sorted + 1]
+        # Apply only to the first incoherent mode.
+        probe[1:, 0, :, :] = probe[sorted + 1, 0, :, :]
 
         # Remove outliars from variable probe weights.
         aevol = torch.abs(weights_data)
+        signs = torch.sign(weights_data)
         weights_data = torch.minimum(
             aevol,
-            1.5
-            * torch.quantile(
-                aevol,
-                0.95,
-                dim=0,
-                keepdims=True,
-            ).type(weights_data.dtype),
-        ) * torch.sign(weights_data)
+            1.5 * torch.quantile(aevol, 0.95, dim=0, keepdims=True).type(weights_data.dtype),
+        )
+        weights_data = weights_data * signs
 
         # Update stored data.
         self.set_data(probe)
