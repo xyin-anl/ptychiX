@@ -984,7 +984,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         self.indices = []
 
     @timer()
-    def run_post_epoch_hooks(self) -> None:
+    def run_post_epoch_hooks(self, *args, **kwargs) -> None:
         if self.current_epoch > 0 or (not self.options.rescale_probe_intensity_in_first_epoch):
             if (
                 self.parameter_group.object.optimization_enabled(self.current_epoch)
@@ -1008,7 +1008,11 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         else:
             # In epoch 0, only correct probe intensity.
             self._apply_probe_intensity_scaling_correction()
-        return super().run_post_epoch_hooks()
+            
+        post_epoch_ops_skip_list = []
+        if self.options.rescale_probe_intensity_in_first_epoch and self.current_epoch == 0:
+            post_epoch_ops_skip_list.append(self.PostEpochOps.OPR_ORTHOGONALIZATION)
+        return super().run_post_epoch_hooks(post_epoch_ops_skip_list)
 
     @timer()
     def run_minibatch(self, input_data, y_true, *args, **kwargs) -> None:

@@ -1,5 +1,6 @@
 from typing import Optional, Tuple, Sequence, TYPE_CHECKING
 import logging
+from enum import Enum, auto
 
 import pandas as pd
 import torch
@@ -284,7 +285,7 @@ class IterativeReconstructor(Reconstructor):
     def run_post_update_hooks(self) -> None:
         pass
 
-    def run_post_epoch_hooks(self) -> None:
+    def run_post_epoch_hooks(self, *args, **kwargs) -> None:
         pass
 
     @timer()
@@ -313,7 +314,22 @@ class IterativeReconstructor(Reconstructor):
 
 class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyReconstructor):
     parameter_group: "pg.PtychographyParameterGroup"
-
+    
+    class PostEpochOps(Enum):
+        PROBE_POWER = auto()
+        INCOHERENT_ORTHOGONALIZATION = auto()
+        OPR_ORTHOGONALIZATION = auto()
+        MULTISLICE_REGULARIZATION = auto()
+        SMOOTHNESS = auto()
+        TOTAL_VARIATION = auto()
+        GRID_ARTIFACT = auto()
+        POSITION_CONSTRAINT = auto()
+        COMPACT_CLUSTER_UPDATE = auto()
+        PROBE_SUPPORT = auto()
+        PROBE_CENTER = auto()
+        OBJECT_PROBE_DISAMBIGUATE = auto()
+        OPR_SMOOTHING = auto()
+    
     def __init__(
         self,
         parameter_group: "pg.PtychographyParameterGroup",
@@ -360,55 +376,79 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
     def run_pre_epoch_hooks(self) -> None:
         self.update_preconditioners()
 
-    def run_post_epoch_hooks(self) -> None:
+    def run_post_epoch_hooks(self, skip_list=()) -> None:
         with torch.no_grad():
             probe = self.parameter_group.probe
             object_ = self.parameter_group.object
             positions = self.parameter_group.probe_positions
 
             # Apply probe power constraint.
-            if probe.options.power_constraint.is_enabled_on_this_epoch(self.current_epoch):
+            if (self.PostEpochOps.PROBE_POWER not in skip_list
+                and probe.options.power_constraint.is_enabled_on_this_epoch(self.current_epoch)
+            ):
                 probe.constrain_probe_power(
                     self.parameter_group.object, self.parameter_group.opr_mode_weights
                 )
 
             # Apply incoherent mode orthogonality constraint.
-            if probe.options.orthogonalize_incoherent_modes.is_enabled_on_this_epoch(
-                self.current_epoch
+            if (self.PostEpochOps.INCOHERENT_ORTHOGONALIZATION not in skip_list
+                and probe.options.orthogonalize_incoherent_modes.is_enabled_on_this_epoch(
+                    self.current_epoch
+                )
             ):
                 probe.constrain_incoherent_modes_orthogonality()
+                
+            # Smooth OPR weights.
+            opr_mode_weights = self.parameter_group.opr_mode_weights
+            if (self.PostEpochOps.OPR_SMOOTHING
+                and opr_mode_weights.options.smoothing.is_enabled_on_this_epoch(self.current_epoch)
+            ):
+                opr_mode_weights.smooth_weights()
 
             # Apply OPR orthogonality constraint.
-            if probe.options.orthogonalize_opr_modes.is_enabled_on_this_epoch(self.current_epoch):
+            if (self.PostEpochOps.OPR_ORTHOGONALIZATION not in skip_list
+                and probe.options.orthogonalize_opr_modes.is_enabled_on_this_epoch(self.current_epoch)
+            ):
                 probe.constrain_opr_mode_orthogonality(
                     self.parameter_group.opr_mode_weights, update_weights_in_place=True
                 )
 
             # Regularize multislice reconstruction.
-            if object_.options.multislice_regularization.is_enabled_on_this_epoch(
-                self.current_epoch
+            if (self.PostEpochOps.MULTISLICE_REGULARIZATION not in skip_list
+                and object_.options.multislice_regularization.is_enabled_on_this_epoch(
+                    self.current_epoch
+                )
             ):
                 object_.regularize_multislice()
 
             # Apply smoothness constraint.
-            if object_.options.smoothness_constraint.is_enabled_on_this_epoch(self.current_epoch):
+            if (self.PostEpochOps.SMOOTHNESS not in skip_list
+                and object_.options.smoothness_constraint.is_enabled_on_this_epoch(self.current_epoch)
+            ):
                 object_.constrain_smoothness()
 
             # Apply total variation constraint.
-            if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
+            if (self.PostEpochOps.TOTAL_VARIATION not in skip_list
+                and object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch)
+            ):
                 object_.constrain_total_variation()
 
             # Remove grid artifacts.
-            if object_.options.remove_grid_artifacts.is_enabled_on_this_epoch(self.current_epoch):
+            if (self.PostEpochOps.GRID_ARTIFACT not in skip_list
+                and object_.options.remove_grid_artifacts.is_enabled_on_this_epoch(self.current_epoch)
+            ):
                 object_.remove_grid_artifacts()
 
             # Apply position constraint.
-            if positions.position_mean_constraint_enabled(self.current_epoch):
+            if (self.PostEpochOps.POSITION_CONSTRAINT not in skip_list
+                and positions.position_mean_constraint_enabled(self.current_epoch)
+            ):
                 positions.constrain_position_mean()
 
             # Update compact mode clustering.
             if (
-                self.options.batching_mode == enums.BatchingModes.COMPACT
+                self.PostEpochOps.COMPACT_CLUSTER_UPDATE not in skip_list
+                and self.options.batching_mode == enums.BatchingModes.COMPACT
                 and self.options.compact_mode_update_clustering
                 and positions.optimization_enabled(self.current_epoch)
                 and (self.current_epoch - positions.optimization_plan.start)
@@ -418,22 +458,22 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
                 self.dataloader.batch_sampler.update_clusters(positions.data.detach().cpu())
                 
             # Apply probe support constraint.
-            if probe.options.support_constraint.is_enabled_on_this_epoch(self.current_epoch):
+            if (self.PostEpochOps.PROBE_SUPPORT not in skip_list
+                and probe.options.support_constraint.is_enabled_on_this_epoch(self.current_epoch)
+            ):
                 probe.constrain_support()
                 
             # Apply probe center constraint.
-            if probe.options.center_constraint.is_enabled_on_this_epoch(self.current_epoch):
+            if (self.PostEpochOps.PROBE_CENTER not in skip_list
+                and probe.options.center_constraint.is_enabled_on_this_epoch(self.current_epoch)
+            ):
                 probe.center_probe()
 
             # Remove object-probe ambiguity.
-            if object_.options.remove_object_probe_ambiguity.is_enabled_on_this_epoch(self.current_epoch):
+            if (self.PostEpochOps.OBJECT_PROBE_DISAMBIGUATE not in skip_list
+                and object_.options.remove_object_probe_ambiguity.is_enabled_on_this_epoch(self.current_epoch)
+            ):
                 object_.remove_object_probe_ambiguity(probe, update_probe_in_place=True)
-            
-            # Smooth OPR weights.
-            opr_mode_weights = self.parameter_group.opr_mode_weights
-            if opr_mode_weights.options.smoothing.is_enabled_on_this_epoch(self.current_epoch):
-                opr_mode_weights.smooth_weights()
-            opr_mode_weights.remove_outliers()
 
 
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
@@ -560,9 +600,9 @@ class AnalyticalIterativePtychographyReconstructor(
             low_memory_mode=self.options.forward_model_options.low_memory_mode,
         )
 
-    def run_post_epoch_hooks(self) -> None:
+    def run_post_epoch_hooks(self, skip_list=()) -> None:
         with torch.no_grad():
-            super().run_post_epoch_hooks()
+            super().run_post_epoch_hooks(skip_list=skip_list)
 
             object_ = self.parameter_group.object
 
