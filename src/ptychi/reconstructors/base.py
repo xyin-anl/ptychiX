@@ -358,7 +358,8 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             )
             
     def run_pre_epoch_hooks(self) -> None:
-        self.update_preconditioners()
+        with torch.no_grad():
+            self.update_preconditioners()
 
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
