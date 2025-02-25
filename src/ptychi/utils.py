@@ -35,7 +35,7 @@ def rescale_probe(
     patterns : Tensor
         A (n, h, w) tensor of diffraction patterns.
     weights : Tensor, optional
-        A (n_opr_modes,) tensor of weights for each OPR mode.
+        A (n_points, n_opr_modes) tensor of weights for each OPR mode.
 
     Returns
     -------
@@ -45,6 +45,10 @@ def rescale_probe(
     propagator = propagate.FourierPropagator()
 
     probe_tensor = torch.tensor(probe)
+    
+    if probe_tensor.ndim == 4:
+        if probe_tensor.shape[0] == 1 or weights is None:
+            probe_tensor = probe_tensor[0]
 
     if probe_tensor.ndim == 3:
         i_probe = (
@@ -56,6 +60,7 @@ def rescale_probe(
         )
     else:
         weights = torch.tensor(weights)
+        weights = weights.mean(dim=0) 
         probe_corrected = (probe_tensor * weights[:, None, None, None]).sum(0)
         i_probe = (
             (torch.abs(propagator.propagate_forward(probe_corrected)) ** 2)
