@@ -1,7 +1,7 @@
 import math
 import logging
-
-from typing import Optional, TYPE_CHECKING
+import dataclasses
+from typing import Optional, TYPE_CHECKING, TypedDict
 import torch
 from torch import Tensor
 from torch.nn import ModuleList
@@ -22,6 +22,15 @@ if TYPE_CHECKING:
     import ptychi.data_structures.base as dsbase
     
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass
+class IntermediateVariables(dict):
+    def __getitem__(self, key):
+        return getattr(self, key)
+    
+    def __setitem__(self, key, value):
+        return setattr(self, key, value)
 
 
 class ForwardModel(torch.nn.Module):
@@ -70,10 +79,43 @@ class ForwardModel(torch.nn.Module):
 
     def record_intermediate_variable(self, name, var):
         if self.retain_intermediates:
-            self.intermediate_variables[name] = var
+            if isinstance(self.intermediate_variables[name], list):
+                self.intermediate_variables[name].append(var)
+            else:
+                self.intermediate_variables[name] = var
 
 
 class PlanarPtychographyForwardModel(ForwardModel):
+    @dataclasses.dataclass
+    class PlanarPtychographyIntermediateVariables(IntermediateVariables):
+        positions: Tensor = None
+        """Tensor of shape `[batch_size, 2]`, probe positions in the 
+        current batch.
+        """
+        
+        obj_patches: Tensor = None
+        """Tensor of shape `[batch_size, n_slices, h, w]`, object patches of the 
+        current batch.
+        """
+        
+        psi: Tensor = None
+        """Tensor of shape `[batch_size, n_probe_modes, h, w]`, wavefields at 
+        the exit plane. For multislice objects, this is the wavefield at the 
+        exit plane of the last slice.
+        """
+        
+        psi_far: Tensor = None
+        """Tensor of shape `[batch_size, n_probe_modes, h, w]`, wavefields at 
+        the far field.
+        """
+        
+        shifted_unique_probes: list[Tensor] = dataclasses.field(default_factory=list)
+        """List of `n_slices` tensors of shape `[batch_size, n_probe_modes, h, w]`, unique 
+        probes at each slice for every position. The position-specificity is due 
+        to OPR modes and/or subpixel shifts 
+        (when `apply_subpixel_shifts_on_probe == True`).
+        """
+    
     def __init__(
         self,
         parameter_group: "ptychi.data_structures.parameter_group.PlanarPtychographyParameterGroup",
@@ -90,6 +132,10 @@ class PlanarPtychographyForwardModel(ForwardModel):
         """
         The forward model for planar ptychography, which supports multislice propagation
         but does not work for dense 3D objects that requires rotation. 
+        
+        While running the forward model, some intermediate variables are recorded in 
+        `self.intermediate_variables` to be used by the reconstructor. For more details,
+        see `PlanarPtychographyForwardModel.PlanarPtychographyIntermediateVariables`.
 
         Parameters
         ----------
@@ -148,13 +194,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         self.build_in_object_propagator()
 
         # Intermediate variables. Only used if retain_intermediate is True.
-        self.intermediate_variables = {
-            "positions": None,
-            "obj_patches": None,
-            "psi": None,
-            "psi_far": None,
-            "shifted_unique_probes": None,
-        }
+        self.intermediate_variables = self.PlanarPtychographyIntermediateVariables()
 
         self.check_inputs()
 
@@ -297,7 +337,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         return unique_probes
         
     @timer()
-    def propagate_through_object(self, probe, obj_patches, return_slice_psis=False):
+    def propagate_through_object(self, probe, obj_patches):
         """
         Propagate through the planar object.
 
@@ -308,26 +348,17 @@ class PlanarPtychographyForwardModel(ForwardModel):
             of wavefields at the entering plane.
         obj_patches : Tensor
             A (batch_size, n_slices, h, w) tensor of object patches.
-        return_slice_psis : bool
-            If True, return the wavefields at each slice.
 
         Returns
         -------
         Tensor
             A (batch_size, n_modes, h, w) tensor of wavefields at the
             exiting plane.
-        Tensor, optional
-            A (batch_size, n_slices - 1, n_modes, h, w) tensors of pre-modulation
-            wavefields at each slice except the first one. This is only returned
-            when `return_slice_psis` is True.
         """
-        if self.retain_intermediates:
-            slice_psis = []
-
         slice_psi = probe
         for i_slice in range(self.parameter_group.object.n_slices):
-            if self.retain_intermediates and i_slice > 0:
-                slice_psis.append(slice_psi)
+            if i_slice > 0:
+                self.record_intermediate_variable("shifted_unique_probes", slice_psi)
 
             # Modulate wavefield.
             # Shape of slice_psi: (batch_size, n_modes, h, w)
@@ -337,16 +368,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             # Propagate wavefield.
             if i_slice < self.parameter_group.object.n_slices - 1:
                 slice_psi = self.propagate_to_next_slice(slice_psi, i_slice)
-        if self.retain_intermediates:
-            # Shape of slice_psis: (batch_size, n_slices - 1, n_modes, h, w)
-            if len(slice_psis) > 0:
-                self.record_intermediate_variable("slice_psis", torch.stack(slice_psis, dim=1))
-            self.record_intermediate_variable("psi", slice_psi)
-        if return_slice_psis:
-            if "slice_psis" in self.intermediate_variables.keys():
-                return slice_psi, self.intermediate_variables["slice_psis"]
-            else:
-                return slice_psi, None
+        self.record_intermediate_variable("psi", slice_psi)
         return slice_psi
 
     @timer()
@@ -375,8 +397,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
         probe = self.get_unique_probes(indices, always_return_probe_batch=self.apply_subpixel_shifts_on_probe)
         if self.apply_subpixel_shifts_on_probe:
             probe = self.shift_unique_probes(indices, probe, first_mode_only=True)
-            self.record_intermediate_variable("shifted_unique_probes", probe)
-        slice_psi = self.propagate_through_object(probe, obj_patches, return_slice_psis=False)
+        self.record_intermediate_variable("shifted_unique_probes", probe)
+        slice_psi = self.propagate_through_object(probe, obj_patches)
         return slice_psi
 
     @timer()
@@ -479,6 +501,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
         Tensor
             Predicted intensities (squared magnitudes).
         """
+        self.intermediate_variables = self.PlanarPtychographyIntermediateVariables()
+        
         positions = self.probe_positions.tensor[indices]
         obj_patches = self.extract_object_patches(indices)
 
@@ -547,14 +571,11 @@ class PlanarPtychographyForwardModel(ForwardModel):
         if self.apply_subpixel_shifts_on_probe:
             probe = self.shift_unique_probes(indices, probe, first_mode_only=True)
             self.record_intermediate_variable("shifted_unique_probes", probe)
-        slice_psis = []
         y = 0.0
         for i_mode in range(self.probe.n_modes):
-            exit_psi, slice_psis_current_mode = self.propagate_through_object(
-                probe[..., i_mode : i_mode + 1, :, :], obj_patches, return_slice_psis=True
+            exit_psi = self.propagate_through_object(
+                probe[..., i_mode : i_mode + 1, :, :], obj_patches
             )
-            if slice_psis_current_mode is not None:
-                slice_psis.append(slice_psis_current_mode)
             
             psi_far = self.free_space_propagator.propagate_forward(exit_psi)
             self.record_intermediate_variable("psi_far", psi_far)
@@ -563,9 +584,13 @@ class PlanarPtychographyForwardModel(ForwardModel):
 
         y = self.conform_to_detector_size(y)
 
-        # Concatenate all the modes.
-        if len(slice_psis) > 0:
-            slice_psis = torch.concat(slice_psis, dim=-3)
+        # `self.intermediate_variables.shifted_unique_probes` is now a list of `n_modes * n_slices`
+        # tensors. We concatenate the modes for each slice so that it becomes a list of `n_slices`
+        # tensors.
+        self.intermediate_variables.shifted_unique_probes = [
+            torch.concat(self.intermediate_variables.shifted_unique_probes[i_mode::self.probe.n_modes], dim=-3)
+            for i_mode in range(self.probe.n_modes)
+        ]
         
         returns = [y]
         if return_object_patches:

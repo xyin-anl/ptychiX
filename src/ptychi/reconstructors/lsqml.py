@@ -210,13 +210,13 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                 chi = self.forward_model.propagate_to_previous_slice(chi, slice_index=i_slice + 1)
                 
             # Get unique probes, or the wavefield at the current slice before modulation.
-            probe_current_slice = self._get_slice_psi_or_probe(i_slice)
+            probe_current_slice = self._get_incident_wavefields_for_slice(i_slice)
 
             if self.options.solve_step_sizes_only_using_first_probe_mode or not self.parameter_group.object.options.multimodal_update:
                 # If object step size is to be solved with only the first probe mode,
                 # then the delta_o_i used should also be calculated using only the first
                 # probe mode.
-                delta_o_i_mode_0_raw = self._calculate_object_patch_update_direction(chi, psi_im1=probe_current_slice, probe_mode_index=0)
+                delta_o_i_mode_0_raw = self._calculate_object_patch_update_direction(chi, incident_wavefields=probe_current_slice, probe_mode_index=0)
                 delta_o_comb_mode_0 = self._combine_object_patch_update_directions(delta_o_i_mode_0_raw, positions, onto_accumulated=True, slice_index=i_slice)
                 _, delta_o_i_mode_0 = self._precondition_object_update_direction(
                     delta_o_comb_mode_0, positions
@@ -225,7 +225,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             # Calculate object update direction and precondition it.
             if self.parameter_group.object.options.multimodal_update:
                 delta_o_i_raw = self._calculate_object_patch_update_direction(
-                    chi, psi_im1=probe_current_slice, probe_mode_index=None
+                    chi, incident_wavefields=probe_current_slice, probe_mode_index=None
                 )
                 delta_o_comb = self._combine_object_patch_update_directions(delta_o_i_raw, positions, onto_accumulated=True, slice_index=i_slice)
             else:
@@ -308,10 +308,11 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         return delta_o_patches
 
     @timer()
-    def _get_slice_psi_or_probe(self, i_slice):
+    def _get_incident_wavefields_for_slice(self, i_slice):
         r"""
-        Get $\psi_{i-1}$, the wavefield modulated by the previous slice and then propagated,
-        for multislice reconstruction. If `i_slice == 0`, return the probe instead.
+        Get the incident wavefields for a specified slice. For the first slice,
+        this is just the unique probes. For other slices in a multislice object,
+        this is the wavefield at the given slice before modulation.
 
         Parameters
         ----------
@@ -323,15 +324,10 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         Returns
         -------
         Tensor
-            The previous wavefield. If `i_slice == 0` and the probe does not have OPR modes,
-            the returned tensor will be (n_modes, h, w); otherwise it will be
-            (batch_size, n_modes, h, w).
+            A (batch_size, n_modes, h, w) tensor giving the incident wavefields.
         """
-        if i_slice > 0:
-            psi_im1 = self.forward_model.intermediate_variables["slice_psis"][:, i_slice - 1]
-        else:
-            psi_im1 = self.forward_model.intermediate_variables["shifted_unique_probes"]
-        return psi_im1
+        incident_wavefields = self.forward_model.intermediate_variables.shifted_unique_probes[i_slice]
+        return incident_wavefields
 
     @timer()
     def calculate_object_and_probe_update_step_sizes(
@@ -347,7 +343,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         delta_o_i = delta_o_i[:, 0]
 
         if probe is None:
-            probe = self.forward_model.intermediate_variables["shifted_unique_probes"]
+            probe = self.forward_model.intermediate_variables.shifted_unique_probes[0]
         # When no OPR mode is present, probe is (n_modes, h, w). We add a batch dimension here.
         if probe.ndim == 3:
             probe = probe[None, ...]
@@ -407,7 +403,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         mode_slicer = self.parameter_group.probe._get_probe_mode_slicer(probe_mode_index)
 
         if probe is None:
-            probe = self.forward_model.intermediate_variables["shifted_unique_probes"]
+            probe = self.forward_model.intermediate_variables.shifted_unique_probes[0]
 
         probe = probe[:, mode_slicer]
         chi = chi[:, mode_slicer]
@@ -597,16 +593,16 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                     self.probe_momentum_params["velocity_map"][i_mode] = self.probe_momentum_params["velocity_map"][i_mode] / 2.0
 
     @timer()
-    def _calculate_object_patch_update_direction(self, chi, psi_im1=None, probe_mode_index=None):
+    def _calculate_object_patch_update_direction(self, chi, incident_wavefields=None, probe_mode_index=None):
         r"""
         Calculate the update direction for object patches, implementing
         Eq. 24b of Odstrcil, 2018. This function works in both 2D mode and
         multislice mode:
 
-        - When `psi_im1` is None, 2D mode is assumed. `chi` is multiplied with the
+        - When `incident_wavefields` is None, 2D mode is assumed. `chi` is multiplied with the
             complex conjugate of the probe.
-        - When `psi_im1` is not None, multislice mode is assumed. `chi` is multiplied
-            with the complex conjugate of `psi_im1`.
+        - When `incident_wavefields` is not None, multislice mode is assumed. `chi` is multiplied
+            with the complex conjugate of `incident_wavefields`.
 
         Parameters
         ----------
@@ -616,7 +612,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             A (batch_size, n_modes, h, w) tensor giving the difference of exit waves.
             For multislice, this should be the exiting-plane `chi` backpropagated to the
             current slice.
-        psi_im1 : Tensor
+        incident_wavefields : Tensor
             A (batch_size, n_modes, h, w) tensor giving $\psi_{i - 1}$, the wavefield
             modulated by the previous slice and propagated to the current slice. If this
             is given, multislice mode is assumed.
@@ -630,10 +626,10 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         """
         mode_slicer = self.parameter_group.probe._get_probe_mode_slicer(probe_mode_index)
         
-        if psi_im1 is None:
-            p = self.forward_model.intermediate_variables["shifted_unique_probes"]
+        if incident_wavefields is None:
+            p = self.forward_model.intermediate_variables.shifted_unique_probes[0]
         else:
-            p = psi_im1
+            p = incident_wavefields
             
         if p.ndim == 3:
             p = p[None, ...]
@@ -889,7 +885,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
             chi,
             obj_patches,
             delta_o_patches,
-            self.forward_model.intermediate_variables["shifted_unique_probes"],
+            self.forward_model.intermediate_variables.shifted_unique_probes[0],
             self.parameter_group.object.optimizer_params["lr"],
         )
         self._apply_probe_position_update(delta_pos, indices)

@@ -91,7 +91,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         obj_patches = self.forward_model.intermediate_variables["obj_patches"]
         psi = self.forward_model.intermediate_variables["psi"]
         psi_far = self.forward_model.intermediate_variables["psi_far"]
-        unique_probes = self.forward_model.intermediate_variables["shifted_unique_probes"]
+        unique_probes = self.forward_model.intermediate_variables.shifted_unique_probes[0]
 
         psi_prime = self.replace_propagated_exit_wave_magnitude(psi_far, y_true)
         # Do not swap magnitude for bad pixels.
@@ -121,7 +121,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
                 psi_prime - psi,
                 obj_patches,
                 delta_o_patches,
-                self.forward_model.intermediate_variables["shifted_unique_probes"],
+                self.forward_model.intermediate_variables.shifted_unique_probes[0],
                 object_.optimizer_params["lr"],
             )
 
