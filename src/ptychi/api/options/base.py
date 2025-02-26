@@ -415,6 +415,11 @@ class PositionCorrectionOptions(Options):
 
     cross_correlation_probe_threshold: float = 0.1
     """The probe intensity threshold used to calculate the probe mask."""
+    
+    slice_for_correction: int = None
+    """The object slice for which the position correction is calculated. If None, the middle slice
+    is chosen.
+    """
 
 
 @dataclasses.dataclass

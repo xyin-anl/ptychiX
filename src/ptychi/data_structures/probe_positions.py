@@ -30,6 +30,17 @@ class ProbePositions(dsbase.ReconstructParameter):
     @property
     def n_scan_points(self):
         return len(self.data)
+    
+    def get_slice_for_correction(self, n_slices: int = None):
+        i_slice = self.options.correction_options.slice_for_correction
+        if i_slice is None:
+            if n_slices is None:
+                raise ValueError(
+                    "When `slice_for_correction` is not set, `n_slices` must "
+                    "be provided to determine the middle slice."
+                )
+            i_slice = n_slices // 2
+        return i_slice
 
     def get_positions_in_pixel(self):
         return self.data

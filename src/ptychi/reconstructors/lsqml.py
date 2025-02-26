@@ -174,13 +174,10 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         chi = psi_opt - psi_0  # Eq, 19
         obj_patches = self.forward_model.intermediate_variables["obj_patches"]
 
-        delta_o_patches = self.update_object_and_probe(indices, chi, obj_patches, positions)
-        
-        if self.parameter_group.probe_positions.optimization_enabled(self.current_epoch):
-            self.update_probe_positions(chi, indices, obj_patches, delta_o_patches)
+        self.update_reconstruction_parameters(indices, chi, obj_patches, positions)
 
     @timer()
-    def update_object_and_probe(self, indices, chi, obj_patches, positions):
+    def update_reconstruction_parameters(self, indices, chi, obj_patches, positions):
         """
         Update the object and probe.
 
@@ -294,6 +291,18 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
                     i_slice, delta_o_comb, add_to_existing=False
                 )
             
+            if (self.parameter_group.probe_positions.optimization_enabled(self.current_epoch) 
+                and i_slice == self.parameter_group.probe_positions.get_slice_for_correction(object_.n_slices)
+            ):
+                mean_alpha_o = pmath.trim_mean(self.alpha_object_all_pos_all_slices[indices, i_slice], 0.1, dim=0)
+                self.update_probe_positions(
+                    chi, 
+                    indices, 
+                    obj_patches[:, i_slice:i_slice + 1], 
+                    mean_alpha_o * delta_o_i,
+                    self.forward_model.intermediate_variables.shifted_unique_probes[i_slice]
+                )
+            
             # Set chi to conjugate-modulated wavefield.
             chi = delta_p_i_unshifted
 
@@ -304,8 +313,6 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         ):
             self._apply_object_update(mean_alpha_o_all_slices, None)
 
-        delta_o_patches = mean_alpha_o_all_slices[0] * delta_o_i
-        return delta_o_patches
 
     @timer()
     def _get_incident_wavefields_for_slice(self, i_slice):
@@ -880,12 +887,12 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         return max(self.fourier_errors[-3:-1]) > min(self.fourier_errors[-2:])
 
     @timer()
-    def update_probe_positions(self, chi, indices, obj_patches, delta_o_patches):
+    def update_probe_positions(self, chi, indices, obj_patches, delta_o_patches, unique_probes):
         delta_pos = self.parameter_group.probe_positions.position_correction.get_update(
             chi,
             obj_patches,
             delta_o_patches,
-            self.forward_model.intermediate_variables.shifted_unique_probes[0],
+            unique_probes,
             self.parameter_group.object.optimizer_params["lr"],
         )
         self._apply_probe_position_update(delta_pos, indices)
