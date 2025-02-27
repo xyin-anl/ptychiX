@@ -2,6 +2,7 @@ from typing import Optional, Union, TYPE_CHECKING
 import dataclasses
 from dataclasses import field
 import logging
+from math import inf
 
 from numpy import ndarray
 from torch import Tensor
@@ -420,6 +421,11 @@ class PositionCorrectionOptions(Options):
     """The object slice for which the position correction is calculated. If None, the middle slice
     is chosen.
     """
+    
+    update_magnitude_limit: float = inf
+    """The maximum allowed magnitude of position update. Set to 0 or inf
+    to disable the constraint.
+    """
 
 
 @dataclasses.dataclass
@@ -462,6 +468,15 @@ class ProbePositionOptions(ParameterOptions):
         del d["position_x_px"]
         del d["position_y_px"]
         return d
+    
+        
+    def check(self, options: "task_options.PtychographyTaskOptions"):
+        super().check(options)
+        if self.magnitude_limit.enabled or self.magnitude_limit.limit > 0:
+            raise ValueError(
+                "`probe_position_options.magnitude_limit` is depreciated. "
+                "Please use `probe_position_options.correction_options.update_magnitude_limit` instead."
+            )
 
 
 @dataclasses.dataclass
