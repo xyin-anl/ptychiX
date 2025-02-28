@@ -1,4 +1,4 @@
-from typing import Optional, Union, TYPE_CHECKING
+from typing import Optional, Union, TYPE_CHECKING, Sequence
 import dataclasses
 from dataclasses import field
 import logging
@@ -423,9 +423,52 @@ class PositionCorrectionOptions(Options):
     """
     
     update_magnitude_limit: float = inf
-    """The maximum allowed magnitude of position update. Set to 0 or inf
-    to disable the constraint.
+    """The maximum allowed magnitude of position update. Updates larger than this value
+    are clipped. Set to 0 or inf to disable the constraint.
     """
+    
+
+@dataclasses.dataclass
+class PositionAffineTransformConstraintOptions(FeatureOptions):
+    """Settings for imposing an affine transformation constraint on the probe positions.
+    """
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+    
+    degrees_of_freedom: Sequence[enums.AffineDegreesOfFreedom] = (
+        enums.AffineDegreesOfFreedom.ROTATION,
+        enums.AffineDegreesOfFreedom.SCALE,
+        enums.AffineDegreesOfFreedom.SHEAR,
+        enums.AffineDegreesOfFreedom.ASSYMETRY,
+    )
+    """The degrees of freedom to include in the affine transformation."""
+    
+    position_weight_update_interval: int = 10
+    """The number of epochs between position weight updates.
+    """
+    
+    apply_constraint: bool = True
+    """Constraint is applied to probe positions only when this is `True`. When `False`,
+    probe position weights and affine transformation matrix are still computed and
+    stored in the `ProbePositions` object so that they can be logged and analyzed 
+    externally, but the positions are not altered.
+    """
+    
+    max_expected_error: float = 1.0
+    """The maximum expected position error, given in pixels. Note that this is different
+    from `update_magnitude_limit`, and is only used in the estimation of friction in
+    affine transformation constraint.
+    """
+    
+    def is_position_weight_update_enabled_on_this_epoch(self, current_epoch: int):
+        if not self.enabled:
+            return False
+        if (current_epoch - self.optimization_plan.start) % self.position_weight_update_interval == 0:
+            return True
+        else:
+            return False
 
 
 @dataclasses.dataclass
@@ -462,13 +505,20 @@ class ProbePositionOptions(ParameterOptions):
     """
     Detailed options for position correction.
     """
+    
+    affine_transform_constraint: PositionAffineTransformConstraintOptions = dataclasses.field(
+        default_factory=PositionAffineTransformConstraintOptions
+    )
+    """When enabled, an affine transformation from initial positions to current positions
+    is fit, and positions deviating from the expected positions given by the affine
+    transformation are penalized.
+    """
 
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
         del d["position_x_px"]
         del d["position_y_px"]
         return d
-    
         
     def check(self, options: "task_options.PtychographyTaskOptions"):
         super().check(options)
