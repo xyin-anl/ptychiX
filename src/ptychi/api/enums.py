@@ -95,3 +95,11 @@ class PatchInterpolationMethods(StrEnum):
 class OPRWeightSmoothingMethods(StrEnum):
     MEDIAN = auto()
     POLYNOMIAL = auto()
+
+
+class AffineDegreesOfFreedom(StrEnum):
+    TRANSLATION = auto()
+    ROTATION = auto()
+    SCALE = auto()
+    SHEAR = auto()
+    ASSYMETRY = auto()

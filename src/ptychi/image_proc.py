@@ -1366,7 +1366,8 @@ def vignette(
     img: Tensor, 
     margin: int = 20, 
     sigma: float = 1.0, 
-    method: Literal["gaussian", "linear"] = "gaussian"):
+    method: Literal["gaussian", "linear"] = "gaussian",
+    dim=(-2, -1)):
     """
     Vignett an image so that it gradually decays near the boundary.
     For each dimension of the image, a mask with a width of `2 * margin`
@@ -1389,8 +1390,9 @@ def vignette(
     method : Literal["gaussian", "linear"]
         The method to use to generate the vignette mask.
     """
+    dims = [d % img.ndim for d in dim]
     img = img.clone()
-    for i_dim in range(img.ndim):
+    for i_dim in dims:
         if img.shape[i_dim] <= 2 * margin:
             continue
         mask_shape = (

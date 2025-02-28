@@ -360,6 +360,7 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
     def run_pre_epoch_hooks(self) -> None:
         with torch.no_grad():
             self.update_preconditioners()
+            
 
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
@@ -435,6 +436,18 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             if opr_mode_weights.options.smoothing.is_enabled_on_this_epoch(self.current_epoch):
                 opr_mode_weights.smooth_weights()
             opr_mode_weights.remove_outliers()
+            
+            # Position affine transformation constraint.
+            if (
+                positions.options.affine_transform_constraint.is_position_weight_update_enabled_on_this_epoch(
+                    self.current_epoch
+                )
+            ):
+                positions.update_position_weights(probe, object_, self.options.batch_size)
+            if positions.options.affine_transform_constraint.is_enabled_on_this_epoch(self.current_epoch):
+                positions.update_affine_transform_matrix()
+                if positions.options.affine_transform_constraint.apply_constraint:
+                    positions.apply_affine_transform_constraint()
 
 
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
