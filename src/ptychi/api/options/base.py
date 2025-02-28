@@ -474,8 +474,11 @@ class ProbePositionOptions(ParameterOptions):
         super().check(options)
         if self.magnitude_limit.enabled or self.magnitude_limit.limit > 0:
             raise ValueError(
-                "`probe_position_options.magnitude_limit` is depreciated. "
-                "Please use `probe_position_options.correction_options.update_magnitude_limit` instead."
+                "`probe_position_options.magnitude_limit` is depreciated "
+                "and will be removed in the future. Please use "
+                "`probe_position_options.correction_options.update_magnitude_limit` instead. "
+                "To avoid this error, set `enabled` to `False` and `limit` to 0 in "
+                "`probe_position_options.magnitude_limit`."
             )
 
 
