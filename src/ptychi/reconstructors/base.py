@@ -242,6 +242,11 @@ class IterativeReconstructor(Reconstructor):
         self.loss_tracker = LossTracker(metric_function=self.displayed_loss_function)
 
     def build_counter(self):
+        self.pbar = tqdm.tqdm(
+            total=self.options.num_epochs, 
+            disable=logger.level > logging.INFO, 
+            leave=False
+        )
         self.current_epoch = 0
 
     def get_config_dict(self) -> dict:
@@ -291,8 +296,9 @@ class IterativeReconstructor(Reconstructor):
     def run(self, n_epochs: Optional[int] = None, *args, **kwargs):
         if self.current_epoch == 0:
             self.run_pre_run_hooks()
+
         n_epochs = n_epochs if n_epochs is not None else self.n_epochs
-        for _ in tqdm.trange(n_epochs, disable=logger.level > logging.INFO):
+        for _ in range(n_epochs):
             self.run_pre_epoch_hooks()
             self.current_minibatch = 0
             for batch_data in self.dataloader:
@@ -309,6 +315,7 @@ class IterativeReconstructor(Reconstructor):
                 movies.api.update_movie_builders(self)
 
             self.current_epoch += 1
+            self.pbar.update(1)
 
 
 class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyReconstructor):
