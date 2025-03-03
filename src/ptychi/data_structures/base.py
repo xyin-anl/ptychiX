@@ -139,6 +139,16 @@ class ReconstructParameter(Module):
 
     @property
     def data(self) -> Tensor:
+        """Get a copy of the parameter data. For complex parameters,
+        it returns a complex tensor rather than real tensors giving the
+        real and imaginary parts as in the internal representation
+        of ComplexTensor.
+
+        Returns
+        -------
+        Tensor
+            A copy of the parameter data.
+        """
         if self.is_complex:
             return self.tensor.complex()
         else:
@@ -264,6 +274,30 @@ class ReconstructParameter(Module):
 
     def get_config_dict(self):
         return self.options.get_non_data_fields()
+    
+    def step_optimizer(self, limit: float = None):
+        """Step the optimizer with gradient filled in. This function
+        can optionally impose a limit on the magnitude of the update.
+
+        Parameters
+        ----------
+        limit : float, optional
+            The maximum allowed magnitude of the update. Set to None to disable the limit.
+        """
+        if limit is not None and limit <= 0:
+            raise ValueError("`limit` should either be None or a positive number.")
+        if limit == torch.inf:
+            limit = None
+        if limit is not None:
+            data0 = self.data
+        self.optimizer.step()
+        if limit is not None:
+            data = self.data
+            dx = data - data0
+            update_mag = dx.abs()
+            exceed_mask = update_mag > limit
+            dx[exceed_mask] = dx[exceed_mask] * limit / update_mag[exceed_mask]
+            self.set_data(data0 + dx)
 
 
 class DummyParameter(ReconstructParameter):

@@ -422,9 +422,9 @@ class PositionCorrectionOptions(Options):
     is chosen.
     """
     
-    update_magnitude_limit: float = inf
-    """The maximum allowed magnitude of position update. Updates larger than this value
-    are clipped. Set to 0 or inf to disable the constraint.
+    update_magnitude_limit: Optional[float] = inf
+    """The maximum allowed magnitude of position update in each axis. Updates larger than this value 
+    are clipped. Set to None or inf to disable the constraint.
     """
     
 
@@ -529,6 +529,22 @@ class ProbePositionOptions(ParameterOptions):
                 "`probe_position_options.correction_options.update_magnitude_limit` instead. "
                 "To avoid this error, set `enabled` to `False` and `limit` to 0 in "
                 "`probe_position_options.magnitude_limit`."
+            )
+        if self.correction_options.update_magnitude_limit == 0:
+            raise ValueError(
+                "`probe_position_options.correction_options.update_magnitude_limit` is "
+                "set to 0. This will prevent the optimizer from performing any updates, but "
+                "will at the same time produce unstability. If you want to disable "
+                "position correction, set `optimizable` to `False`. To disable update "
+                "magnitude limit, set `update_magnitude_limit` to None or inf."
+            )
+        if (
+            self.correction_options.update_magnitude_limit is not None
+            and self.correction_options.update_magnitude_limit < inf
+            and options.reconstructor_options.get_reconstructor_type() == enums.Reconstructors.AD_PTYCHO
+        ):
+            raise NotImplementedError(
+                "Update magnitude limit is not supported for AutodiffPtychography."
             )
 
 

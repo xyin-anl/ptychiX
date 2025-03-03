@@ -174,7 +174,9 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         if probe_positions.optimization_enabled(self.current_epoch):
             probe_positions.set_grad(-delta_pos)
-            probe_positions.optimizer.step()
+            probe_positions.step_optimizer(
+                limit=probe_positions.options.correction_options.update_magnitude_limit
+            )
 
         return dm_error_squared
 

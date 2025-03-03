@@ -899,16 +899,12 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
 
     @timer()
     def _apply_probe_position_update(self, delta_pos, indices):
-        # TODO: allow setting step size or use adaptive step size
-        # if self.parameter_group.probe_positions.options.update_magnitude_limit > 0:
-        if self.parameter_group.probe_positions.options.correction_options.update_magnitude_limit > 0:
-            lim = self.parameter_group.probe_positions.options.correction_options.update_magnitude_limit
-            delta_pos = torch.clamp(delta_pos, -lim, lim)
-
         delta_pos_full = torch.zeros_like(self.parameter_group.probe_positions.tensor)
         delta_pos_full[indices] = delta_pos
         self.parameter_group.probe_positions.set_grad(-delta_pos_full)
-        self.parameter_group.probe_positions.optimizer.step()
+        self.parameter_group.probe_positions.step_optimizer(
+            limit=self.parameter_group.probe_positions.options.correction_options.update_magnitude_limit
+        )
 
     @timer()
     def _calculate_fourier_probe_position_update_direction(self, chi, positions, obj_patches):

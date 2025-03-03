@@ -175,7 +175,7 @@ if __name__ == '__main__':
 
     tester = Test2dPtychoLsqml()
     tester.setup_method(name="", generate_data=False, generate_gold=args.generate_gold, debug=True)
-    tester.test_2d_ptycho_lsqml()
-    tester.test_2d_ptycho_lsqml_no_epoch0_rescaling()
+    # tester.test_2d_ptycho_lsqml()
+    # tester.test_2d_ptycho_lsqml_no_epoch0_rescaling()
     tester.test_2d_ptycho_lsqml_poscorr()
     tester.test_2d_ptycho_lsqml_opr()
