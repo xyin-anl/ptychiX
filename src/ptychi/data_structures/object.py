@@ -706,12 +706,8 @@ class DIPPlanarObject(DIPObject, PlanarObject):
                 f"(n_slices, h, w) = {expected_phase_shape} but got {phase.shape}. "
                 "Padding/cropping generated object to match expected shape."
             )
-            mag_resized, phase_resized = [], []
-            for i_slice in range(expected_phase_shape[0]):
-                mag_resized.append(ip.central_crop_or_pad(mag[i_slice], expected_phase_shape[1:]))
-                phase_resized.append(ip.central_crop_or_pad(phase[i_slice], expected_phase_shape[1:]))
-            mag = torch.stack(mag_resized)
-            phase = torch.stack(phase_resized)
+            mag = ip.central_crop_or_pad(mag, expected_phase_shape[1:])
+            phase = ip.central_crop_or_pad(phase, expected_phase_shape[1:])
         
         if self.options.deep_image_prior_options.constrain_object_outside_network:
             mag = torch.sigmoid(mag)
