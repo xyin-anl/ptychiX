@@ -206,8 +206,8 @@ def create_reconstruction_path(params, options):
     if options.opr_mode_weight_options.optimize_intensity_variation:
         recon_path += '_ic'
 
-    if options.object_options.slice_spacings_m:
-        recon_path += f'_Ns{len(options.object_options.slice_spacings_m)+1}_dz{options.object_options.slice_spacings_m[0]}'
+    if params['total_thickness_m'] > 0 and params['number_of_slices'] > 1:
+        recon_path += f'_Ns{params['number_of_slices']}_T{params['total_thickness_m']/1e-6}um'
         if options.object_options.multislice_regularization.enabled and options.object_options.multislice_regularization.weight > 0:
             recon_path += f'_reg{options.object_options.multislice_regularization.weight}'
  
