@@ -526,3 +526,21 @@ def nonlinear_lsq(
         raise ValueError("Non-linear least squares did not converge.")
     return x.detach()
 
+
+def fit_linear_transform_matrix(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Fit a linear transformation matrix A, so that y = A @ x.
+    
+    Parameters
+    ----------
+    x : torch.Tensor
+        A (n_points, n_features_in) tensor of input data.
+    y : torch.Tensor
+        A (n_points, n_features_out) tensor of output data.
+    
+    Returns
+    -------
+    torch.Tensor
+        The linear transformation matrix.
+    """
+    a_mat = torch.linalg.lstsq(x, y, rcond=None)[0]
+    return a_mat

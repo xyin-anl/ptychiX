@@ -149,7 +149,7 @@ class ProbePositions(dsbase.ReconstructParameter):
             x = torch.cat([x, torch.ones_like(x[..., 0:1])], dim=-1)
             x0 = torch.cat([x0, torch.ones_like(x0[..., 0:1])], dim=-1)
         
-        a_mat = (x.T @ x0) @ (x0.T @ x0).inverse()
+        a_mat = pmath.fit_linear_transform_matrix(x0, x)
         
         if enums.AffineDegreesOfFreedom.TRANSLATION in dofs:
             a_mat = a_mat[:, :-1]
