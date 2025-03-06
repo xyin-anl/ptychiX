@@ -8,12 +8,17 @@ from .pear_io import (initialize_recon,
                       save_reconstructions,
                       create_reconstruction_path,
                       save_initial_conditions)
+from .pear_utils import select_gpu
 import numpy as np
 
 import logging
 logging.basicConfig(level=logging.ERROR)
 
 def ptycho_recon(**params):
+
+    if params['gpu_id'] is None:
+        params['gpu_id'] = select_gpu(params)
+        print(f"Auto-selected GPU: {params['gpu_id']}")
 
     # Set up computing device
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, [params['gpu_id'] ]))
@@ -46,8 +51,8 @@ def ptycho_recon(**params):
     options.object_options.build_preconditioner_with_all_modes = False
 
     # multislice parameters
-    if params['total_thickness_m'] > 0 and params['number_of_slices'] > 1:
-        params['slice_distance_m'] = params['total_thickness_m'] / params['number_of_slices']
+    if params['object_thickness_m'] > 0 and params['number_of_slices'] > 1:
+        params['slice_distance_m'] = params['object_thickness_m'] / params['number_of_slices']
         options.object_options.slice_spacings_m = [params['slice_distance_m']] * (params['number_of_slices'] - 1)
         options.object_options.optimal_step_size_scaler = 0.9
         options.object_options.multislice_regularization.enabled = params['layer_regularization'] > 0
@@ -99,7 +104,14 @@ def ptycho_recon(**params):
     options.opr_mode_weight_options.optimize_intensity_variation = params['intensity_correction']
 
     # convergence parameters
-    options.reconstructor_options.batch_size = params['update_batch_size']
+    if params['update_batch_size'] is not None:
+        options.reconstructor_options.batch_size = params['update_batch_size']
+    else:
+        if params['batch_selection_scheme'] == 'compact':
+            options.reconstructor_options.batch_size = dp.shape[0]
+        else:
+            options.reconstructor_options.batch_size = round(dp.shape[0]/10)
+
     #options.reconstructor_options.forward_model_options.pad_for_shift = 16
     #options.reconstructor_options.use_low_memory_forward_model = True
     if params['batch_selection_scheme'] == 'random':

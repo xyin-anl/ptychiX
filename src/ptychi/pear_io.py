@@ -151,7 +151,7 @@ def save_reconstructions(task, recon_path, iter):
     plt.scatter(scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6, scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6, s=10, edgecolors='red', facecolors='none')
     plt.xlabel('X [um]')
     plt.ylabel('Y [um]')
-    #plt.legend(['Initial positions', 'Refined positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
+    plt.legend(['Initial positions', 'Refined positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
     plt.grid(True)
     plt.xlim(pos_x_min*range_factor, pos_x_max*range_factor)
     plt.ylim(pos_y_min*range_factor, pos_y_max*range_factor)
@@ -168,6 +168,10 @@ def save_reconstructions(task, recon_path, iter):
     plt.yscale('log')
     plt.legend()
     plt.grid(True)
+    loss_array = loss.values
+    min_loss = min(loss_array)
+    final_loss = loss_array[-1] if len(loss_array) > 0 else 0
+    plt.title(f'Min Loss: {min_loss:.2e}. Final Loss: {final_loss:.2e}')
     plt.savefig(f'{recon_path}/loss/loss_Niter{iter}.png', dpi=300)
     plt.close()
 
@@ -176,7 +180,8 @@ def save_reconstructions(task, recon_path, iter):
         hdf_file.create_dataset('probe', data=recon_probe)
         hdf_file.create_dataset('object', data=recon_object)
         hdf_file.create_dataset('loss', data=loss)
-        hdf_file.create_dataset('positions', data=scan_positions)
+        hdf_file.create_dataset('positions_px', data=scan_positions)
+        hdf_file.create_dataset('obj_pixel_size_m', data=task.object_options.pixel_size_m)
 
 def create_reconstruction_path(params, options):
     # Construct the base reconstruction path
@@ -206,8 +211,8 @@ def create_reconstruction_path(params, options):
     if options.opr_mode_weight_options.optimize_intensity_variation:
         recon_path += '_ic'
 
-    if params['total_thickness_m'] > 0 and params['number_of_slices'] > 1:
-        recon_path += f'_Ns{params['number_of_slices']}_T{params['total_thickness_m']/1e-6}um'
+    if params['object_thickness_m'] > 0 and params['number_of_slices'] > 1:
+        recon_path += f'_Ns{params['number_of_slices']}_T{params['object_thickness_m']/1e-6}um'
         if options.object_options.multislice_regularization.enabled and options.object_options.multislice_regularization.weight > 0:
             recon_path += f'_reg{options.object_options.multislice_regularization.weight}'
  
@@ -346,7 +351,7 @@ def save_initial_conditions(recon_path, params, options):
     plt.scatter(init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
     plt.xlabel('X [um]')
     plt.ylabel('Y [um]')
-    #plt.legend(['Initial positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
+    plt.legend(['Initial positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
     plt.grid(True)
     pos_x_min, pos_x_max = plt.xlim()
     pos_y_min, pos_y_max = plt.ylim()
@@ -369,13 +374,13 @@ def initialize_recon(params):
 
     # Load diffraction patterns and positions
     if params.get('load_processed_hdf5') or instrument == 'simu':
-        dp, positions = _load_data_foldslice_hdf5(
+        dp, positions_m = _load_data_hdf5(
             params.get('path_to_processed_hdf5_dp'),
             params.get('path_to_processed_hdf5_pos'),
             dp_Npix
         )
     else:
-        dp, positions = _load_data_raw(
+        dp, positions_m = _load_data_raw(
             instrument,
             params.get('data_directory'),
             params.get('scan_num'),
@@ -386,28 +391,24 @@ def initialize_recon(params):
     print("Shape of diffraction patterns (dp):", dp.shape)
 
     # Load external positions
-    if params.get('path_to_init_positions'):
-        positions = _prepare_initial_positions(params.get('path_to_init_positions'))
+    if params['path_to_init_positions']:
+        positions_m = _prepare_initial_positions(params)
     
-    det_pixel_size_m = 75e-6 if instrument in ['velo', 'velociprobe', 'bnp', 'bionanoprobe', '2ide', '2xfm', 'simu'] else 172e-6  # eiger
+    params['det_pixel_size_m'] = 75e-6 if instrument in ['velo', 'velociprobe', 'bnp', 'bionanoprobe', '2ide', '2xfm', 'lynx', 'simu'] else 172e-6
     
-    wavelength_m = 1.23984193e-9 / params.get('beam_energy_kev')
-    print("Wavelength (nm):", wavelength_m * 1e9)
+    params['wavelength_m'] = 1.23984193e-9 / params.get('beam_energy_kev')
+    print("Wavelength (nm):", params['wavelength_m'] * 1e9)
 
-    obj_pixel_size_m = wavelength_m * params.get('det_sample_dist_m') / det_pixel_size_m / dp_Npix #pixel size
-    print("Pixel size of reconstructed object (nm):", obj_pixel_size_m * 1e9)
+    params['obj_pixel_size_m'] = params['wavelength_m'] * params['det_sample_dist_m'] / params['det_pixel_size_m'] / dp_Npix #pixel size
+    print("Pixel size of reconstructed object (nm):", params['obj_pixel_size_m'] * 1e9)
 
-    init_positions_px = positions / obj_pixel_size_m
+    init_positions_px = positions_m / params['obj_pixel_size_m']
 
     # Load initial probe
     init_probe = _prepare_initial_probe(dp, params)
 
     # Load initial object
-    init_object = _prepare_initial_object('', params.get('number_of_slices'), init_positions_px, init_probe.shape[-2:], round(1e-6/obj_pixel_size_m))
-
-    params['det_pixel_size_m'] = det_pixel_size_m
-    params['wavelength_m'] = wavelength_m
-    params['obj_pixel_size_m'] = obj_pixel_size_m
+    init_object = _prepare_initial_object(params, init_positions_px, init_probe.shape[-2:], round(1e-6/params['obj_pixel_size_m']))
 
     return dp, init_positions_px, init_probe, init_object, params
 
@@ -419,7 +420,8 @@ def _load_data_raw(instrument, base_path, scan_num, dp_Npix, dp_cen_x, dp_cen_y)
         'bionanoprobe': _load_data_bnp,
         '12idc': _load_data_12idc,
         '2xfm': _load_data_2xfm,
-        '2ide': _load_data_2xfm
+        '2ide': _load_data_2xfm,
+        'lynx': _load_data_lynx
     }
     instrument = instrument.lower()
     if instrument not in instrument_loaders:
@@ -431,18 +433,41 @@ def _load_data_raw(instrument, base_path, scan_num, dp_Npix, dp_cen_x, dp_cen_y)
 
 def _prepare_initial_positions(params):
     print("Loading initial positions from a ptychi reconstruction.")
-    positions = _load_ptychi_recon(params.get('path_to_init_positions'), 'positions')
+    positions_px = _load_ptychi_recon(params['path_to_init_positions'], 'positions_px')
+    input_obj_pixel_size = _load_ptychi_recon(params['path_to_init_positions'], 'obj_pixel_size_m')
+    
+    return positions_px*input_obj_pixel_size
 
-    return positions
-
-def _prepare_initial_object(path_to_init_object, num_slices, positions_px, probe_size, extra_size):
-    if path_to_init_object:
+def _prepare_initial_object(params, positions_px, probe_size, extra_size):
+    if params['path_to_init_object']:
         print("Loading initial object from a ptychi reconstruction.")
-        init_object = _load_object_ptychi(path_to_init_object)
+        init_object = _load_ptychi_recon(params['path_to_init_object'], 'object')
+        input_obj_pixel_size = _load_ptychi_recon(params['path_to_init_object'], 'obj_pixel_size_m')
+        # TODO: more options for multislice recon
+        if input_obj_pixel_size != params['obj_pixel_size_m']:
+            print(f"Input object's pixel size ({input_obj_pixel_size}) does not match the expected pixel size ({params['obj_pixel_size_m']}).")
+            print(f"Resizing input object to match the current reconstruction.")
+            # Calculate zoom factor based on pixel size ratio
+            zoom_factor = input_obj_pixel_size / params['obj_pixel_size_m']
+            
+            # Get target shape after zooming first slice
+            target_shape = tuple(int(s * zoom_factor) for s in init_object.shape[-2:])
+            
+            # Pre-allocate resized array
+            init_object_resized = np.zeros((init_object.shape[0], *target_shape), dtype=np.complex64)
+            
+            # Resize each slice by zooming real and imaginary parts separately
+            for i in range(init_object.shape[0]):
+                init_object_resized[i] = scipy.ndimage.zoom(init_object[i].real, (zoom_factor, zoom_factor), order=1) + \
+                                       1j * scipy.ndimage.zoom(init_object[i].imag, (zoom_factor, zoom_factor), order=1)
+            
+            # Convert to tensor
+            init_object = to_tensor(init_object_resized)
+        
     else:
         print("Generating a random initial object.")
 
-        init_object = torch.ones([num_slices, *get_suggested_object_size(positions_px, probe_size, extra=extra_size)], dtype=get_default_complex_dtype())
+        init_object = torch.ones([params['number_of_slices'], *get_suggested_object_size(positions_px, probe_size, extra=extra_size)], dtype=get_default_complex_dtype())
         init_object = init_object + 1j*torch.rand(*init_object.shape) * 1e-3
  
     print("Shape of initial object:", init_object.shape)
@@ -526,7 +551,10 @@ def _load_probe_foldslice(recon_file):
             probes = mat_contents['probe']
             if probes.ndim == 4:
                 probes = probes[...,0]
+                probes = probes.transpose(2,0,1)
+
             if probes.ndim == 3:
+                print("Transposing probe to (n_probe_modes, h, w)")
                 probes = probes.transpose(2,0,1)
 
     #print("Shape of probes:", probes.shape)
@@ -537,7 +565,12 @@ def _load_probe_foldslice(recon_file):
 
 def _load_ptychi_recon(recon_file, variable_name):
     with h5py.File(recon_file, "r") as hdf_file:
-        array = hdf_file[variable_name][:]
+        # Check if the dataset is a scalar or not
+        dataset = hdf_file[variable_name]
+        if dataset.shape == ():  # It's a scalar
+            array = dataset[()]  # Use [()] for scalar datasets
+        else:
+            array = dataset[:]  # Use [:] for non-scalar datasets
     
     return array
 
@@ -561,21 +594,28 @@ def normalize_by_bit_depth(arr, bit_depth):
     
     return norm_arr_in_bit_depth
 
-def _load_data_foldslice_hdf5(h5_dp_path, h5_position_path, dp_Npix):
+def _load_data_hdf5(h5_dp_path, h5_position_path, dp_Npix):
+    # if h5_dp_path == h5_position_path: # assume it's a ptychodus product
+    #     print("Loading processed scan positions and diffraction patterns in ptychodus convention.")
+    # positions = np.stack([f_meta['probe_position_y_m'][...], f_meta['probe_position_x_m'][...]], axis=1)
+    #     pixel_size_m = f_meta['object'].attrs['pixel_height_m']
+    #     positions_px = positions / pixel_size_m
+    #     if subtract_position_mean:
+    #         positions_px -= positions_px.mean(axis=0)
+
+    #else: # assume foldslice convention
     print("Loading processed scan positions and diffraction patterns in foldslice convention.")
     dp = h5py.File(h5_dp_path, 'r')['dp'][...]
     det_xwidth = int(dp_Npix/2)
     cen = int(dp.shape[1] / 2)
     dp = dp[:, cen - det_xwidth:cen + det_xwidth, cen - det_xwidth:cen + det_xwidth]
-    #cen = int(dp_Npix/2)dp.shape[1]
-    #dp = cen-det_xwidth:cen+det_xwidth, cen-det_xwidth:cen+det_xwidth]
+
     ppY = h5py.File(h5_position_path, 'r')['ppY'][:].flatten()
     ppX = h5py.File(h5_position_path, 'r')['ppX'][:].flatten()
     ppX = ppX - (np.max(ppX) + np.min(ppX)) / 2
     ppY = ppY - (np.max(ppY) + np.min(ppY)) / 2
-    # print("Min and Max of ppY:", np.min(ppY), np.max(ppY))
-    # print("Min and Max of ppX:", np.min(ppX), np.max(ppX))
     positions = np.stack((ppY, ppX), axis=1)
+
     return dp, positions
 
 def _load_data_2xfm(base_path, scan_num, det_Npixel, cen_x, cen_y):
@@ -759,6 +799,126 @@ def _load_data_bnp(base_path, scan_num, det_Npixel, cen_x, cen_y):
 
     return dp, positions
 
+def _read_position_file(posfile):
+    """
+    Read a position file and return a dictionary with header info and data columns.
+    
+    Expected file format:
+      - The first line contains: <string> <integer>, <string> <float>
+      - The second line contains column names separated by whitespace.
+      - The remaining lines contain numeric data corresponding to the columns.
+    
+    Parameters:
+        posfile (str): Path to the position file.
+        
+    Returns:
+        dict: Dictionary with header keys and data arrays.
+    """
+    if not os.path.exists(posfile):
+        raise FileNotFoundError(f"Position file {posfile} not found")
+    
+    struct_out = {}
+    with open(posfile, 'r') as f:
+        # Read and parse the header line
+        header_line = f.readline().strip()
+        parts = header_line.split(',')
+        if len(parts) != 2:
+            raise ValueError("Header line format is incorrect")
+        
+        # Process first part (key and integer value)
+        key1_val = parts[0].strip().split()
+        if len(key1_val) != 2:
+            raise ValueError("First header part format is incorrect")
+        key1, val1 = key1_val[0], key1_val[1]
+        
+        # Process second part (key and float value)
+        key2_val = parts[1].strip().split()
+        if len(key2_val) != 2:
+            raise ValueError("Second header part format is incorrect")
+        key2, val2 = key2_val[0], key2_val[1]
+        
+        struct_out[key1] = int(val1)
+        struct_out[key2] = float(val2)
+        
+        # Read column names (second line)
+        names_line = f.readline().strip()
+        names = names_line.split()
+        
+        # Read the remaining numerical data using numpy
+        data = np.loadtxt(f)
+        if data.ndim == 1:
+            data = data.reshape(-1, len(names))
+        
+        # Assign each column to the dictionary using the column names
+        for i, name in enumerate(names):
+            struct_out[name] = data[:, i]
+            
+    return struct_out
+
+def _load_data_lynx(base_path, scan_num, det_Npixel, cen_x, cen_y):
+    print("Loading scan positions and diffraction patterns measured by the LYNX instrument.")
+    # Load positions from .dat file
+    pos_file = f"{base_path}/scan_positions/scan_{scan_num:05d}.dat"
+    out_orch = _read_position_file(pos_file)
+    
+    x_positions = -out_orch['Average_x_st_fzp'] 
+    y_positions = -out_orch['Average_y_st_fzp'] 
+
+    # Center positions around (0,0)
+    x_positions = x_positions - np.mean(x_positions)
+    y_positions = y_positions - np.mean(y_positions)
+    
+    # Convert to meters if needed (adjust multiplier as needed)
+    x_positions = x_positions * 1e-6  # Adjust this factor based on your data units
+    y_positions = y_positions * 1e-6
+    
+    # Stack positions
+    positions = np.column_stack((y_positions, x_positions))
+
+    # Determine subfolder based on scan number
+    subfolder_start = (scan_num // 1000) * 1000
+    subfolder_end = subfolder_start + 999
+    data_dir = os.path.join(base_path, 'eiger_4', f'S{subfolder_start:05d}-{subfolder_end:05d}', f'S{scan_num:05d}')
+    file_path = os.path.join(data_dir, f'run_{scan_num:05d}_000000000000.h5')
+    # Validate inputs
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Data file not found: {file_path}")
+        
+    # Calculate detector ROI indices
+    N_dp_x_input = min(942, det_Npixel)
+    N_dp_y_input = min(942, det_Npixel) 
+    
+    index_x_lb = int(cen_x - N_dp_x_input // 2)
+    index_x_ub = int(cen_x + (N_dp_x_input + 1) // 2)
+    index_y_lb = int(cen_y - N_dp_y_input // 2)
+    index_y_ub = int(cen_y + (N_dp_y_input + 1) // 2)
+
+    # Load diffraction patterns
+    with h5py.File(file_path, 'r') as h5_data:
+        dp_temp = h5_data['entry/data/eiger_4'][:]
+        N_scan_dp = dp_temp.shape[0]
+        print(f'Number of diffraction patterns: {N_scan_dp}')
+
+        # Initialize output array
+        dp = np.zeros((N_scan_dp, N_dp_y_input, N_dp_x_input))
+        
+        # Process each diffraction pattern
+        for j in range(N_scan_dp):
+            roi = dp_temp[j, index_y_lb:index_y_ub, index_x_lb:index_x_ub]
+            scipy.ndimage.zoom(roi, [1, 1], output=dp[j], order=1)
+
+    # Clean up data
+    dp[dp < 0] = 0
+    dp[dp > 1e7] = 0
+    #dp = dp[::1]  # Keep original sampling for now
+
+    # # Pad if needed
+    # if det_Npixel > N_dp_x_input:
+    #     pad_size = (det_Npixel - N_dp_x_input) // 2
+    #     dp = np.pad(dp, ((0,0), (pad_size,pad_size), (pad_size,pad_size)), 
+    #                mode='constant', constant_values=0)
+
+    return dp, positions
 
 def _load_data_velo(base_path, scan_num, det_Npixel, cen_x, cen_y):
     print("Loading scan positions and diffraction patterns measured by the Velociprobe instrument.")
