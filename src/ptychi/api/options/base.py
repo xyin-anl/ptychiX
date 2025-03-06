@@ -675,7 +675,7 @@ class ReconstructorOptions(Options):
     num_epochs: int = 100
     """The number of epochs to run."""
 
-    batch_size: int = 1
+    batch_size: int = 100
     """The number of data to process in each minibatch."""
 
     batching_mode: enums.BatchingModes = enums.BatchingModes.RANDOM
