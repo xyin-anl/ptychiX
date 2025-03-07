@@ -12,8 +12,8 @@ from ptychi.utils import (add_additional_opr_probe_modes_to_probe,
                           get_suggested_object_size,
                           get_default_complex_dtype)
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-
+#from matplotlib.patches import Rectangle
+from ptychi.pear_utils import make_fzp_probe, resize_complex_array
 import sys
 import torch
 import json
@@ -101,7 +101,70 @@ def save_reconstructions(task, recon_path, iter):
             resolution=(1 / pixel_size_um, 1 / pixel_size_um),
             metadata={'unit': 'um', 'pixel_size': pixel_size_um},
             imagej=True)
-
+    
+    # Save probe propagation in multislice reconstruction
+    if recon_object_roi.shape[0] > 1:
+        from ptychi.pear_utils import near_field_evolution
+        
+        # Get the primary probe mode
+        probe = recon_probe[0, 0]  # First OPR mode, first incoherent mode
+        
+        # Check if slice_spacings attribute exists in the correct location
+        # Get slice spacings directly from object_options
+        slice_spacings = task.object_options.slice_spacings_m
+        n_layers = len(slice_spacings) + 1
+        
+        # Initialize array to store propagated probes
+        probe_propagation = np.zeros((n_layers, probe.shape[0], probe.shape[1]), dtype=np.complex64)
+        probe_propagation[0] = probe  # First layer is the original probe
+        
+        # Physical size of the array (extent)
+        extent = probe.shape[0] * task.object_options.pixel_size_m
+        
+        # Get wavelength
+        if hasattr(task.reconstructor.parameter_group, 'wavelength'):
+            wavelength = task.reconstructor.parameter_group.wavelength.cpu().numpy()
+        else:
+            wavelength = task.data_options.wavelength_m
+        
+        # Propagate probe through each layer
+        for i in range(1, n_layers):
+            # Propagate from previous layer to current layer
+            z_distance = slice_spacings[i-1]
+            try:
+                u_1, _, _, _ = near_field_evolution(
+                    probe_propagation[i-1], 
+                    z_distance, 
+                    wavelength, 
+                    extent,
+                    use_ASM_only=True
+                )
+                probe_propagation[i] = u_1
+            except Exception as e:
+                print(f"Warning: Error during probe propagation at layer {i}: {str(e)}")
+                # Copy previous layer as fallback
+                probe_propagation[i] = probe_propagation[i-1]
+        
+        # Create colored versions of the propagated probes
+        colored_probes_mag_stack = []
+        for i in range(n_layers):
+            probe_mag = np.abs(probe_propagation[i])
+            # Normalize the probe magnitude
+            norm = plt.Normalize(vmin=probe_mag.min(), vmax=probe_mag.max())
+            # Apply colormap
+            colored_probe = cmap(norm(probe_mag))  # This creates an RGBA array
+            # Convert to RGB uint8
+            colored_probe_rgb = (colored_probe[:, :, :3] * 255).astype(np.uint8)
+            colored_probes_mag_stack.append(colored_probe_rgb)
+        
+        # Save as tiff stack
+        imwrite(f'{recon_path}/probe_propagation_mag/probe_propagation_mag_Niter{iter}.tiff',
+                np.array(colored_probes_mag_stack),
+                photometric='rgb',
+                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
+                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                imagej=True)
+    
     # # Create figure and axis
     # fig, ax = plt.subplots()
 
@@ -142,15 +205,46 @@ def save_reconstructions(task, recon_path, iter):
     # plt.close()
 
     #plt.imsave(f'{recon_path}/probe_mag/probe_mag_Niter{iter}.tiff', normalize_by_bit_depth(probe_mag, '16'), cmap='plasma')
-    #imwrite(f'{recon_path}/probe_mag/probe_mag_Niter{iter}.tiff', normalize_by_bit_depth(probe_mag, '16'))
-
-    # Scan positions
+    #imwrite(f'{recon_path}/probe_mag/pxrobe_mag_Niter{iter}.tiff', normalize_by_bit_depth(probe_mag, '16'))
+    # Save probe at each scan position
+    if recon_probe.shape[0] > 1:
+        opr_mode_weights = task.reconstructor.parameter_group.opr_mode_weights.data.cpu().detach().numpy()
+        #print("Saving probe at each scan position")
+        #print(recon_probe.shape)
+        # Uncomment and fix the code for saving probes at each scan position
+        probes = task.reconstructor.parameter_group.probe.get_unique_probes(task.reconstructor.parameter_group.opr_mode_weights.data, mode_to_apply=0)
+        probes = probes[:,0,:,:].cpu().detach().numpy() # only keep the primary mode
+        
+        # Create a colored version of each probe magnitude
+        colored_probes_mag_stack = []
+        for i in range(min(probes.shape[0], 500)):
+            probe_mag = np.abs(probes[i])
+            # Normalize the probe magnitude
+            norm = plt.Normalize(vmin=probe_mag.min(), vmax=probe_mag.max())
+            # Apply colormap
+            colored_probe = cmap(norm(probe_mag))  # This creates an RGBA array
+            # Convert to RGB uint8
+            colored_probe_rgb = (colored_probe[:, :, :3] * 255).astype(np.uint8)
+            colored_probes_mag_stack.append(colored_probe_rgb)
+        
+        # Save as tiff stack
+        imwrite(f'{recon_path}/probe_mag_opr/probes_mag_opr_Niter{iter}.tiff',
+                np.array(colored_probes_mag_stack),
+                photometric='rgb',
+                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
+                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                imagej=True)
+        
+    # Save scan positions
     scan_positions = task.get_data_to_cpu('probe_positions', as_numpy=True)
     plt.figure()
-    plt.scatter(init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
-    plt.scatter(scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6, scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6, s=10, edgecolors='red', facecolors='none')
-    plt.xlabel('X [um]')
-    plt.ylabel('Y [um]')
+    plt.scatter(-init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
+    plt.scatter(-scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6, scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6, s=10, edgecolors='red', facecolors='none')
+    # Calculate average position differences
+    x_diff = np.mean(np.abs(-scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6 - (-init_positions_x_um)))
+    y_diff = np.mean(np.abs(scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6 - init_positions_y_um))
+    plt.xlabel(f'X [um] (average error: {x_diff*1e3:.2f} nm)')
+    plt.ylabel(f'Y [um] (average error: {y_diff*1e3:.2f} nm)')
     plt.legend(['Initial positions', 'Refined positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
     plt.grid(True)
     plt.xlim(pos_x_min*range_factor, pos_x_max*range_factor)
@@ -182,7 +276,9 @@ def save_reconstructions(task, recon_path, iter):
         hdf_file.create_dataset('loss', data=loss)
         hdf_file.create_dataset('positions_px', data=scan_positions)
         hdf_file.create_dataset('obj_pixel_size_m', data=task.object_options.pixel_size_m)
-
+        if recon_probe.shape[0] > 1:
+            hdf_file.create_dataset('opr_mode_weights', data=opr_mode_weights)
+            
 def create_reconstruction_path(params, options):
     # Construct the base reconstruction path
     recon_path_base = os.path.join(params['data_directory'], 'ptychi_recons', params['recon_parent_dir'], f'S{params['scan_num']:04d}')
@@ -235,11 +331,14 @@ def create_reconstruction_path(params, options):
         os.makedirs(os.path.join(recon_path, 'object_ph_total'), exist_ok=True)
         os.makedirs(os.path.join(recon_path, 'object_mag_layers'), exist_ok=True)
         os.makedirs(os.path.join(recon_path, 'object_mag_total'), exist_ok=True)
+        os.makedirs(os.path.join(recon_path, 'probe_propagation_mag'), exist_ok=True)
     else:
         os.makedirs(os.path.join(recon_path, 'object_ph'), exist_ok=True)
         os.makedirs(os.path.join(recon_path, 'object_mag'), exist_ok=True)
     
     os.makedirs(os.path.join(recon_path, 'probe_mag'), exist_ok=True)
+    if options.opr_mode_weight_options.optimizable:
+        os.makedirs(os.path.join(recon_path, 'probe_mag_opr'), exist_ok=True)
     os.makedirs(os.path.join(recon_path, 'loss'), exist_ok=True)
     os.makedirs(os.path.join(recon_path, 'positions'), exist_ok=True)
     print(f'Reconstruction results will be saved in: {recon_path}')
@@ -348,7 +447,7 @@ def save_initial_conditions(recon_path, params, options):
     init_positions_y_um = options.probe_position_options.position_y_px*options.object_options.pixel_size_m/1e-6
     init_positions_x_um = options.probe_position_options.position_x_px*options.object_options.pixel_size_m/1e-6
     plt.figure()
-    plt.scatter(init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
+    plt.scatter(-init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
     plt.xlabel('X [um]')
     plt.ylabel('Y [um]')
     plt.legend(['Initial positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
@@ -397,10 +496,10 @@ def initialize_recon(params):
     params['det_pixel_size_m'] = 75e-6 if instrument in ['velo', 'velociprobe', 'bnp', 'bionanoprobe', '2ide', '2xfm', 'lynx', 'simu'] else 172e-6
     
     params['wavelength_m'] = 1.23984193e-9 / params.get('beam_energy_kev')
-    print("Wavelength (nm):", params['wavelength_m'] * 1e9)
+    print("Wavelength (nm):", f"{params['wavelength_m'] * 1e9:.3f}")
 
     params['obj_pixel_size_m'] = params['wavelength_m'] * params['det_sample_dist_m'] / params['det_pixel_size_m'] / dp_Npix #pixel size
-    print("Pixel size of reconstructed object (nm):", params['obj_pixel_size_m'] * 1e9)
+    print("Pixel size of reconstructed object (nm):", f"{params['obj_pixel_size_m'] * 1e9:.3f}")
 
     init_positions_px = positions_m / params['obj_pixel_size_m']
 
@@ -445,24 +544,21 @@ def _prepare_initial_object(params, positions_px, probe_size, extra_size):
         input_obj_pixel_size = _load_ptychi_recon(params['path_to_init_object'], 'obj_pixel_size_m')
         # TODO: more options for multislice recon
         if input_obj_pixel_size != params['obj_pixel_size_m']:
-            print(f"Input object's pixel size ({input_obj_pixel_size}) does not match the expected pixel size ({params['obj_pixel_size_m']}).")
+            print(f"Input object's pixel size ({input_obj_pixel_size*1e9:.3f} nm) does not match the expected pixel size ({params['obj_pixel_size_m']*1e9:.3f} nm).")
             print(f"Resizing input object to match the current reconstruction.")
+            
             # Calculate zoom factor based on pixel size ratio
             zoom_factor = input_obj_pixel_size / params['obj_pixel_size_m']
             
             # Get target shape after zooming first slice
-            target_shape = tuple(int(s * zoom_factor) for s in init_object.shape[-2:])
+            target_shape = (int(init_object.shape[-2] * zoom_factor), 
+                           int(init_object.shape[-1] * zoom_factor))
             
-            # Pre-allocate resized array
-            init_object_resized = np.zeros((init_object.shape[0], *target_shape), dtype=np.complex64)
-            
-            # Resize each slice by zooming real and imaginary parts separately
-            for i in range(init_object.shape[0]):
-                init_object_resized[i] = scipy.ndimage.zoom(init_object[i].real, (zoom_factor, zoom_factor), order=1) + \
-                                       1j * scipy.ndimage.zoom(init_object[i].imag, (zoom_factor, zoom_factor), order=1)
+            # Use resize_complex_array to resize the object
+            init_object = resize_complex_array(init_object, new_shape=target_shape)
             
             # Convert to tensor
-            init_object = to_tensor(init_object_resized)
+            init_object = to_tensor(init_object)
         
     else:
         print("Generating a random initial object.")
@@ -479,8 +575,31 @@ def _prepare_initial_probe(dp, params):
     num_probe_modes = params.get('number_probe_modes')
     num_opr_modes = params.get('number_opr_modes')
 
-    if params.get('use_model_FZP_probe'):
-        probe = _make_fzp_probe(num_probe_modes, params.get('lambda_'), params.get('dx'), params.get('Ls'), params.get('Rn'), params.get('dRn'), params.get('D_FZP'), params.get('D_H'))
+    if params.get('use_model_FZP_probe', False):
+        print("Generating a model FZP probe.")
+        dRn = 50e-9
+        Rn = 90e-6
+        D_H = 60e-6
+        D_FZP = 250e-6
+        N_probe_orig = dp.shape[-2]*params['obj_pixel_size_m']/4e-9
+        # Round N_probe_orig up to the nearest power of 2 for faster FFT
+        N_probe_orig = int(2 ** np.ceil(np.log2(N_probe_orig)))
+
+        Ls = 1000000e-9  # determine probe size
+        probe_orig = make_fzp_probe(N_probe_orig, params['wavelength_m'], 4e-9, Ls, Rn, dRn, D_FZP, D_H)
+        probe = resize_complex_array(probe_orig, zoom_factor=(4e-9/params['obj_pixel_size_m'], 4e-9/params['obj_pixel_size_m']))
+        # Crop probe to match the diffraction pattern size
+        if probe.shape[-1] > dp.shape[1]:
+            # Calculate the center of the probe
+            center_y, center_x = probe.shape[0] // 2, probe.shape[1] // 2
+            # Calculate the half-width of the target size
+            half_height, half_width = dp.shape[1] // 2, dp.shape[1] // 2
+            # Crop the probe around its center
+            probe = probe[center_y - half_height:center_y + half_height,
+                          center_x - half_width:center_x + half_width]
+            # print(f"Probe cropped from {probe.shape[0]}x{probe.shape[1]} to {dp.shape[1]}x{dp.shape[1]}")
+
+        #probe = make_fzp_probe(dp.shape[-2], params['wavelength_m'], params['obj_pixel_size_m'], L_s, Rn, dRn, D_FZP, D_H)
     else:
         if path_to_init_probe.endswith('.mat'):
             print("Loading initial probe from a foldslice reconstruction.")
@@ -513,16 +632,10 @@ def _prepare_initial_probe(dp, params):
         probe = probe_temp
 
     #probe = probe.transpose(0, 2, 1)
-
+    # TODO: determine zoom factor based on pixel size ratio
     if probe.shape[-1:] != dp.shape[-1:]:
         print(f"Resizing probe ({probe.shape[-1]}) to match the diffraction pattern size ({dp.shape[-1]}).")
-        probe_temp = np.zeros((probe.shape[0], dp.shape[-2], dp.shape[-1]), dtype=np.complex64)
-        zoom_factor = (dp.shape[-2] / probe.shape[1], dp.shape[-1] / probe.shape[2])
-        for i in range(probe_temp.shape[0]):
-            probe_real = scipy.ndimage.zoom(probe[i,:,:].real, zoom_factor, order=1)
-            probe_imag = scipy.ndimage.zoom(probe[i,:,:].imag, zoom_factor, order=1)
-            probe_temp[i,:,:] = probe_real + 1j*probe_imag
-        probe = probe_temp
+        probe = resize_complex_array(probe, new_shape=(dp.shape[-2], dp.shape[-1]))
 
     # Rescale probe intensity to match diffraction patterns
     # probe = rescale_probe(probe, dp)
@@ -910,13 +1023,6 @@ def _load_data_lynx(base_path, scan_num, det_Npixel, cen_x, cen_y):
     # Clean up data
     dp[dp < 0] = 0
     dp[dp > 1e7] = 0
-    #dp = dp[::1]  # Keep original sampling for now
-
-    # # Pad if needed
-    # if det_Npixel > N_dp_x_input:
-    #     pad_size = (det_Npixel - N_dp_x_input) // 2
-    #     dp = np.pad(dp, ((0,0), (pad_size,pad_size), (pad_size,pad_size)), 
-    #                mode='constant', constant_values=0)
 
     return dp, positions
 
@@ -1000,78 +1106,3 @@ def _load_data_velo(base_path, scan_num, det_Npixel, cen_x, cen_y):
     positions = np.column_stack((ppY, ppX))
 
     return dp, positions
-
-
-def _make_fzp_probe(N, lambda_, dx, Ls, Rn, dRn, D_FZP, D_H):
-
-    """
-    Generates a Fresnel zone plate probe.
-    Parameters:
-        N (int): Number of pixels.
-        lambda_ (float): Wavelength.
-        dx (float): Pixel size (in meters) in sample plane.
-        Ls (float): Distance (in meters) from focal plane to sample.
-        Rn (float): Radius of outermost zone (in meters).
-        dRn (float): Width of outermost zone (in meters).
-        D_FZP (float): Diameter of pinhole.
-        D_H (float): Diameter of the central beamstop (in meters).
-    Returns:
-        ndarray: Calculated probe field in the sample plane.
-    """
-
-    fl = 2 * Rn * dRn / lambda_  # focal length corresponding to central wavelength
-    dx_fzp = lambda_ * fl / N / dx  # pixel size in the FZP plane
-    # Coordinate in the FZP plane
-    lx_fzp = np.linspace(-dx_fzp * N / 2, dx_fzp * N / 2, N)
-    x_fzp, y_fzp = np.meshgrid(lx_fzp, lx_fzp)
-    # Transmission function of the FZP
-    T = np.exp(-1j * 2 * np.pi / lambda_ * (x_fzp**2 + y_fzp**2) / (2 * fl))
-    C = (np.sqrt(x_fzp**2 + y_fzp**2) <= (D_FZP / 2)).astype(np.float64)  # circular function of FZP
-    H = (np.sqrt(x_fzp**2 + y_fzp**2) >= (D_H / 2)).astype(np.float64)  # central block
-    # Probe on sample plane using the Fresnel propagation function defined previously
-    probe = _fresnel_propagation(C * T * H, dx_fzp, fl + Ls, lambda_)
-
-    return probe
-
-def _fresnel_propagation(IN, dxy, z, lambda_):
-    """
-    Performs Fresnel propagation for a given input wavefield.
-    
-    Parameters:
-        IN (ndarray): Input object or wavefield.
-        dxy (float): Pixel pitch of the object.
-        z (float): Distance of the propagation.
-        lambda_ (float): Wavelength of the wave.
-    
-    Returns:
-        ndarray: Output wavefield after Fresnel propagation.
-    """
-    M, N = IN.shape
-    k = 2 * np.pi / lambda_
-
-    # Coordinate grid for input plane
-    lx = np.linspace(-dxy * M / 2, dxy * M / 2, M)
-    x, y = np.meshgrid(lx, lx)
-
-    # Coordinate grid for output plane
-    fc = 1 / dxy
-    fu = lambda_ * z * fc
-    lu = np.fft.ifftshift(np.linspace(-fu / 2, fu / 2, M))
-    u, v = np.meshgrid(lu, lu)
-
-    if z > 0:
-        # Propagation in the positive z direction
-        pf = np.exp(1j * k * z) * np.exp(1j * k * (u**2 + v**2) / (2 * z))
-        kern = IN * np.exp(1j * k * (x**2 + y**2) / (2 * z))
-        
-        kerntemp = np.fft.fftshift(kern)
-        cgh = np.fft.fft2(kerntemp)
-        OUT = np.fft.fftshift(cgh * pf)
-    else:
-        # Propagation in the negative z direction (or backward propagation)
-        z = abs(z)
-        pf = np.exp(1j * k * z) * np.exp(1j * k * (x**2 + y**2) / (2 * z))
-        cgh = np.fft.ifft2(np.fft.ifftshift(IN) / np.exp(1j * k * (u**2 + v**2) / (2 * z)))
-        OUT = np.fft.fftshift(cgh) / pf
-    
-    return OUT
