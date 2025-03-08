@@ -11,6 +11,7 @@ from ptychi.utils import (add_additional_opr_probe_modes_to_probe,
                           orthogonalize_initial_probe,
                           get_suggested_object_size,
                           get_default_complex_dtype)
+from ptychi.maths import decompose_2x2_affine_transform_matrix
 import matplotlib.pyplot as plt
 #from matplotlib.patches import Rectangle
 from ptychi.pear_utils import make_fzp_probe, resize_complex_array
@@ -18,7 +19,7 @@ import sys
 import torch
 import json
 
-def save_reconstructions(task, recon_path, iter):
+def save_reconstructions(task, recon_path, iter, params):
     pixel_size_um = task.object_options.pixel_size_m * 1e6
     
     # Object
@@ -236,22 +237,72 @@ def save_reconstructions(task, recon_path, iter):
                 imagej=True)
         
     # Save scan positions
-    scan_positions = task.get_data_to_cpu('probe_positions', as_numpy=True)
-    plt.figure()
-    plt.scatter(-init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
-    plt.scatter(-scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6, scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6, s=10, edgecolors='red', facecolors='none')
-    # Calculate average position differences
-    x_diff = np.mean(np.abs(-scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6 - (-init_positions_x_um)))
-    y_diff = np.mean(np.abs(scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6 - init_positions_y_um))
-    plt.xlabel(f'X [um] (average error: {x_diff*1e3:.2f} nm)')
-    plt.ylabel(f'Y [um] (average error: {y_diff*1e3:.2f} nm)')
-    plt.legend(['Initial positions', 'Refined positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
-    plt.grid(True)
-    plt.xlim(pos_x_min*range_factor, pos_x_max*range_factor)
-    plt.ylim(pos_y_min*range_factor, pos_y_max*range_factor)
-    plt.savefig(f'{recon_path}/positions/positions_Niter{iter}.png', dpi=300)
-    plt.close()
+    if params['position_correction']:
+        scan_positions = task.get_data_to_cpu('probe_positions', as_numpy=True)
+        plt.figure()
+        plt.scatter(-init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
+        plt.scatter(-scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6, scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6, s=10, edgecolors='red', facecolors='none')
+        # Calculate average position differences
+        x_diff = np.mean(np.abs(-scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6 - (-init_positions_x_um)))
+        y_diff = np.mean(np.abs(scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6 - init_positions_y_um))
+        plt.xlabel(f'X [um] (average error: {x_diff*1e3:.2f} nm)')
+        plt.ylabel(f'Y [um] (average error: {y_diff*1e3:.2f} nm)')
+        plt.legend(['Initial positions', 'Refined positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
+        plt.grid(True)
+        plt.xlim(pos_x_min*range_factor, pos_x_max*range_factor)
+        plt.ylim(pos_y_min*range_factor, pos_y_max*range_factor)
+        plt.savefig(f'{recon_path}/positions/positions_Niter{iter}.png', dpi=300)
+        plt.close()
 
+        # Plot affine transformation parameters from probe position correction
+        mat = task.reconstructor.parameter_group.probe_positions.affine_transform_matrix
+        
+        # Extract transformation parameters
+        scale, asymmetry, rotation, shear = decompose_2x2_affine_transform_matrix(mat[:,:-1])
+        
+        # Store parameters for plotting
+        pos_scale.append(scale.cpu().item())
+        pos_assymetry.append(asymmetry.cpu().item())
+        pos_rotation.append(rotation.cpu().item())
+        pos_shear.append(shear.cpu().item())
+        iterations.append(iter)
+        
+        # Create figure with subplots for each transformation parameter
+        fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+        
+        # Plot scale factor
+        axs[0, 0].plot(iterations, pos_scale, 'o-', color='blue')
+        axs[0, 0].set_ylim(0.97, 1.03)
+        axs[0, 0].set_xlabel('Iterations')
+        axs[0, 0].set_ylabel('Scale Factor')
+        axs[0, 0].set_title('Scale')
+        axs[0, 0].grid(True)
+        
+        # Plot asymmetry
+        axs[0, 1].plot(iterations, pos_assymetry, 'o-', color='blue')
+        axs[0, 1].set_xlabel('Iterations')
+        axs[0, 1].set_ylabel('Asymmetry')
+        axs[0, 1].set_title('Asymmetry')
+        axs[0, 1].grid(True)
+        
+        # Plot rotation
+        axs[1, 0].plot(iterations, pos_rotation, 'o-', color='blue')
+        axs[1, 0].set_xlabel('Iterations')
+        axs[1, 0].set_ylabel('Rotation (rad)')
+        axs[1, 0].set_title('Rotation')
+        axs[1, 0].grid(True)
+        
+        # Plot shear
+        axs[1, 1].plot(iterations, pos_shear, 'o-', color='blue')
+        axs[1, 1].set_xlabel('Iterations')
+        axs[1, 1].set_ylabel('Shear')
+        axs[1, 1].set_title('Shear')
+        axs[1, 1].grid(True)
+
+        plt.tight_layout()
+        plt.savefig(f'{recon_path}/positions_affine/positions_affine_Niter{iter}.png', dpi=300)
+        plt.close(fig)
+        
     # Plot loss vs iterations
     loss = task.reconstructor.loss_tracker.table['loss']
 
@@ -278,7 +329,22 @@ def save_reconstructions(task, recon_path, iter):
         hdf_file.create_dataset('obj_pixel_size_m', data=task.object_options.pixel_size_m)
         if recon_probe.shape[0] > 1:
             hdf_file.create_dataset('opr_mode_weights', data=opr_mode_weights)
-            
+  
+    if params['number_of_iterations'] == iter:
+        if params.get('collect_object_phase', False):
+            print("Collecting object phase")
+            recon_object = task.get_data_to_cpu('object', as_numpy=False)
+            obj_ph_collection_dir = os.path.join(params['data_directory'], 'ptychi_recons', params['recon_parent_dir'], 'object_ph_collection')
+            os.makedirs(obj_ph_collection_dir, exist_ok=True)
+            object_full_ph_unwrapped = unwrap_phase_2d(recon_object[0,].cuda(), image_grad_method='fourier_differentiation', image_integration_method='fourier')
+            print(f"Saving object phase to {obj_ph_collection_dir}/S{params['scan_num']:04d}.tiff")
+            imwrite(f'{obj_ph_collection_dir}/S{params["scan_num"]:04d}.tiff', 
+                    normalize_by_bit_depth(object_full_ph_unwrapped.cpu(), '16'),
+                    photometric='minisblack',
+                    resolution=(1 / pixel_size_um, 1 / pixel_size_um),
+                    metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                    imagej=True)
+
 def create_reconstruction_path(params, options):
     # Construct the base reconstruction path
     recon_path_base = os.path.join(params['data_directory'], 'ptychi_recons', params['recon_parent_dir'], f'S{params['scan_num']:04d}')
@@ -340,7 +406,9 @@ def create_reconstruction_path(params, options):
     if options.opr_mode_weight_options.optimizable:
         os.makedirs(os.path.join(recon_path, 'probe_mag_opr'), exist_ok=True)
     os.makedirs(os.path.join(recon_path, 'loss'), exist_ok=True)
-    os.makedirs(os.path.join(recon_path, 'positions'), exist_ok=True)
+    if params['position_correction']:
+        os.makedirs(os.path.join(recon_path, 'positions'), exist_ok=True)
+        os.makedirs(os.path.join(recon_path, 'positions_affine'), exist_ok=True)
     print(f'Reconstruction results will be saved in: {recon_path}')
 
     return recon_path
@@ -459,9 +527,15 @@ def save_initial_conditions(recon_path, params, options):
     plt.xlim(pos_x_min*range_factor, pos_x_max*range_factor)
     plt.ylim(pos_y_min*range_factor, pos_y_max*range_factor)
     plt.savefig(f'{recon_path}/init_positions.png', dpi=300)
-
     plt.close()
 
+    if params['position_correction']:
+        global pos_scale, pos_assymetry, pos_rotation, pos_shear, iterations
+        pos_scale = []
+        pos_assymetry = []
+        pos_rotation = []
+        pos_shear = []
+        iterations = []
     # Save parameters to a JSON file in the reconstruction path
     params_file_path = f'{recon_path}/pear_params.json'
     with open(params_file_path, 'w') as params_file:
