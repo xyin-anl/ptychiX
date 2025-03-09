@@ -108,7 +108,9 @@ def save_reconstructions(task, recon_path, iter, params):
         from ptychi.pear_utils import near_field_evolution
         
         # Get the primary probe mode
-        probe = recon_probe[0, 0]  # First OPR mode, first incoherent mode
+        # Extract the primary probe mode based on dimensionality
+        probe = recon_probe[0, 0] if recon_probe.ndim == 4 else (
+                recon_probe[0] if recon_probe.ndim == 3 else recon_probe)
         
         # Check if slice_spacings attribute exists in the correct location
         # Get slice spacings directly from object_options
@@ -208,11 +210,8 @@ def save_reconstructions(task, recon_path, iter, params):
     #plt.imsave(f'{recon_path}/probe_mag/probe_mag_Niter{iter}.tiff', normalize_by_bit_depth(probe_mag, '16'), cmap='plasma')
     #imwrite(f'{recon_path}/probe_mag/pxrobe_mag_Niter{iter}.tiff', normalize_by_bit_depth(probe_mag, '16'))
     # Save probe at each scan position
-    if recon_probe.shape[0] > 1:
+    if recon_probe.shape[0] > 1 and params.get('save_probe_at_each_scan_position', False):
         opr_mode_weights = task.reconstructor.parameter_group.opr_mode_weights.data.cpu().detach().numpy()
-        #print("Saving probe at each scan position")
-        #print(recon_probe.shape)
-        # Uncomment and fix the code for saving probes at each scan position
         probes = task.reconstructor.parameter_group.probe.get_unique_probes(task.reconstructor.parameter_group.opr_mode_weights.data, mode_to_apply=0)
         probes = probes[:,0,:,:].cpu().detach().numpy() # only keep the primary mode
         
@@ -329,15 +328,14 @@ def save_reconstructions(task, recon_path, iter, params):
         hdf_file.create_dataset('obj_pixel_size_m', data=task.object_options.pixel_size_m)
         if recon_probe.shape[0] > 1:
             hdf_file.create_dataset('opr_mode_weights', data=opr_mode_weights)
-  
+    
     if params['number_of_iterations'] == iter:
-        if params.get('collect_object_phase', False):
-            print("Collecting object phase")
+        if params.get('collect_object_phase', False):  # copy final recon to a collection folder
             recon_object = task.get_data_to_cpu('object', as_numpy=False)
             obj_ph_collection_dir = os.path.join(params['data_directory'], 'ptychi_recons', params['recon_parent_dir'], 'object_ph_collection')
             os.makedirs(obj_ph_collection_dir, exist_ok=True)
             object_full_ph_unwrapped = unwrap_phase_2d(recon_object[0,].cuda(), image_grad_method='fourier_differentiation', image_integration_method='fourier')
-            print(f"Saving object phase to {obj_ph_collection_dir}/S{params['scan_num']:04d}.tiff")
+            print(f"Saving final object phase to {obj_ph_collection_dir}/S{params['scan_num']:04d}.tiff")
             imwrite(f'{obj_ph_collection_dir}/S{params["scan_num"]:04d}.tiff', 
                     normalize_by_bit_depth(object_full_ph_unwrapped.cpu(), '16'),
                     photometric='minisblack',
@@ -386,6 +384,9 @@ def create_reconstruction_path(params, options):
             recon_path += f'_layer{options.probe_position_options.correction_options.slice_for_correction}'
         if options.probe_position_options.affine_transform_constraint.apply_constraint:
             recon_path += '_affine'
+
+    if params.get('init_probe_propagation_distance_mm', 0) != 0:
+        recon_path += f'_pd{params['init_probe_propagation_distance_mm']}'
 
     # Append any additional suffix
     if params['recon_dir_suffix']:
@@ -651,16 +652,26 @@ def _prepare_initial_probe(dp, params):
 
     if params.get('use_model_FZP_probe', False):
         print("Generating a model FZP probe.")
-        dRn = 50e-9
-        Rn = 90e-6
-        D_H = 60e-6
-        D_FZP = 250e-6
+        if params['instrument'].lower() == 'velo' or params['instrument'].lower() == 'velociprobe':
+            dRn = 50e-9
+            Rn = 90e-6
+            D_H = 60e-6
+            D_FZP = 250e-6
+        elif params['instrument'].lower() == 'ptycho_probe':
+            dRn = 15e-9
+            Rn = 90e-6
+            D_H = 15e-6
+            D_FZP = 250e-6
+        else:
+            dRn = 50e-9
+            Rn = 90e-6
+            D_H = 60e-6
+            D_FZP = 250e-6
         N_probe_orig = dp.shape[-2]*params['obj_pixel_size_m']/4e-9
         # Round N_probe_orig up to the nearest power of 2 for faster FFT
         N_probe_orig = int(2 ** np.ceil(np.log2(N_probe_orig)))
 
-        Ls = 1000000e-9  # determine probe size
-        probe_orig = make_fzp_probe(N_probe_orig, params['wavelength_m'], 4e-9, Ls, Rn, dRn, D_FZP, D_H)
+        probe_orig = make_fzp_probe(N_probe_orig, params['wavelength_m'], 4e-9, 0, Rn, dRn, D_FZP, D_H)
         probe = resize_complex_array(probe_orig, zoom_factor=(4e-9/params['obj_pixel_size_m'], 4e-9/params['obj_pixel_size_m']))
         # Crop probe to match the diffraction pattern size
         if probe.shape[-1] > dp.shape[1]:
@@ -672,8 +683,6 @@ def _prepare_initial_probe(dp, params):
             probe = probe[center_y - half_height:center_y + half_height,
                           center_x - half_width:center_x + half_width]
             # print(f"Probe cropped from {probe.shape[0]}x{probe.shape[1]} to {dp.shape[1]}x{dp.shape[1]}")
-
-        #probe = make_fzp_probe(dp.shape[-2], params['wavelength_m'], params['obj_pixel_size_m'], L_s, Rn, dRn, D_FZP, D_H)
     else:
         if path_to_init_probe.endswith('.mat'):
             print("Loading initial probe from a foldslice reconstruction.")
@@ -711,8 +720,26 @@ def _prepare_initial_probe(dp, params):
         print(f"Resizing probe ({probe.shape[-1]}) to match the diffraction pattern size ({dp.shape[-1]}).")
         probe = resize_complex_array(probe, new_shape=(dp.shape[-2], dp.shape[-1]))
 
-    # Rescale probe intensity to match diffraction patterns
-    # probe = rescale_probe(probe, dp)
+    # Propagate probe if a propagation distance is specified
+    propagation_distance_mm = params.get('init_probe_propagation_distance_mm', 0)
+    if propagation_distance_mm != 0:
+        from ptychi.pear_utils import near_field_evolution
+        extent = probe.shape[-1] * params['obj_pixel_size_m']
+        # Convert mm to meters for propagation
+        propagation_distance_m = propagation_distance_mm * 1e-3
+        
+        # Log the propagation operation
+        print(f"Propagating initialprobe by {propagation_distance_mm} mm")
+        
+        # Propagate each probe mode
+        for i in range(probe.shape[0]):
+                probe[i], _, _, _ = near_field_evolution(
+                    probe[i],
+                    propagation_distance_m,
+                    params['wavelength_m'],
+                    extent,
+                    use_ASM_only=True
+                )
 
     # Add OPR mode dimension
     probe = probe[None, ...]

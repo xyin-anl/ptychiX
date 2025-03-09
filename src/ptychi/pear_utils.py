@@ -71,8 +71,8 @@ def make_fzp_probe(N, lambda_, dx, Ls, Rn, dRn, D_FZP, D_H):
     C = (np.sqrt(x_fzp**2 + y_fzp**2) <= (D_FZP / 2)).astype(np.float64)  # circular function of FZP
     H = (np.sqrt(x_fzp**2 + y_fzp**2) >= (D_H / 2)).astype(np.float64)  # central block
     # Probe on sample plane using the Fresnel propagation function defined previously
-    probe = fresnel_propagation(C * T * H, dx_fzp, fl + Ls, lambda_)
-    print(f"dx_fzp: {dx_fzp}, fl: {fl}, Ls: {Ls}, lambda_: {lambda_}")
+    probe = fresnel_propagation(C * T * H, dx_fzp, fl+Ls, lambda_)
+    #print(f"dx_fzp: {dx_fzp}, fl: {fl}, Ls: {Ls}, lambda_: {lambda_}")
     #print(f"Center pixel value of probe: {probe[probe.shape[0]//2, probe.shape[1]//2]}")
 
     return probe
