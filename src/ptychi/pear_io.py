@@ -3,6 +3,7 @@ import h5py
 import hdf5plugin # for reading raw hdf5 files
 import numpy as np
 import scipy.ndimage
+from scipy.interpolate import interp1d
 from tifffile import imwrite
 from ptychi.image_proc import unwrap_phase_2d
 import ptychi.api as api
@@ -26,10 +27,42 @@ def save_reconstructions(task, recon_path, iter, params):
     recon_object = task.get_data_to_cpu('object', as_numpy=True)
     recon_object_roi = task.object.get_object_in_roi().cpu().detach()
     if recon_object_roi.shape[0] > 1:  # multislice recon
-        object_ph_stack = [normalize_by_bit_depth(unwrap_phase_2d(slice.cuda(), 
-                                                                 image_grad_method='fourier_differentiation',
-                                                                 image_integration_method='fourier').cpu(), '16')
-                          for slice in recon_object_roi]
+        # object_ph_stack = [normalize_by_bit_depth(unwrap_phase_2d(slice.cuda(), 
+        #                                                          image_grad_method='fourier_differentiation',
+        #                                                          image_integration_method='fourier').cpu(), '16')
+        #                   for slice in recon_object_roi]
+        # Unwrap phase for each slice
+        unwrapped_phases = [unwrap_phase_2d(slice.cuda(), 
+                                          image_grad_method='fourier_differentiation',
+                                          image_integration_method='fourier').cpu().numpy()
+                           for slice in recon_object_roi]
+        
+        # Find global min and max for normalization
+        global_min = min(phase.min() for phase in unwrapped_phases)
+        global_max = max(phase.max() for phase in unwrapped_phases)
+        
+        # Check if the range is too small, which can cause contrast issues
+        if global_max - global_min < 1e-6:
+            print("Warning: Very small global range detected in phase values. Using per-slice normalization.")
+            object_ph_stack = [normalize_by_bit_depth(phase, '16') for phase in unwrapped_phases]
+        else:
+            # Apply robust normalization with clipping to improve contrast
+            # Calculate percentiles for robust scaling (removes extreme outliers)
+            all_phases = np.concatenate([phase.flatten() for phase in unwrapped_phases])
+            p_low, p_high = np.percentile(all_phases, [1, 99])
+            
+            print(f"Global phase range: {global_min:.4f} to {global_max:.4f}")
+            print(f"Robust phase range (1-99 percentile): {p_low:.4f} to {p_high:.4f}")
+            
+            # Normalize all slices using robust global range with clipping
+            object_ph_stack = []
+            for phase in unwrapped_phases:
+                # Clip to robust range
+                phase_clipped = np.clip(phase, p_low, p_high)
+                # Normalize to 16-bit range
+                normalized = (phase_clipped - p_low) / (p_high - p_low) * 65535
+                object_ph_stack.append(np.uint16(normalized))
+        
         imwrite(f'{recon_path}/object_ph_layers/object_ph_layers_Niter{iter}.tiff',
                 np.array(object_ph_stack),
                 photometric='minisblack',
@@ -210,8 +243,8 @@ def save_reconstructions(task, recon_path, iter, params):
     #plt.imsave(f'{recon_path}/probe_mag/probe_mag_Niter{iter}.tiff', normalize_by_bit_depth(probe_mag, '16'), cmap='plasma')
     #imwrite(f'{recon_path}/probe_mag/pxrobe_mag_Niter{iter}.tiff', normalize_by_bit_depth(probe_mag, '16'))
     # Save probe at each scan position
+    opr_mode_weights = task.reconstructor.parameter_group.opr_mode_weights.data.cpu().detach().numpy()
     if recon_probe.shape[0] > 1 and params.get('save_probe_at_each_scan_position', False):
-        opr_mode_weights = task.reconstructor.parameter_group.opr_mode_weights.data.cpu().detach().numpy()
         probes = task.reconstructor.parameter_group.probe.get_unique_probes(task.reconstructor.parameter_group.opr_mode_weights.data, mode_to_apply=0)
         probes = probes[:,0,:,:].cpu().detach().numpy() # only keep the primary mode
         
@@ -236,8 +269,8 @@ def save_reconstructions(task, recon_path, iter, params):
                 imagej=True)
         
     # Save scan positions
+    scan_positions = task.get_data_to_cpu('probe_positions', as_numpy=True)
     if params['position_correction']:
-        scan_positions = task.get_data_to_cpu('probe_positions', as_numpy=True)
         plt.figure()
         plt.scatter(-init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
         plt.scatter(-scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6, scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6, s=10, edgecolors='red', facecolors='none')
@@ -328,6 +361,9 @@ def save_reconstructions(task, recon_path, iter, params):
         hdf_file.create_dataset('obj_pixel_size_m', data=task.object_options.pixel_size_m)
         if recon_probe.shape[0] > 1:
             hdf_file.create_dataset('opr_mode_weights', data=opr_mode_weights)
+        if recon_object_roi.shape[0] > 1:  # multislice recon
+            slice_spacings = task.object_options.slice_spacings_m
+            hdf_file.create_dataset('slice_spacings_m', data=slice_spacings)
     
     if params['number_of_iterations'] == iter:
         if params.get('collect_object_phase', False):  # copy final recon to a collection folder
@@ -404,7 +440,7 @@ def create_reconstruction_path(params, options):
         os.makedirs(os.path.join(recon_path, 'object_mag'), exist_ok=True)
     
     os.makedirs(os.path.join(recon_path, 'probe_mag'), exist_ok=True)
-    if options.opr_mode_weight_options.optimizable:
+    if options.opr_mode_weight_options.optimizable and params.get('save_probe_at_each_scan_position', False):
         os.makedirs(os.path.join(recon_path, 'probe_mag_opr'), exist_ok=True)
     os.makedirs(os.path.join(recon_path, 'loss'), exist_ok=True)
     if params['position_correction']:
@@ -547,22 +583,26 @@ def initialize_recon(params):
     dp_Npix = params['diff_pattern_size_pix']
 
     # Load diffraction patterns and positions
-    if params.get('load_processed_hdf5') or instrument == 'simu':
-        dp, positions_m = _load_data_hdf5(
-            params.get('path_to_processed_hdf5_dp'),
-            params.get('path_to_processed_hdf5_pos'),
-            dp_Npix
-        )
-    else:
-        dp, positions_m = _load_data_raw(
-            instrument,
-            params.get('data_directory'),
-            params.get('scan_num'),
-            dp_Npix,
-            params.get('diff_pattern_center_x'),
-            params.get('diff_pattern_center_y')
-        )
-    print("Shape of diffraction patterns (dp):", dp.shape)
+    try:
+        if params.get('load_processed_hdf5') or instrument == 'simu':
+            dp, positions_m = _load_data_hdf5(
+                params.get('path_to_processed_hdf5_dp'),
+                params.get('path_to_processed_hdf5_pos'),
+                dp_Npix
+            )
+        else:
+            dp, positions_m = _load_data_raw(
+                instrument,
+                params.get('data_directory'),
+                params.get('scan_num'),
+                dp_Npix,
+                params.get('diff_pattern_center_x'),
+                params.get('diff_pattern_center_y')
+            )
+    except Exception as e:
+        print(f"Error loading diffraction patterns and positions")
+        raise e
+    print("Shape of diffraction patterns:", dp.shape)
 
     # Load external positions
     if params['path_to_init_positions']:
@@ -616,8 +656,147 @@ def _prepare_initial_object(params, positions_px, probe_size, extra_size):
     if params['path_to_init_object']:
         print("Loading initial object from a ptychi reconstruction.")
         init_object = _load_ptychi_recon(params['path_to_init_object'], 'object')
+        print(f"Initial object shape: {init_object.shape}")
         input_obj_pixel_size = _load_ptychi_recon(params['path_to_init_object'], 'obj_pixel_size_m')
-        # TODO: more options for multislice recon
+        
+        # Handle multislice object initialization
+        if init_object.shape[0] > 1:  # input object is a multislice reconstruction
+            # Step 1: Select specific layers if specified
+            layer_select = params.get('init_layer_select', [])
+            if layer_select:
+                # Filter out invalid layer indices
+                layer_select = [i for i in layer_select if 0 <= i < init_object.shape[0]]
+                if layer_select:
+                    print(f"Selecting specific layers: {layer_select}")
+                    init_object = init_object[layer_select]
+                else:
+                    print("No valid layers specified in init_layer_select, using all layers")
+            
+            # Step 2: Pre-process layers based on specified mode
+            init_layer_preprocess = params.get('init_layer_preprocess', '')
+            if init_layer_preprocess == 'avg':
+                # Average all layers but keep the same number of layers
+                print("Averaging initial layers")
+                obj_avg = np.prod(init_object, axis=0)
+                # Unwrap phase and divide by number of layers
+                obj_avg_phase = unwrap_phase_2d(torch.from_numpy(obj_avg).cuda(), 
+                                               image_grad_method='fourier_differentiation',
+                                               image_integration_method='fourier').cpu().numpy()
+                obj_avg_phase = obj_avg_phase / init_object.shape[0]
+                obj_avg = np.abs(obj_avg) * np.exp(1j * obj_avg_phase)
+                # Replicate the averaged layer
+                init_object = np.repeat(obj_avg[np.newaxis, :, :], init_object.shape[0], axis=0)
+                
+            elif init_layer_preprocess == 'avg1':
+                # Average all layers and keep only one layer
+                print("Averaging initial layers and keeping only one")
+                obj_avg = np.prod(init_object, axis=0)
+                # Unwrap phase and divide by number of layers
+                obj_avg_phase = unwrap_phase_2d(torch.from_numpy(obj_avg).cuda(), 
+                                               image_grad_method='fourier_differentiation',
+                                               image_integration_method='fourier').cpu().numpy()
+                obj_avg_phase = obj_avg_phase / init_object.shape[0]
+                obj_avg = np.abs(obj_avg) * np.exp(1j * obj_avg_phase)
+                init_object = obj_avg[np.newaxis, :, :]
+                
+            elif init_layer_preprocess == 'interp' and 'init_layer_interp' in params:
+                # Interpolate layers to new z positions
+                interp_positions = params['init_layer_interp']
+                print(f"Interpolating {init_object.shape[0]} initial layers to {len(interp_positions)} layers")
+                
+                # Create interpolation function for real and imaginary parts separately
+                real_interp = interp1d(np.arange(init_object.shape[0]), 
+                                      init_object.real, 
+                                      axis=0, 
+                                      kind='cubic',
+                                      bounds_error=False,
+                                      fill_value="extrapolate")
+                
+                imag_interp = interp1d(np.arange(init_object.shape[0]), 
+                                      init_object.imag, 
+                                      axis=0, 
+                                      kind='cubic',
+                                      bounds_error=False,
+                                      fill_value="extrapolate")
+                
+                # Interpolate to new positions
+                real_part = real_interp(interp_positions)
+                imag_part = imag_interp(interp_positions)
+                
+                # Combine real and imaginary parts
+                init_object = real_part + 1j * imag_part
+            
+            # Step 3: Add or remove layers based on target number of slices
+            target_layers = params['number_of_slices']
+            
+            if init_object.shape[0] > target_layers:
+                print(f"Initial object has more layers ({init_object.shape[0]}) than target ({target_layers})")
+                if target_layers == 1:
+                    # If only one layer is needed, use the product of all layers
+                    print("Using product of all layers for single-slice reconstruction")
+                    obj_prod = np.prod(init_object, axis=0)
+                    init_object = obj_prod[np.newaxis, :, :]
+                else:
+                    # Select middle layers
+                    print(f"Selecting middle {target_layers} layers")
+                    start_idx = (init_object.shape[0] - target_layers) // 2
+                    end_idx = start_idx + target_layers
+                    init_object = init_object[start_idx:end_idx]
+            
+            elif init_object.shape[0] < target_layers:
+                # Need to add more layers
+                n_add = target_layers - init_object.shape[0]
+                print(f"Adding {n_add} more layers to initial {init_object.shape[0]} layers")
+                
+                append_mode = params.get('init_layer_append_mode', 'edge')
+                
+                if append_mode == 'avg':
+                    # Use averaged layer for padding
+                    obj_avg = np.prod(init_object, axis=0)
+                    obj_avg_phase = unwrap_phase_2d(torch.from_numpy(obj_avg).cuda(), 
+                                                  image_grad_method='fourier_differentiation',
+                                                  image_integration_method='fourier').cpu().numpy()
+                    obj_avg_phase = obj_avg_phase / init_object.shape[0]
+                    obj_avg = np.abs(obj_avg) * np.exp(1j * obj_avg_phase)
+                    obj_pre = obj_post = obj_avg
+                    
+                elif append_mode == 'edge':
+                    # Use first/last layer for padding
+                    obj_pre = init_object[0]
+                    obj_post = init_object[-1]
+                    
+                else:  # 'vac' or default
+                    # Use vacuum (ones) for padding
+                    print(f"Pad input object with vacuum (ones) layers")
+                    obj_shape = init_object.shape[1:]
+                    obj_pre = obj_post = np.ones(obj_shape, dtype=np.complex64)
+                # Add layers alternating between front and back
+                new_object = init_object.copy()
+                for i in range(n_add):
+                    if i % 2 == 0:
+                        # Add to end
+                        new_object = np.concatenate([new_object, obj_post[np.newaxis, :, :]])
+                    else:
+                        # Add to beginning
+                        new_object = np.concatenate([obj_pre[np.newaxis, :, :], new_object])
+                
+                init_object = new_object
+            
+            # Step 4: Apply scaling factor to phase if specified
+            scaling_factor = params.get('init_layer_scaling_factor', 1.0)
+            if scaling_factor != 1.0:
+                print(f"Scaling layer phases by factor {scaling_factor}")
+                for i in range(init_object.shape[0]):
+                    layer = init_object[i]
+                    # Unwrap phase and scale
+                    layer_phase = unwrap_phase_2d(torch.from_numpy(layer).cuda(), 
+                                                image_grad_method='fourier_differentiation',
+                                                image_integration_method='fourier').cpu().numpy()
+                    layer_phase *= scaling_factor
+                    # Recombine amplitude and scaled phase
+                    init_object[i] = np.abs(layer) * np.exp(1j * layer_phase)
+
+        # Resize object if pixel size doesn't match
         if input_obj_pixel_size != params['obj_pixel_size_m']:
             print(f"Input object's pixel size ({input_obj_pixel_size*1e9:.3f} nm) does not match the expected pixel size ({params['obj_pixel_size_m']*1e9:.3f} nm).")
             print(f"Resizing input object to match the current reconstruction.")
@@ -631,18 +810,16 @@ def _prepare_initial_object(params, positions_px, probe_size, extra_size):
             
             # Use resize_complex_array to resize the object
             init_object = resize_complex_array(init_object, new_shape=target_shape)
-            
-            # Convert to tensor
-            init_object = to_tensor(init_object)
+        
+        # Convert to tensor
+        init_object = to_tensor(init_object)
         
     else:
         print("Generating a random initial object.")
-
         init_object = torch.ones([params['number_of_slices'], *get_suggested_object_size(positions_px, probe_size, extra=extra_size)], dtype=get_default_complex_dtype())
         init_object = init_object + 1j*torch.rand(*init_object.shape) * 1e-3
  
     print("Shape of initial object:", init_object.shape)
-
     return init_object
 
 def _prepare_initial_probe(dp, params):

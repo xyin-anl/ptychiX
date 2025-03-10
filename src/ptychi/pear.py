@@ -83,7 +83,8 @@ def ptycho_recon(**params):
     options.probe_options.orthogonalize_opr_modes.enabled = True
     
     options.probe_options.center_constraint.enabled = params['center_probe']
-
+    options.probe_options.support_constraint.enabled = params['probe_support']
+    
     # position correction
     options.probe_position_options.position_x_px = init_positions_px[:, 1]
     options.probe_position_options.position_y_px = init_positions_px[:, 0]
@@ -227,7 +228,9 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
             log_content.extend([f"  {key}: {value}" for key, value in scan_params.items()])
             write_log(log_files['ongoing'], '\n'.join(log_content))
             
-            print(f"Starting reconstruction for scan {scan_num}")
+            # Print with color using ANSI escape codes
+            # Red text for starting reconstruction
+            print(f"\033[91mStarting reconstruction for scan {scan_num}\033[0m")
             start_time = time.time()
             
             try:
@@ -248,7 +251,10 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
                 write_log(log_files['done'], '\n'.join(completion_log))
                 print(f"Waiting for 3 seconds before next scan...")
                 time.sleep(3)
-                
+
+                if scan_order == 'descending':
+                    # Break the for loop after processing the current scan
+                    break
             except Exception as e:
                 # Handle failure
                 elapsed_time = time.time() - start_time
@@ -263,6 +269,8 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
                     f"Error: {str(e)}"
                 ]
                 write_log(log_files['failed'], '\n'.join(failure_log))
+
+                
 
          # Print summary of processing
         #print(f"Batch processing complete. Summary:")
