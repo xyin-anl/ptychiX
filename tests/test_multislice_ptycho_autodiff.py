@@ -47,6 +47,7 @@ class TestMultislicePtychoAutodiff(tutils.BaseTester):
         
         options.reconstructor_options.forward_model_class = api.ForwardModels.PLANAR_PTYCHOGRAPHY
         options.reconstructor_options.loss_function = api.LossFunctions.MSE_SQRT
+        options.reconstructor_options.use_double_precision_for_fft = True
         options.reconstructor_options.batch_size = 101
         options.reconstructor_options.num_epochs = 32
         options.reconstructor_options.default_device = api.Devices.GPU

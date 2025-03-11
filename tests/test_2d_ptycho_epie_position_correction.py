@@ -45,6 +45,7 @@ class Test2DEPIEPositionCorrection(tutils.TungstenDataTester):
         options.reconstructor_options.batch_size = 96
         options.reconstructor_options.num_epochs = 32
         options.reconstructor_options.allow_nondeterministic_algorithms = False
+        options.reconstructor_options.use_double_precision_for_fft = True
         
         task = PtychographyTask(options)
         task.run()
