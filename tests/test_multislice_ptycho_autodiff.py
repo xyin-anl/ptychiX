@@ -1,5 +1,5 @@
 import argparse
-
+import pytest
 import torch
 import numpy as np
 
@@ -12,6 +12,7 @@ import test_utils as tutils
 
 class TestMultislicePtychoAutodiff(tutils.BaseTester):
 
+    @pytest.mark.local
     @tutils.BaseTester.wrap_recon_tester(name='test_multislice_ptycho_autodiff')
     def test_multislice_ptycho_autodiff(self):
         self.setup_ptychi(cpu_only=False)
