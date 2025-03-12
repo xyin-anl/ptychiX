@@ -1,6 +1,9 @@
 import subprocess
 import re
 import numpy as np
+import glob
+import os
+
 def select_gpu(params):
     # Get GPU stats
     gpu_stats = get_gpu_usage()
@@ -308,3 +311,17 @@ def near_field_evolution(u_0, z, wavelength, extent, use_ASM_only=False):
     u_1 = np.fft.ifft2(np.fft.ifftshift(H) * np.fft.fft2(u_0))
     
     return u_1, H, h, dH
+
+def find_matching_recon(path, scan_num):
+    if 'scan_num' in path: # if path is a string pattern
+        formatted_path = path.format(scan_num=scan_num)
+        matching_files = glob.glob(formatted_path)
+
+        if matching_files:
+            #Sort files by modification time (newest first)
+            matching_files.sort(key=os.path.getmtime, reverse=True)
+            return matching_files[0]
+        else:
+            raise FileNotFoundError(f"No matching reconstruction file found for pattern: {formatted_path}")
+    else:
+        return path

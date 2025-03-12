@@ -15,7 +15,9 @@ from ptychi.utils import (add_additional_opr_probe_modes_to_probe,
 from ptychi.maths import decompose_2x2_affine_transform_matrix
 import matplotlib.pyplot as plt
 #from matplotlib.patches import Rectangle
-from ptychi.pear_utils import make_fzp_probe, resize_complex_array
+from ptychi.pear_utils import (make_fzp_probe,
+                                resize_complex_array,
+                                find_matching_recon)
 import sys
 import torch
 import json
@@ -33,9 +35,9 @@ def save_reconstructions(task, recon_path, iter, params):
         #                   for slice in recon_object_roi]
         # Unwrap phase for each slice
         unwrapped_phases = [unwrap_phase_2d(slice.cuda(), 
-                                          image_grad_method='fourier_differentiation',
+                                                                 image_grad_method='fourier_differentiation',
                                           image_integration_method='fourier').cpu().numpy()
-                           for slice in recon_object_roi]
+                          for slice in recon_object_roi]
         
         # Find global min and max for normalization
         global_min = min(phase.min() for phase in unwrapped_phases)
@@ -51,8 +53,8 @@ def save_reconstructions(task, recon_path, iter, params):
             all_phases = np.concatenate([phase.flatten() for phase in unwrapped_phases])
             p_low, p_high = np.percentile(all_phases, [1, 99])
             
-            print(f"Global phase range: {global_min:.4f} to {global_max:.4f}")
-            print(f"Robust phase range (1-99 percentile): {p_low:.4f} to {p_high:.4f}")
+            #print(f"Global phase range: {global_min:.4f} to {global_max:.4f}")
+            #print(f"Robust phase range (1-99 percentile): {p_low:.4f} to {p_high:.4f}")
             
             # Normalize all slices using robust global range with clipping
             object_ph_stack = []
@@ -120,7 +122,6 @@ def save_reconstructions(task, recon_path, iter, params):
     # Probe
     recon_probe = task.get_data_to_cpu('probe', as_numpy=True)
     probe_mag = np.hstack(np.abs(recon_probe[0,]))
-    N_probe = probe_mag.shape[0]
     #plt.imsave(f'{recon_path}/probe_mag/probe_mag_Niter{iter}.png', probe_mag, cmap='plasma')
 
     norm = plt.Normalize(vmin=probe_mag.min(), vmax=probe_mag.max())
@@ -196,11 +197,11 @@ def save_reconstructions(task, recon_path, iter, params):
         # Save as tiff stack
         imwrite(f'{recon_path}/probe_propagation_mag/probe_propagation_mag_Niter{iter}.tiff',
                 np.array(colored_probes_mag_stack),
-                photometric='rgb',
-                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
-                imagej=True)
-    
+            photometric='rgb',
+            resolution=(1 / pixel_size_um, 1 / pixel_size_um),
+            metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+            imagej=True)
+
     # # Create figure and axis
     # fig, ax = plt.subplots()
 
@@ -334,7 +335,7 @@ def save_reconstructions(task, recon_path, iter, params):
         plt.tight_layout()
         plt.savefig(f'{recon_path}/positions_affine/positions_affine_Niter{iter}.png', dpi=300)
         plt.close(fig)
-        
+
     # Plot loss vs iterations
     loss = task.reconstructor.loss_tracker.table['loss']
 
@@ -646,15 +647,20 @@ def _load_data_raw(instrument, base_path, scan_num, dp_Npix, dp_cen_x, dp_cen_y)
     return dp, positions
 
 def _prepare_initial_positions(params):
-    print("Loading initial positions from a ptychi reconstruction.")
+    params['path_to_init_positions'] = find_matching_recon(params['path_to_init_positions'], params['scan_num'])
+    print("Loading initial positions from a ptychi reconstruction at:")
+    print(params['path_to_init_positions'])
     positions_px = _load_ptychi_recon(params['path_to_init_positions'], 'positions_px')
     input_obj_pixel_size = _load_ptychi_recon(params['path_to_init_positions'], 'obj_pixel_size_m')
     
     return positions_px*input_obj_pixel_size
 
 def _prepare_initial_object(params, positions_px, probe_size, extra_size):
-    if params['path_to_init_object']:
-        print("Loading initial object from a ptychi reconstruction.")
+    if  ['path_to_init_object']:
+        params['path_to_init_object'] = find_matching_recon(params['path_to_init_object'], params['scan_num'])
+        
+        print("Loading initial object from a ptychi reconstruction at:")
+        print(params['path_to_init_object'])
         init_object = _load_ptychi_recon(params['path_to_init_object'], 'object')
         print(f"Initial object shape: {init_object.shape}")
         input_obj_pixel_size = _load_ptychi_recon(params['path_to_init_object'], 'obj_pixel_size_m')
@@ -810,8 +816,8 @@ def _prepare_initial_object(params, positions_px, probe_size, extra_size):
             
             # Use resize_complex_array to resize the object
             init_object = resize_complex_array(init_object, new_shape=target_shape)
-        
-        # Convert to tensor
+            
+            # Convert to tensor
         init_object = to_tensor(init_object)
         
     else:
@@ -824,6 +830,7 @@ def _prepare_initial_object(params, positions_px, probe_size, extra_size):
 
 def _prepare_initial_probe(dp, params):
     path_to_init_probe = params.get('path_to_init_probe')
+    path_to_init_probe = find_matching_recon(path_to_init_probe, params['scan_num'])
     num_probe_modes = params.get('number_probe_modes')
     num_opr_modes = params.get('number_opr_modes')
 
@@ -862,10 +869,12 @@ def _prepare_initial_probe(dp, params):
             # print(f"Probe cropped from {probe.shape[0]}x{probe.shape[1]} to {dp.shape[1]}x{dp.shape[1]}")
     else:
         if path_to_init_probe.endswith('.mat'):
-            print("Loading initial probe from a foldslice reconstruction.")
+            print("Loading initial probe from a foldslice reconstruction at:")
+            print(path_to_init_probe)
             probe = _load_probe_foldslice(path_to_init_probe)
         elif params.get('path_to_init_probe').endswith('.h5'):
-            print("Loading initial probe from a ptychi reconstruction.")
+            print("Loading initial probe from a ptychi reconstruction at:")
+            print(path_to_init_probe)
             probe = _load_ptychi_recon(path_to_init_probe, 'probe')
         else:
             raise ValueError("Unsupported file format for initial probe. Only .mat and .h5 files are supported.")
@@ -889,6 +898,8 @@ def _prepare_initial_probe(dp, params):
         probe_temp = np.zeros((num_probe_modes, probe.shape[-2], probe.shape[-1]), dtype=np.complex64)
         probe_temp[:probe.shape[0],:,:] = probe
         probe_temp[probe.shape[0]:,:,:] = probe[-1,:,:]
+        #probe_temp[probe.shape[0]:,:,:] = probe[0,:,:]
+        #probe_temp[-1,:,:] = probe[0,:,:]
         probe = probe_temp
 
     #probe = probe.transpose(0, 2, 1)
@@ -920,6 +931,8 @@ def _prepare_initial_probe(dp, params):
 
     # Add OPR mode dimension
     probe = probe[None, ...]
+    if params.get('orthogonalize_initial_probe', True):
+        print("Orthogonalizing initial probe")
     probe = orthogonalize_initial_probe(to_tensor(probe))
     # Add n_opr_modes - 1 eigenmodes which are randomly initialized
     probe = add_additional_opr_probe_modes_to_probe(to_tensor(probe), num_opr_modes)

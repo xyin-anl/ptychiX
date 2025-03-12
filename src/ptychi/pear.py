@@ -16,8 +16,13 @@ logging.basicConfig(level=logging.ERROR)
 import traceback
 import time
 from datetime import datetime  # Correct import for datetime.now()
+import uuid
+import json
+import tempfile
+import shutil
+import fcntl
 
-def ptycho_recon(**params):
+def ptycho_recon(run_recon=True, **params):
 
     if params['gpu_id'] is None:
         params['gpu_id'] = select_gpu(params)
@@ -84,7 +89,7 @@ def ptycho_recon(**params):
     
     options.probe_options.center_constraint.enabled = params['center_probe']
     options.probe_options.support_constraint.enabled = params['probe_support']
-    
+
     # position correction
     options.probe_position_options.position_x_px = init_positions_px[:, 1]
     options.probe_position_options.position_y_px = init_positions_px[:, 0]
@@ -113,17 +118,20 @@ def ptycho_recon(**params):
     # Set batch size based on parameters
     if params['update_batch_size'] is not None:
         options.reconstructor_options.batch_size = params['update_batch_size']
+    elif params['number_of_batches'] is not None:
+        # Calculate batch size from number of batches
+        total_data_points = dp.shape[0]
+        options.reconstructor_options.batch_size = max(1, total_data_points // params['number_of_batches'])
     else:
-        # For compact scheme, use all data points in a single batch
-        # For other schemes, divide data into multiple batches
+        # Auto-configure based on batch selection scheme
+        total_data_points = dp.shape[0]
+        # Use smaller number of batches for 'compact' scheme
         num_of_batches = 1 if params['batch_selection_scheme'] == 'compact' else 10
+        options.reconstructor_options.batch_size = max(1, total_data_points // num_of_batches)
         
-        # Ensure batch size is at least 1 to prevent division by zero errors
-        total_points = dp.shape[0]
-        options.reconstructor_options.batch_size = max(1, total_points // num_of_batches)
-        
+        # Log the auto-configuration for transparency
         print(f"Auto-configured batch size: {options.reconstructor_options.batch_size} " 
-              f"({num_of_batches} batches for {total_points} data points)")
+              f"({num_of_batches} batches for {total_data_points} data points)")
 
     #options.reconstructor_options.forward_model_options.pad_for_shift = 16
     #options.reconstructor_options.use_low_memory_forward_model = True
@@ -151,11 +159,166 @@ def ptycho_recon(**params):
 
     task = PtychographyTask(options)
     
+    if run_recon:
+        for i in range(params['number_of_iterations'] // params['save_freq_iterations']):
+            task.run(params['save_freq_iterations'])
+            save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
 
-    for i in range(params['number_of_iterations'] // params['save_freq_iterations']):
-        task.run(params['save_freq_iterations'])
-        save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
+    return task
 
+class FileBasedTracker:
+    def __init__(self, base_dir):
+        """Initialize the tracker with a base directory for status files."""
+        self.base_dir = base_dir
+        self.status_dir = os.path.join(base_dir, 'status')
+        self.lock_dir = os.path.join(base_dir, 'locks')
+        
+        # Create directories if they don't exist
+        os.makedirs(self.status_dir, exist_ok=True)
+        os.makedirs(self.lock_dir, exist_ok=True)
+    
+    def _get_status_file(self, scan_id):
+        """Get the path to the status file for a scan."""
+        return os.path.join(self.status_dir, f"scan_{scan_id:04d}.json")
+    
+    def _get_lock_file(self, scan_id):
+        """Get the path to the lock file for a scan."""
+        return os.path.join(self.lock_dir, f"scan_{scan_id:04d}.lock")
+    
+    def get_status(self, scan_id):
+        """Get the current status of a scan."""
+        status_file = self._get_status_file(scan_id)
+        
+        if not os.path.exists(status_file):
+            return None
+        
+        try:
+            with open(status_file, 'r') as f:
+                data = json.load(f)
+                return data.get('status')
+        except (json.JSONDecodeError, FileNotFoundError):
+            return None
+    
+    def start_recon(self, scan_id, worker_id, params):
+        """
+        Try to start a reconstruction for a scan.
+        Returns True if successful, False if already in progress or completed.
+        """
+        lock_file = self._get_lock_file(scan_id)
+        status_file = self._get_status_file(scan_id)
+        
+        # Create or open the lock file
+        try:
+            lock_fd = open(lock_file, 'w')
+            # Try to acquire an exclusive, non-blocking lock
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, BlockingIOError):
+            # Another process has the lock
+            return False
+        
+        try:
+            # Check if status file exists and scan is already done or in progress
+            if os.path.exists(status_file):
+                try:
+                    with open(status_file, 'r') as f:
+                        data = json.load(f)
+                        if data.get('status') in ['ongoing', 'done']:
+                            return False
+                except (json.JSONDecodeError, FileNotFoundError):
+                    # Corrupted or missing status file, we can proceed
+                    pass
+            
+            # Create a temporary file first to avoid partial writes
+            temp_file = tempfile.NamedTemporaryFile(
+                mode='w', 
+                dir=self.status_dir,
+                delete=False
+            )
+            
+            # Prepare status data
+            status_data = {
+                'status': 'ongoing',
+                'scan_id': scan_id,
+                'worker_id': worker_id,
+                'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                # No params included as requested
+            }
+            
+            # Write to temporary file
+            json.dump(status_data, temp_file)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+            temp_file.close()
+            
+            # Atomically move the temporary file to the final location
+            shutil.move(temp_file.name, status_file)
+            
+            return True
+            
+        finally:
+            # Release the lock
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
+    
+    def complete_recon(self, scan_id, success=True, error=None):
+        """Mark a reconstruction as completed or failed."""
+        lock_file = self._get_lock_file(scan_id)
+        status_file = self._get_status_file(scan_id)
+        
+        # Acquire lock
+        with open(lock_file, 'w') as lock_fd:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            
+            try:
+                # Read current status
+                if os.path.exists(status_file):
+                    with open(status_file, 'r') as f:
+                        status_data = json.load(f)
+                else:
+                    # Create new status data if file doesn't exist
+                    status_data = {
+                        'scan_id': scan_id,
+                        'start_time': 'unknown'
+                    }
+                
+                # Update status
+                status_data['status'] = 'done' if success else 'failed'
+                status_data['end_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                if error:
+                    status_data['error'] = str(error)
+                
+                # Write to temporary file first
+                temp_file = tempfile.NamedTemporaryFile(
+                    mode='w', 
+                    dir=self.status_dir,
+                    delete=False
+                )
+                
+                # Write status data line by line
+                temp_file.write("{\n")
+                for i, (key, value) in enumerate(status_data.items()):
+                    if isinstance(value, str):
+                        temp_file.write(f'    "{key}": "{value}"')
+                    else:
+                        # Convert the value to JSON format
+                        json_value = json.dumps(value)
+                        # Write the key-value pair with proper formatting
+                        temp_file.write(f'    "{key}": {json_value}')
+                    
+                    if i < len(status_data) - 1:
+                        temp_file.write(",\n")
+                    else:
+                        temp_file.write("\n")
+                temp_file.write("}\n")
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+                temp_file.close()
+                
+                # Atomically move the temporary file to the final location
+                shutil.move(temp_file.name, status_file)
+                
+            except Exception as e:
+                print(f"Error updating status for scan {scan_id}: {str(e)}")
 
 def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', scan_order='ascending'):
     """
@@ -173,6 +336,13 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
                           base_params['recon_parent_dir'], 
                           f'recon_logs_{log_dir_suffix}' if log_dir_suffix else 'recon_logs')
     os.makedirs(log_dir, exist_ok=True)
+    
+    # Create tracker
+    tracker = FileBasedTracker(log_dir)
+    
+    # Generate a unique worker ID
+    worker_id = f"worker_{os.getpid()}_{uuid.uuid4().hex[:8]}"
+    
     num_repeats = np.inf
     repeat_count = 0
 
@@ -180,6 +350,7 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
         successful_scans = []
         failed_scans = []
         ongoing_scans = []
+        
         if scan_order == 'ascending':
             scan_list = list(range(start_scan, end_scan + 1))
         elif scan_order == 'descending':
@@ -188,48 +359,31 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
             import random
             scan_list = list(range(start_scan, end_scan + 1))
             random.shuffle(scan_list)
+            
         for scan_num in scan_list:
             # Create a copy of the parameters for this scan
             scan_params = base_params.copy()
+            
             scan_params['scan_num'] = scan_num
             
-            # Check if scan has already been processed
-            log_files = {
-                'done': os.path.join(log_dir, f'S{scan_num:04d}_done.txt'),
-                'ongoing': os.path.join(log_dir, f'S{scan_num:04d}_ongoing.txt'),
-                'failed': os.path.join(log_dir, f'S{scan_num:04d}_failed.txt')
-            }
+            # Check status using tracker
+            status = tracker.get_status(scan_num)
             
-            # Delete the failed file if it exists to start fresh
-            if os.path.exists(log_files['failed']):
-                os.remove(log_files['failed'])
-                
-            if os.path.exists(log_files['done']):
+            if status == 'done':
                 print(f"Scan {scan_num} already completed, skipping reconstruction")
                 successful_scans.append(scan_num)
                 continue
-            if os.path.exists(log_files['ongoing']):
+                
+            if status == 'ongoing':
                 print(f"Scan {scan_num} already ongoing, skipping reconstruction")
                 ongoing_scans.append(scan_num)
                 continue
-
-            # Helper function to write to log files
-            def write_log(file_path, content):
-                with open(file_path, 'w' if 'ongoing' in file_path else 'a') as f:
-                    f.write(content)
             
-            # Create log file for ongoing reconstruction
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            log_content = [
-                f"Starting reconstruction for scan {scan_num}",
-                f"Timestamp: {timestamp}",
-                f"Parameters:"
-            ]
-            log_content.extend([f"  {key}: {value}" for key, value in scan_params.items()])
-            write_log(log_files['ongoing'], '\n'.join(log_content))
-            
-            # Print with color using ANSI escape codes
-            # Red text for starting reconstruction
+            # Try to start reconstruction
+            if not tracker.start_recon(scan_num, worker_id, scan_params):
+                print(f"Could not acquire lock for scan {scan_num}, skipping")
+                continue
+                
             print(f"\033[91mStarting reconstruction for scan {scan_num}\033[0m")
             start_time = time.time()
             
@@ -242,41 +396,30 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
                 print(f"Scan {scan_num} completed successfully in {elapsed_time:.2f} seconds")
                 successful_scans.append(scan_num)
                 
-                # Update log file
-                os.rename(log_files['ongoing'], log_files['done'])
-                completion_log = [
-                    f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                    f"Elapsed time: {elapsed_time:.2f} seconds"
-                ]
-                write_log(log_files['done'], '\n'.join(completion_log))
+                # Update status
+                tracker.complete_recon(scan_num, success=True)
+                
                 print(f"Waiting for 3 seconds before next scan...")
                 time.sleep(3)
 
                 if scan_order == 'descending':
                     # Break the for loop after processing the current scan
                     break
+                    
             except Exception as e:
                 # Handle failure
                 elapsed_time = time.time() - start_time
                 print(f"Scan {scan_num} failed after {elapsed_time:.2f} seconds with error: {str(e)}")
                 failed_scans.append((scan_num, str(e)))
                 
-                # Update log file
-                os.rename(log_files['ongoing'], log_files['failed'])
-                failure_log = [
-                    f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                    f"Elapsed time: {elapsed_time:.2f} seconds",
-                    f"Error: {str(e)}"
-                ]
-                write_log(log_files['failed'], '\n'.join(failure_log))
-
-                
-
-         # Print summary of processing
-        #print(f"Batch processing complete. Summary:")
+                # Update status
+                tracker.complete_recon(scan_num, success=False, error=str(e))
+        
+        # Print summary of processing
         print(f"Successfully processed scans: {successful_scans}")
         print(f"Failed scans: {[f[0] for f in failed_scans]}")
         print(f"Ongoing scans: {ongoing_scans}")
+        
         if len(successful_scans) == end_scan - start_scan + 1:
             print(f"All scans completed successfully")
             break
