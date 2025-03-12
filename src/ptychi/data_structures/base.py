@@ -27,14 +27,18 @@ class ComplexTensor(Module):
     """
 
     def __init__(
-        self, data: Union[Tensor, ndarray], requires_grad: bool = True, *args, **kwargs
+        self, data: Union[Tensor, ndarray], requires_grad: bool = True, data_as_parameter: bool = True,
+        *args, **kwargs
     ) -> None:
         super().__init__(*args, **kwargs)
         data = to_tensor(data)
         data = torch.stack([data.real, data.imag], dim=-1).requires_grad_(requires_grad)
         data = data.type(torch.get_default_dtype())
 
-        self.register_parameter(name="data", param=Parameter(data))
+        if data_as_parameter:
+            self.register_parameter(name="data", param=Parameter(data))
+        else:
+            self.register_buffer("data", data)
 
     def mag(self) -> Tensor:
         return torch.sqrt(self.data[..., 0] ** 2 + self.data[..., 1] ** 2)
@@ -83,6 +87,7 @@ class ReconstructParameter(Module):
         is_complex: bool = False,
         name: Optional[str] = None,
         options: "api.options.base.ParameterOptions" = None,
+        data_as_parameter: bool = True,
         *args,
         **kwargs,
     ) -> None:
@@ -118,9 +123,9 @@ class ReconstructParameter(Module):
 
         if is_complex:
             if data is not None:
-                self.tensor = ComplexTensor(data).requires_grad_(self.optimizable)
+                self.tensor = ComplexTensor(data, data_as_parameter=data_as_parameter).requires_grad_(self.optimizable)
             else:
-                self.tensor = ComplexTensor(torch.zeros(shape), requires_grad=self.optimizable)
+                self.tensor = ComplexTensor(torch.zeros(shape), data_as_parameter=data_as_parameter, requires_grad=self.optimizable)
         else:
             if data is not None:
                 tensor = to_tensor(data).requires_grad_(self.optimizable)
@@ -129,7 +134,10 @@ class ReconstructParameter(Module):
             # Register the tensor as a parameter. In subclasses, do the same for any
             # additional differentiable parameters. If you have a buffer that does not
             # need gradients, use register_buffer instead.
-            self.register_parameter("tensor", Parameter(tensor))
+            if data_as_parameter:
+                self.register_parameter("tensor", Parameter(tensor))
+            else:
+                self.register_buffer("tensor", tensor)
 
         self.build_optimizer()
 
