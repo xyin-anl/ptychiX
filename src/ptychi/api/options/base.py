@@ -484,6 +484,8 @@ class ProbePositionMagnitudeLimitOptions(FeatureOptions):
 
 @dataclasses.dataclass
 class ProbePositionOptions(ParameterOptions):
+    optimizable: bool = False
+    
     position_x_px: Union[ndarray, Tensor] = None
     """The x position in pixel."""
 
