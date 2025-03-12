@@ -708,7 +708,7 @@ class ReconstructorOptions(Options):
     default_dtype: enums.Dtypes = enums.Dtypes.FLOAT32
     """The default data type to use for computation."""
     
-    use_double_precision_for_fft: bool = True
+    use_double_precision_for_fft: bool = False
     """If True, use double precision for critical FFT operations. When set to `True`,
     this option overrides `default_dtype`: even if `default_dtype` is set to `FLOAT32`,
     the FFTs will still be performed using double precision. If `False`,
