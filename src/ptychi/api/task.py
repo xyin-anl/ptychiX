@@ -144,7 +144,7 @@ class PtychographyTask(Task):
         if (
             isinstance(self.object_options, api.options.AutodiffPtychographyObjectOptions)
         ) and (
-            self.object_options.deep_image_prior_options.enabled
+            self.object_options.experimental.deep_image_prior_options.enabled
         ):
             self.object = object.DIPPlanarObject(**kwargs)
         else:
@@ -159,7 +159,7 @@ class PtychographyTask(Task):
         if (
             isinstance(self.probe_options, api.options.AutodiffPtychographyProbeOptions)
         ) and (
-            self.probe_options.deep_image_prior_options.enabled
+            self.probe_options.experimental.deep_image_prior_options.enabled
         ):
             self.probe = probe.DIPProbe(**kwargs)
         else:

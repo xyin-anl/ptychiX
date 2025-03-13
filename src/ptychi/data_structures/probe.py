@@ -473,15 +473,15 @@ class DIPProbe(Probe):
         self.register_buffer("nn_input", nn_input)
         
         self.initial_data = None
-        if self.options.deep_image_prior_options.residual_generation:
+        if self.options.experimental.deep_image_prior_options.residual_generation:
             self.initial_data = self.data.clone()            
         
     def build_model(self):
-        if not self.options.deep_image_prior_options.enabled:
+        if not self.options.experimental.deep_image_prior_options.enabled:
             return
-        model_class = maps.get_nn_model_by_enum(self.options.deep_image_prior_options.model)
+        model_class = maps.get_nn_model_by_enum(self.options.experimental.deep_image_prior_options.model)
         self.model = model_class(
-            **self.options.deep_image_prior_options.model_params
+            **self.options.experimental.deep_image_prior_options.model_params
         )
         
     def build_dip_optimizer(self):
@@ -495,7 +495,7 @@ class DIPProbe(Probe):
     def get_nn_input(self):
         z = torch.rand(
             [self.n_opr_modes * self.n_modes, 
-             self.options.deep_image_prior_options.net_input_channels, 
+             self.options.experimental.deep_image_prior_options.net_input_channels, 
              *self.lateral_shape], 
         ) * 0.1
         return z
@@ -519,7 +519,7 @@ class DIPProbe(Probe):
             self.dip_output_magnitude = mag.clone()
             self.dip_output_phase = phase.clone()
         
-        if self.options.deep_image_prior_options.residual_generation:
+        if self.options.experimental.deep_image_prior_options.residual_generation:
             init_data = torch.stack([self.initial_data.real, self.initial_data.imag], dim=-1)
             p = p + init_data
         self.tensor.data = p

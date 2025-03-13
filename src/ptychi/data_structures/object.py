@@ -593,15 +593,15 @@ class DIPObject(Object):
         self.tensor.requires_grad_(False)
         
         self.initial_data = None
-        if self.options.deep_image_prior_options.residual_generation:
+        if self.options.experimental.deep_image_prior_options.residual_generation:
             self.initial_data = self.data.clone()   
         
     def build_model(self):
-        if not self.options.deep_image_prior_options.enabled:
+        if not self.options.experimental.deep_image_prior_options.enabled:
             return
-        model_class = maps.get_nn_model_by_enum(self.options.deep_image_prior_options.model)
+        model_class = maps.get_nn_model_by_enum(self.options.experimental.deep_image_prior_options.model)
         self.model = model_class(
-            **self.options.deep_image_prior_options.model_params
+            **self.options.experimental.deep_image_prior_options.model_params
         )
         
     def build_dip_optimizer(self):
@@ -640,7 +640,7 @@ class DIPPlanarObject(DIPObject, PlanarObject):
         
     def get_nn_input(self):
         z = torch.rand(
-            [self.n_slices, self.options.deep_image_prior_options.net_input_channels, *self.lateral_shape], 
+            [self.n_slices, self.options.experimental.deep_image_prior_options.net_input_channels, *self.lateral_shape], 
         ) * 0.1
         return z
 
@@ -663,7 +663,7 @@ class DIPPlanarObject(DIPObject, PlanarObject):
             self.dip_output_magnitude = mag.clone()
             self.dip_output_phase = phase.clone()
         
-        if self.options.deep_image_prior_options.residual_generation:
+        if self.options.experimental.deep_image_prior_options.residual_generation:
             init_data = torch.stack([self.initial_data.real, self.initial_data.imag], dim=-1)
             o = o + init_data
         self.tensor.data = o
@@ -709,7 +709,7 @@ class DIPPlanarObject(DIPObject, PlanarObject):
             mag = ip.central_crop_or_pad(mag, expected_phase_shape[1:])
             phase = ip.central_crop_or_pad(phase, expected_phase_shape[1:])
         
-        if self.options.deep_image_prior_options.constrain_object_outside_network:
+        if self.options.experimental.deep_image_prior_options.constrain_object_outside_network:
             mag = torch.sigmoid(mag)
         
         o_complex = mag * torch.exp(1j * phase)

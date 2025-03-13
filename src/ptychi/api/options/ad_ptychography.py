@@ -46,16 +46,26 @@ class DeepImagePriorOptions(base.Options):
     that maps everything to zeros, so that the overall DIP generation is an
     identity function.
     """
+    
+    
+@dataclasses.dataclass
+class AutodiffPtychographyObjectExperimentalOptions(base.Options):
+    deep_image_prior_options: Optional[DeepImagePriorOptions] = dataclasses.field(default_factory=DeepImagePriorOptions)
 
 
 @dataclasses.dataclass
 class AutodiffPtychographyObjectOptions(base.ObjectOptions):
+    experimental: AutodiffPtychographyObjectExperimentalOptions = dataclasses.field(default_factory=AutodiffPtychographyObjectExperimentalOptions)
+
+
+@dataclasses.dataclass
+class AutodiffPtychographyProbeExperimentalOptions(base.Options):
     deep_image_prior_options: Optional[DeepImagePriorOptions] = dataclasses.field(default_factory=DeepImagePriorOptions)
 
 
 @dataclasses.dataclass
 class AutodiffPtychographyProbeOptions(base.ProbeOptions):
-    deep_image_prior_options: Optional[DeepImagePriorOptions] = dataclasses.field(default_factory=DeepImagePriorOptions)
+    experimental: AutodiffPtychographyProbeExperimentalOptions = dataclasses.field(default_factory=AutodiffPtychographyProbeExperimentalOptions)
 
 
 @dataclasses.dataclass

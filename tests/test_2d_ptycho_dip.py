@@ -11,9 +11,13 @@ import test_utils as tutils
 
 
 class Test2dPtychoDIP(tutils.TungstenDataTester):
+    """Deep image prior testers.
+    
+    Due to the known run-to-run stochasticity of the DIP, no comparison with reference data is done.
+    These testers are only used to test if the end-to-end pipeline is working.
+    """
 
-    @pytest.mark.local
-    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_dip')
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_dip', run_comparison=False)
     def test_2d_ptycho_dip(self):
         self.setup_ptychi(cpu_only=False)
         
@@ -26,23 +30,23 @@ class Test2dPtychoDIP(tutils.TungstenDataTester):
         options.data_options.data = data
         
         options.object_options.initial_guess = torch.ones([1, *get_suggested_object_size(positions_px, probe.shape[-2:], extra=100)], dtype=get_default_complex_dtype())
-        options.object_options.deep_image_prior_options.enabled = True
-        # options.object_options.deep_image_prior_options.model = api.enums.DIPModels.UNET
-        # options.object_options.deep_image_prior_options.model_params = {
+        options.object_options.experimental.deep_image_prior_options.enabled = True
+        # options.object_options.experimental.deep_image_prior_options.model = api.enums.DIPModels.UNET
+        # options.object_options.experimental.deep_image_prior_options.model_params = {
         #     "num_in_channels": 32,
         #     "num_out_channels": 2,
         #     "initialize": False,
         #     "skip_connections": False,
         # }
-        # options.object_options.deep_image_prior_options.constrain_object_outside_network = True
-        options.object_options.deep_image_prior_options.model = api.enums.DIPModels.AUTOENCODER
-        options.object_options.deep_image_prior_options.model_params = {
+        # options.object_options.experimental.deep_image_prior_options.constrain_object_outside_network = True
+        options.object_options.experimental.deep_image_prior_options.model = api.enums.DIPModels.AUTOENCODER
+        options.object_options.experimental.deep_image_prior_options.model_params = {
             "num_in_channels": 32,
             "num_levels": 4,
             "base_channels": 32,
             "use_batchnorm": True,
         }
-        options.object_options.deep_image_prior_options.constrain_object_outside_network = False
+        options.object_options.experimental.deep_image_prior_options.constrain_object_outside_network = False
         options.object_options.pixel_size_m = pixel_size_m
         options.object_options.optimizable = True
         options.object_options.optimizer = api.Optimizers.ADAM
@@ -67,8 +71,7 @@ class Test2dPtychoDIP(tutils.TungstenDataTester):
         recon = task.get_data_to_cpu('object', as_numpy=True)[0, 250:500, 250:500]
         return recon
     
-    @pytest.mark.local
-    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_dip_l2')
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_dip_l2', run_comparison=False)
     def test_2d_ptycho_dip_l2(self):
         self.setup_ptychi(cpu_only=False)
         
@@ -81,15 +84,15 @@ class Test2dPtychoDIP(tutils.TungstenDataTester):
         options.data_options.data = data
         
         options.object_options.initial_guess = torch.ones([1, *get_suggested_object_size(positions_px, probe.shape[-2:], extra=100)], dtype=get_default_complex_dtype())
-        options.object_options.deep_image_prior_options.enabled = True
-        options.object_options.deep_image_prior_options.model = api.enums.DIPModels.AUTOENCODER
-        options.object_options.deep_image_prior_options.model_params = {
+        options.object_options.experimental.deep_image_prior_options.enabled = True
+        options.object_options.experimental.deep_image_prior_options.model = api.enums.DIPModels.AUTOENCODER
+        options.object_options.experimental.deep_image_prior_options.model_params = {
             "num_in_channels": 32,
             "num_levels": 4,
             "base_channels": 32,
             "use_batchnorm": True,
         }
-        options.object_options.deep_image_prior_options.constrain_object_outside_network = False
+        options.object_options.experimental.deep_image_prior_options.constrain_object_outside_network = False
         options.object_options.pixel_size_m = pixel_size_m
         options.object_options.optimizable = True
         options.object_options.optimizer = api.Optimizers.ADAM
@@ -116,8 +119,7 @@ class Test2dPtychoDIP(tutils.TungstenDataTester):
         recon = task.get_data_to_cpu('object', as_numpy=True)[0, 250:500, 250:500]
         return recon
     
-    @pytest.mark.local
-    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_dip_probe')
+    @tutils.TungstenDataTester.wrap_recon_tester(name='test_2d_ptycho_dip_probe', run_comparison=False)
     def test_2d_ptycho_dip_probe(self):
         self.setup_ptychi(cpu_only=False)
         
@@ -136,9 +138,9 @@ class Test2dPtychoDIP(tutils.TungstenDataTester):
         options.object_options.step_size = 1e-1
         
         options.probe_options.initial_guess = probe
-        options.probe_options.deep_image_prior_options.enabled = True
-        options.probe_options.deep_image_prior_options.model = api.enums.DIPModels.AUTOENCODER
-        options.probe_options.deep_image_prior_options.model_params = {
+        options.probe_options.experimental.deep_image_prior_options.enabled = True
+        options.probe_options.experimental.deep_image_prior_options.model = api.enums.DIPModels.AUTOENCODER
+        options.probe_options.experimental.deep_image_prior_options.model_params = {
             "num_in_channels": 32,
             "num_levels": 4,
             "base_channels": 32,
@@ -147,8 +149,8 @@ class Test2dPtychoDIP(tutils.TungstenDataTester):
             "sigmoid_on_magnitude": False,
             "scaled_tanh_on_phase": False
         }
-        options.probe_options.deep_image_prior_options.residual_generation = True
-        options.probe_options.deep_image_prior_options.constrain_object_outside_network = False
+        options.probe_options.experimental.deep_image_prior_options.residual_generation = True
+        options.probe_options.experimental.deep_image_prior_options.constrain_object_outside_network = False
         options.probe_options.optimizable = True
         options.probe_options.optimizer = api.Optimizers.ADAM
         options.probe_options.step_size = 1e-4
