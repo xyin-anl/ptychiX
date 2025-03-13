@@ -177,22 +177,3 @@ class UNet(nn.Module):
         self.up3 = torch.utils.checkpoint(self.up3)
         self.up4 = torch.utils.checkpoint(self.up4)
         self.outc = torch.utils.checkpoint(self.outc)
-
-
-if __name__ == "__main__":
-    import torchinfo
-    import matplotlib.pyplot as plt
-    model = UNet(num_in_channels=1, num_out_channels=1)
-    torchinfo.summary(model, input_size=(1, 1, 256, 256), device="cpu")
-    delta_image = torch.zeros([1, 1, 1024, 1024])
-    delta_image[0, 0, delta_image.shape[-2]//2, delta_image.shape[-1]//2] = 100.0
-    out = model(delta_image).detach().cpu()
-    nz_pts = torch.where(out[0, 0] > 0)
-    print(nz_pts)
-    receptive_field_y = nz_pts[0].max() - nz_pts[0].min()
-    receptive_field_x = nz_pts[1].max() - nz_pts[1].min()
-    print(f"Receptive field: {receptive_field_y}x{receptive_field_x}")
-    fig, ax = plt.subplots(1, 2)
-    ax[0].imshow(out[0, 0])
-    ax[1].imshow(out[0, 0] > 0)
-    plt.show()
