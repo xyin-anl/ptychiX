@@ -47,6 +47,14 @@ def batch_slice(image: Tensor, sy: Tensor, sx: Tensor, patch_size: Tuple[int, in
         A tensor of shape (N, h, w) containing the extracted patches.
     """
     h, w = image.shape[-2:]
+    if (
+        sy.min() < 0 
+        or sy.max() + patch_size[0] > image.shape[-2] 
+        or sx.min() < 0 
+        or sx.max() + patch_size[1] > image.shape[-1]
+    ):
+        raise ValueError("Patch indices are out of bounds.")
+    
     x = torch.arange(patch_size[1])[None, :]
     y = torch.arange(patch_size[0])[None, :]
     x = x.expand(len(sx), x.shape[1])
@@ -91,6 +99,14 @@ def batch_put(
         A tensor of shape (H, W) containing the image with patches added or set.
     """
     h, w = image.shape[-2:]
+    if (
+        sy.min() < 0 
+        or sy.max() + patches.shape[-2] > image.shape[-2] 
+        or sx.min() < 0 
+        or sx.max() + patches.shape[-1] > image.shape[-1]
+    ):
+        raise ValueError("Patch indices are out of bounds.")
+    
     patch_size = patches.shape[-2:]
     x = torch.arange(patch_size[1])[None, :]
     y = torch.arange(patch_size[0])[None, :]
@@ -100,10 +116,12 @@ def batch_put(
     y = y + sy[:, None]
     inds = (y * w).unsqueeze(-1) + x.unsqueeze(1)
     image = image.reshape(-1)
+    
     try:
         patches_flattened = patches.view(-1)
     except RuntimeError:
         patches_flattened = patches.reshape(-1)
+        
     if pmath.get_allow_nondeterministic_algorithms():
         # scatter_add_ and scatter_ are non-deterministic but faster.
         if op == "add":
@@ -144,6 +162,18 @@ def extract_patches_integer(
     """
     sys = (positions[:, 0] - (shape[0] - 1.0) / 2.0).round().int()
     sxs = (positions[:, 1] - (shape[1] - 1.0) / 2.0).round().int()
+    
+    pad_lengths = [
+        max(-sxs.min(), 0),
+        max(sxs.max() + shape[1] - image.shape[1], 0),
+        max(-sys.min(), 0),
+        max(sys.max() + shape[0] - image.shape[0], 0),
+    ]
+    if any(pad_lengths):
+        image = torch.nn.functional.pad(image, pad_lengths, mode="replicate")
+        sys = sys + pad_lengths[2]
+        sxs = sxs + pad_lengths[0]
+    
     patches = batch_slice(image, sys, sxs, patch_size=shape)
     return patches
 
@@ -184,7 +214,24 @@ def place_patches_integer(
     shape = patches.shape[-2:]
     sys = (positions[:, 0] - (shape[0] - 1.0) / 2.0).round().int()
     sxs = (positions[:, 1] - (shape[1] - 1.0) / 2.0).round().int()
+    
+    pad_lengths = [
+        max(-sxs.min(), 0),
+        max(sxs.max() + shape[1] - image.shape[1], 0),
+        max(-sys.min(), 0),
+        max(sys.max() + shape[0] - image.shape[0], 0),
+    ]
+    if any(pad_lengths):
+        image = torch.nn.functional.pad(image, pad_lengths)
+        sys = sys + pad_lengths[2]
+        sxs = sxs + pad_lengths[0]
+    
     image = batch_put(image, patches, sys, sxs, op=op)
+    if any(pad_lengths):
+        image = image[
+            pad_lengths[2] : image.shape[0] - pad_lengths[3],
+            pad_lengths[0] : image.shape[1] - pad_lengths[1],
+        ]
     return image
 
 
