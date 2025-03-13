@@ -389,7 +389,7 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
             
             try:
                 # Run reconstruction
-                ptycho_recon(**scan_params)
+                ptycho_recon(run_recon=True, **scan_params)
                 
                 # Handle successful completion
                 elapsed_time = time.time() - start_time

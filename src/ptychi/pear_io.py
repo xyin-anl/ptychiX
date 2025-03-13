@@ -656,7 +656,7 @@ def _prepare_initial_positions(params):
     return positions_px*input_obj_pixel_size
 
 def _prepare_initial_object(params, positions_px, probe_size, extra_size):
-    if  ['path_to_init_object']:
+    if params['path_to_init_object']:
         params['path_to_init_object'] = find_matching_recon(params['path_to_init_object'], params['scan_num'])
         
         print("Loading initial object from a ptychi reconstruction at:")
