@@ -64,6 +64,9 @@ class BaseTester:
             self.high_tol = False
             self.action = action
             self.save_timing = False
+            
+        self.atol = 1e-3
+        self.rtol = 1e-2 if self.high_tol else 1e-4
     
     @pytest.fixture(autouse=True)
     def inject_config(self, pytestconfig):
@@ -148,10 +151,12 @@ class BaseTester:
         fname = os.path.join(self.get_ci_gold_data_dir(), name, 'recon.npy')
         return np.load(fname)
     
-    def run_comparison(self, name, test_data, high_tol=False):
+    def run_comparison(self, name, test_data, atol=None, rtol=None):
+        if atol is None:
+            atol = self.atol
+        if rtol is None:
+            rtol = self.rtol
         gold_data = self.load_gold_data(name)
-        atol = 1e-3
-        rtol = 1e-2 if high_tol else 1e-4
         compare_data(test_data, gold_data, atol=atol, rtol=rtol, name=name)
         return
     
@@ -202,7 +207,7 @@ class BaseTester:
             plot_complex_image(obj)
     
     @staticmethod
-    def wrap_recon_tester(name=""):
+    def wrap_recon_tester(name="", run_comparison=True):
         """
         A decorator factory that wraps a test method to generate or compare data.
 
@@ -220,8 +225,8 @@ class BaseTester:
                     self.plot_object(recon)
                 if self.generate_gold:
                     self.save_gold_data(name, recon)
-                if not self.generate_gold:
-                    self.run_comparison(name, recon)
+                if not self.generate_gold and run_comparison:
+                    self.run_comparison(name, recon, atol=self.atol, rtol=self.rtol)
                 if self.save_timing:
                     save_timing_data_to_unique_file_path(name, get_timing_data_dir())
             return wrapper
