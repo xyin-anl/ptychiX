@@ -47,7 +47,7 @@ def ptycho_recon(run_recon=True, **params):
                               create_reconstruction_path,
                               save_initial_conditions)
     else:
-        from .pear_io import (initialize_recon,
+        from .pear_io_aps import (initialize_recon,
                               save_reconstructions,
                               create_reconstruction_path,
                               save_initial_conditions)
