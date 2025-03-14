@@ -17,8 +17,7 @@ import matplotlib.pyplot as plt
 #from matplotlib.patches import Rectangle
 from ptychi.pear_utils import (make_fzp_probe,
                                 resize_complex_array,
-                                find_matching_recon,
-                                format_path_with_scan_num)
+                                find_matching_recon)
 import sys
 import torch
 import json
@@ -626,7 +625,7 @@ def initialize_recon(params):
     # Load initial object
     init_object = _prepare_initial_object(params, init_positions_px, init_probe.shape[-2:], round(1e-6/params['obj_pixel_size_m']))
 
-    return (dp, init_positions_px, init_probe, init_object, params)
+    return dp, init_positions_px, init_probe, init_object, params
 
 def _load_data_raw(instrument, base_path, scan_num, dp_Npix, dp_cen_x, dp_cen_y):
     instrument_loaders = {
@@ -1087,288 +1086,68 @@ def _load_data_2xfm(base_path, scan_num, det_Npixel, cen_x, cen_y):
     return dp, positions
 
 def _load_data_12idc(base_path, scan_num, det_Npixel, cen_x, cen_y):
-    """
-    Load scan positions and diffraction patterns measured by the Ptycho-SAXS instrument at 12IDC.
-    Automatically detects and handles both HDF5 and TIFF file formats.
-    
-    Parameters:
-    -----------
-    base_path : str
-        Base directory containing the data
-    scan_num : int
-        Scan number
-    det_Npixel : int
-        Number of detector pixels to use
-    cen_x : int
-        X-coordinate of the center of the detector
-    cen_y : int
-        Y-coordinate of the center of the detector
-        
-    Returns:
-    --------
-    tuple
-        (diffraction patterns, positions)
-    """
     print("Loading scan positions and diffraction patterns measured by the Ptycho-SAXS instrument at 12IDC.")
-    det_xwidth = int(det_Npixel/2)
-    
-    # Check if TIFF files exist for this scan
-    tif_dir = os.path.join(base_path, 'tifs', f'{scan_num:03d}')
-    tif_files = glob.glob(os.path.join(tif_dir, f'*_{scan_num:03d}_*.tif'))
-    
-    # Check if processed HDF5 files exist
-    ptycho1_dir = os.path.join(base_path, 'ptycho1', f'{scan_num:03d}')
-    h5_files = glob.glob(os.path.join(ptycho1_dir, f'*_{scan_num:03d}_*.h5'))
-    master_file = glob.glob(os.path.join(ptycho1_dir, f'*_{scan_num:03d}_master.h5'))
-    
-    # Check if original HDF5 files exist
-    ptycho_dir = os.path.join(base_path, 'ptycho', f'{scan_num:03d}')
-    original_h5_files = glob.glob(os.path.join(ptycho_dir, f'*{scan_num:03d}_*.h5'))
-    
-    # Determine which data format to use
-    if tif_files:
-        print(f"Found TIFF files in {tif_dir}. Processing TIFF data.")
-        return _load_data_12idc_tiff(base_path, scan_num, det_Npixel, cen_x, cen_y)
-    elif master_file and h5_files:
-        print(f"Using pre-processed HDF5 files from {ptycho1_dir}")
-        return _load_data_12idc_processed_h5(base_path, scan_num, det_Npixel, cen_x, cen_y)
-    elif original_h5_files:
-        print(f"Using original HDF5 files from {ptycho_dir}")
-        return _load_data_12idc_original_h5(base_path, scan_num, det_Npixel, cen_x, cen_y)
-    else:
-        raise FileNotFoundError(f"No data files found for scan {scan_num} in any supported format.")
-
-def _load_data_12idc_processed_h5(base_path, scan_num, det_Npixel, cen_x, cen_y):
-    """Load data from pre-processed HDF5 files"""
-    ptycho1_dir = os.path.join(base_path, 'ptycho1', f'{scan_num:03d}')
-    master_files = glob.glob(os.path.join(ptycho1_dir, f'*_{scan_num:03d}_master.h5'))
-    
-    if not master_files:
-        raise FileNotFoundError(f"No master file found for scan {scan_num}")
-    
-    master_file = master_files[0]
-    sample_name = os.path.basename(master_file).split(f'_{scan_num:03d}_')[0]
-    
-    # Load data from master file
-    with h5py.File(master_file, 'r') as h5f:
-        # Get beam center from master file if available
-        if 'beam_center_YX' in h5f.attrs:
-            cen_y, cen_x = h5f.attrs['beam_center_YX']
-            print(f"Using beam center from master file: ({cen_y}, {cen_x})")
-        
-        # Find all line datasets
-        line_datasets = []
-        for key in h5f.keys():
-            if key.startswith('entry/data/data_'):
-                line_datasets.append(key)
-        
-        if not line_datasets:
-            print(f"Warning: No line datasets found in master file {master_file}")
-            # Check if there are any line files directly
-            line_files = glob.glob(os.path.join(ptycho1_dir, f'{sample_name}_{scan_num:03d}_*.h5'))
-            line_files = [f for f in line_files if not f.endswith('_master.h5')]
-            if not line_files:
-                raise FileNotFoundError(f"No line files found for scan {scan_num}")
-            print(f"Found {len(line_files)} line files directly in directory")
-            line_nums = [int(os.path.basename(f).split('_')[-1].split('.')[0]) for f in line_files]
-        else:
-            line_nums = [int(dataset_path.split('_')[-1]) for dataset_path in line_datasets]
-        
-        # Initialize lists to store data
-        dp_list = []
-        positions_list = []
-        
-        # Process each line
-        for line_num in line_nums:
-            line_file = os.path.join(ptycho1_dir, f'{sample_name}_{scan_num:03d}_{line_num:05d}.h5')
-            print(f'Loading line {line_num} from {line_file}')
-            
-            if not os.path.exists(line_file):
-                print(f"Warning: Line file not found: {line_file}")
-                continue
-                
-            try:
-                with h5py.File(line_file, 'r') as line_h5f:
-                    # Check if the file has the expected datasets
-                    if '/dp' not in line_h5f or '/positions' not in line_h5f:
-                        print(f"Warning: File {line_file} does not contain expected datasets")
-                        print(f"Available keys: {list(line_h5f.keys())}")
-                        continue
-                        
-                    # Load diffraction patterns
-                    dp_data = line_h5f['/dp'][:]
-                    
-                    # Load positions
-                    positions_data = line_h5f['/positions'][:]
-
-                    # Check if data is valid
-                    if dp_data.size == 0 or positions_data.size == 0:
-                        print(f"Warning: Empty data in file {line_file}")
-                        continue
-                        
-                    # Append to lists
-                    dp_list.append(dp_data)
-                    positions_list.append(positions_data)
-            except Exception as e:
-                print(f"Error loading file {line_file}: {str(e)}")
-                continue
-    
-    # Check if we have any data
-    if not dp_list:
-        raise ValueError(f"No valid diffraction patterns found for scan {scan_num}")
-        
-    # Concatenate data and process positions
-    dp = np.concatenate(dp_list, axis=0)
-    positions = np.concatenate(positions_list, axis=0)
-    
-    # Process positions: extract, invert x, center, and reshape
-    positions_processed = np.zeros((len(positions), 2))
-    positions_processed[:, 0] = positions[:, 1] * 1e-9 - np.mean(positions[:, 1] * 1e-9)  # y positions
-    positions_processed[:, 1] = -positions[:, 2] * 1e-9 - np.mean(-positions[:, 2] * 1e-9)  # x positions
-    
-    print(f"Loaded {dp.shape[0]} diffraction patterns and {positions_processed.shape[0]} positions")
-    
-    # Calculate crop indices
-    crop_indices = {
-        'x_min': int(cen_x - det_Npixel // 2),
-        'x_max': int(cen_x + (det_Npixel + 1) // 2),
-        'y_min': int(cen_y - det_Npixel // 2),
-        'y_max': int(cen_y + (det_Npixel + 1) // 2)
-    }
-    
-    # Validate crop dimensions
-    if (dp.shape[1] < crop_indices['y_max'] or dp.shape[2] < crop_indices['x_max'] or 
-        crop_indices['y_min'] < 0 or crop_indices['x_min'] < 0):
-        raise ValueError(f"Diffraction patterns too small to crop to {det_Npixel}x{det_Npixel} with center ({cen_y}, {cen_x})")
-    
-    # Crop and clean diffraction patterns
-    dp_cropped = dp[:, crop_indices['y_min']:crop_indices['y_max'], crop_indices['x_min']:crop_indices['x_max']]
-    dp_cropped = np.clip(dp_cropped, 0, 1e6)  # Replace both operations with a single clip
-    return dp_cropped, positions_processed
-
-def _load_data_12idc_original_h5(base_path, scan_num, det_Npixel, cen_x, cen_y):
-    """Load data from original HDF5 files"""
-    det_xwidth = int(det_Npixel/2)
-    
+    det_xwidth=int(det_Npixel/2)
+# 
     files = glob.glob(f'{base_path}/ptycho/{scan_num:03d}/*{scan_num:03d}_*.h5')
-    N_lines = max(int(name.split('_')[-2]) for name in files)  # number of scan lines
-    N_pts = max(int(name.split('_')[-1][:-3]) for name in files)  # number of scan points per line
+    N_lines = max(int(name.split('_')[-2]) for name in files)# number of scan lines
+    N_pts = max(int(name.split('_')[-1][:-3]) for name in files) # number of scan points per line
     print(f'Number of scan lines: {N_lines}, Number of scan points per line: {N_pts}')
 
-    pos = []
+    pos=[]
+    # Preallocate dp array
+    #dp = np.zeros((N_lines * N_pts, det_Npixel, det_Npixel))  # Adjust shape as necessary
     dp = []
     for line in range(N_lines):
-        print(f'Loading scan line No.{line+1}...')
+        print (f'Loading scan line No.{line+1}...')
 
         start_time = time.time()
         for point in range(N_pts):
             pos_file = glob.glob(f'{base_path}/positions/{scan_num:03d}/*{scan_num:03d}_{line+1:05d}_{point:d}.dat')[0]
             pos_arr = np.genfromtxt(pos_file, delimiter='')
-            pos.append(np.mean(pos_arr, axis=0))
+            avg_pos = np.mean(pos_arr, axis=0)
+            pos.append(avg_pos)
 
-            h5_file = glob.glob(f'{base_path}/ptycho/{scan_num:03d}/*{scan_num:03d}_{line+1:05d}_{point:d}.h5')[0]
-            with h5py.File(h5_file, 'r') as h5_data:
-                filePath = 'entry/data/data'
-                dp_temp = h5_data[filePath][...]
-                dp_temp[dp_temp < 0] = 0
-                dp_temp[dp_temp > 1e6] = 0
+            file_path = glob.glob(f'{base_path}/ptycho/{scan_num:03d}/*{scan_num:03d}_{line+1:05d}_{point+1:05d}.h5')[0]
+            #print(file_path)
+            #with h5py.File(file_path, 'r', libver='latest', swmr=True) as h5f:
+            with h5py.File(file_path, 'r') as h5f:
+                data = h5f['/entry/data/data'][cen_y-det_xwidth:cen_y+det_xwidth, cen_x-det_xwidth:cen_x+det_xwidth]
+            #with h5py.File(file_path, 'r') as h5f:
+            #    data = h5f['/entry/data/data'][cen_y-det_xwidth:cen_y+det_xwidth, cen_x-det_xwidth:cen_x+det_xwidth]
+            data[data<0] = 0
+            #data[data>1e6] = 0
+            data[data>70000] = 0
+            #dp[line*N_pts + point] = data  # Directly assign to preallocated array
+            #print(data.shape)
 
-                index_x_lb = int(cen_x - det_Npixel // 2)
-                index_x_ub = int(cen_x + (det_Npixel + 1) // 2)
-                index_y_lb = int(cen_y - det_Npixel // 2)
-                index_y_ub = int(cen_y + (det_Npixel + 1) // 2)
-                dp_crop = dp_temp[:, index_y_lb:index_y_ub, index_x_lb:index_x_ub]
-                dp.append(dp_crop)
+            dp.append(data)
+            #print(dp.shape)
+        end_time = time.time()
+        #print(f'Time cost for loading data: {end_time - start_time:.2f} seconds')
 
-    positions = np.array(pos)
-    
-    dp = np.concatenate(dp, axis=0) if dp else np.array([])  # Concatenate if dp is not empty
+    #print(f'Scan {scan_num:03d}: Total diffraction patterns: {dp.shape[0]:d}; Total scan points: {len(pos):d}')
+
+    pos = np.array(pos)
+    dp=np.array(dp)    
+    dp_sum = np.sum(dp, axis=(1, 2))
+    pos_index = np.argwhere(dp_sum > (dp_sum.mean() / 2))
+    #pos_index = np.argwhere(dp_sum > (dp_sum.mean() / 3))
+
+    dp=dp[pos_index[:,0]]
+    pos=pos[pos_index[:,0]]
+    print(f'Number of selected scan points={pos.shape[0]}')
+    #print(f'Shape of dp: {dp.shape}')
+
+    ppY = pos[:,1]*1e-9
+    ppX = -pos[:,2]*1e-9
+
+    # Shift positions to center around (0,0)
+    ppX = ppX - (np.max(ppX) + np.min(ppX)) / 2
+    ppY = ppY - (np.max(ppY) + np.min(ppY)) / 2
+    positions = np.column_stack((ppY, ppX))
 
     return dp, positions
-
-def _load_data_12idc_tiff(base_path, scan_num, det_Npixel, cen_x, cen_y):
-    """
-    Load data from TIFF files and position files.
-    This implements functionality similar to process_scan from the data_preprocess script.
-    """
-    import tifffile
-    print("Loading data from TIFF files and position files.")
-    # Define paths
-    tif_dir = os.path.join(base_path, 'tifs', f'{scan_num:03d}')
-    
-    # Get all tif files for the scan
-    tif_files = glob.glob(os.path.join(tif_dir, f'*_{scan_num:03d}_*.tif'))
-    if not tif_files:
-        raise FileNotFoundError(f"No tif files found for scan {scan_num}.")
-    
-    # Extract sample name from the first file
-    sample_name = os.path.basename(tif_files[0]).split(f'_{scan_num:03d}_')[0]
-    
-    # Group files by line
-    line_dict = {}
-    for tif_file in tif_files:
-        basename = os.path.basename(tif_file)
-        parts = basename.split('_')
-        line = int(parts[-2])  # Extract line number
-        point = int(parts[-1].split('.')[0])  # Extract point number
-        if line not in line_dict:
-            line_dict[line] = []
-        line_dict[line].append((point, tif_file))
-    
-    # Initialize lists to store all diffraction patterns and positions
-    all_dps = []
-    all_positions = []
-    
-    # Process each line
-    for line, point_files in line_dict.items():
-        # Sort by point number
-        point_files.sort(key=lambda x: x[0])
-        
-        # Process each point
-        for point, tif_path in point_files:
-            # Load the tif file
-            dp = tifffile.imread(tif_path)
-            
-            # Process the position file
-            pos_file = os.path.join(base_path, 'positions', f'{scan_num:03d}', 
-                                   f'{sample_name}_{scan_num:03d}_{line:05d}_{point-1:d}.dat')
-            if os.path.exists(pos_file):
-                pos_arr = np.genfromtxt(pos_file, delimiter='')
-                avg_pos = np.mean(pos_arr, axis=0)
-            else:
-                print(f"Warning: Position file not found: {pos_file}")
-                avg_pos = np.array([np.nan, np.nan])
-            
-            # Crop the diffraction pattern to the requested size
-            index_x_lb = int(cen_x - det_Npixel // 2)
-            index_x_ub = int(cen_x + (det_Npixel + 1) // 2)
-            index_y_lb = int(cen_y - det_Npixel // 2)
-            index_y_ub = int(cen_y + (det_Npixel + 1) // 2)
-            
-            # Check if the diffraction pattern is large enough to crop
-            if (dp.shape[0] >= index_y_ub and dp.shape[1] >= index_x_ub and 
-                index_y_lb >= 0 and index_x_lb >= 0):
-                dp_cropped = dp[index_y_lb:index_y_ub, index_x_lb:index_x_ub]
-                all_dps.append(dp_cropped)
-                all_positions.append(avg_pos)
-            else:
-                print(f"Warning: Diffraction pattern too small to crop: {tif_path}")
-    
-    # Stack all diffraction patterns and positions
-    if not all_dps:
-        raise ValueError("No valid diffraction patterns found after cropping")
-    
-    dp_stack = np.stack(all_dps)
-    positions = np.array(all_positions)
-  
-    # Process positions: extract, invert x, center, and reshape
-    positions_processed = np.zeros((len(positions), 2))
-    positions_processed[:, 0] = positions[:, 1] * 1e-9 - np.mean(positions[:, 1] * 1e-9)  # y positions
-    positions_processed[:, 1] = -positions[:, 2] * 1e-9 - np.mean(-positions[:, 2] * 1e-9)  # x positions
-    
-    dp_stack = np.clip(dp_stack, 0, 1e6)  # Replace both operations with a single clip
-    
-    return dp_stack, positions_processed
 
 def _load_data_bnp(base_path, scan_num, det_Npixel, cen_x, cen_y):
     print("Loading scan positions and diffraction patterns measured by the Bionanoprobe instrument.")

@@ -312,16 +312,58 @@ def near_field_evolution(u_0, z, wavelength, extent, use_ASM_only=False):
     
     return u_1, H, h, dH
 
-def find_matching_recon(path, scan_num):
-    if 'scan_num' in path: # if path is a string pattern
-        formatted_path = path.format(scan_num=scan_num)
-        matching_files = glob.glob(formatted_path)
-
-        if matching_files:
-            #Sort files by modification time (newest first)
-            matching_files.sort(key=os.path.getmtime, reverse=True)
-            return matching_files[0]
-        else:
-            raise FileNotFoundError(f"No matching reconstruction file found for pattern: {formatted_path}")
+def format_path_with_scan_num(path, scan_num):
+    """
+    Format a path string with scan number, handling various format specifiers.
+    
+    Parameters:
+    -----------
+    path : str
+        Path string that may contain format specifiers like {scan_num} or {scan_num:04d}
+    scan_num : int
+        Scan number to insert into the path
+        
+    Returns:
+    --------
+    str
+        Formatted path with scan number inserted
+    """
+    if not path:
+        return path
+        
+    if '{scan_num' in path:  # if path contains any scan_num format
+        try:
+            formatted_path = path.format(scan_num=scan_num)
+            return formatted_path
+        except Exception as e:
+            print(f"Warning: Failed to format path with scan_num: {str(e)}")
+            return path
     else:
         return path
+
+def find_matching_recon(path, scan_num):
+    """
+    Find a matching reconstruction file based on a path pattern and scan number.
+    
+    Parameters:
+    -----------
+    path : str
+        Path pattern that may contain format specifiers
+    scan_num : int
+        Scan number to use for formatting
+        
+    Returns:
+    --------
+    str
+        Path to the matching reconstruction file
+    """
+    formatted_path = format_path_with_scan_num(path, scan_num)
+    
+    matching_files = glob.glob(formatted_path)
+    if matching_files:
+        # Sort files by modification time (newest first)
+        matching_files.sort(key=os.path.getmtime, reverse=True)
+        return matching_files[0]
+    else:
+        raise FileNotFoundError(f"No matching reconstruction file found for pattern: {formatted_path}")
+

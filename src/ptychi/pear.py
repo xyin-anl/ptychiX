@@ -4,10 +4,7 @@ from ptychi.utils import (set_default_complex_dtype,
                           generate_initial_opr_mode_weights)
 import os
 os.environ['HDF5_PLUGIN_PATH'] = '/mnt/micdata3/ptycho_tools/DectrisFileReader/HDF5Plugin'
-from .pear_io import (initialize_recon,
-                      save_reconstructions,
-                      create_reconstruction_path,
-                      save_initial_conditions)
+
 from .pear_utils import select_gpu
 import numpy as np
 
@@ -44,6 +41,17 @@ def ptycho_recon(run_recon=True, **params):
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is not available. Please check your GPU device.")
 
+    if params.get('beam_type', 'xray') == 'electron':
+        from .pear_io_ele import (initialize_recon,
+                              save_reconstructions,
+                              create_reconstruction_path,
+                              save_initial_conditions)
+    else:
+        from .pear_io import (initialize_recon,
+                              save_reconstructions,
+                              create_reconstruction_path,
+                              save_initial_conditions)
+        
     # Load data + preprocessing
     (dp, init_positions_px, init_probe, init_object, params) = initialize_recon(params)
 
@@ -163,7 +171,8 @@ def ptycho_recon(run_recon=True, **params):
         for i in range(params['number_of_iterations'] // params['save_freq_iterations']):
             task.run(params['save_freq_iterations'])
             save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
-
+    
+    torch.cuda.empty_cache()
     return task
 
 class FileBasedTracker:
@@ -320,7 +329,7 @@ class FileBasedTracker:
             except Exception as e:
                 print(f"Error updating status for scan {scan_id}: {str(e)}")
 
-def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', scan_order='ascending'):
+def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', scan_order='ascending', exclude_scans=[]):
     """
     Process a range of scans with automatic error handling.
     
@@ -359,7 +368,9 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
             import random
             scan_list = list(range(start_scan, end_scan + 1))
             random.shuffle(scan_list)
-            
+
+        scan_list = [scan for scan in scan_list if scan not in exclude_scans]
+        
         for scan_num in scan_list:
             # Create a copy of the parameters for this scan
             scan_params = base_params.copy()
@@ -399,8 +410,8 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
                 # Update status
                 tracker.complete_recon(scan_num, success=True)
                 
-                print(f"Waiting for 3 seconds before next scan...")
-                time.sleep(3)
+                print(f"Waiting for 5 seconds before next scan...")
+                time.sleep(5)
 
                 if scan_order == 'descending':
                     # Break the for loop after processing the current scan
