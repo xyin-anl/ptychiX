@@ -55,8 +55,8 @@ def batch_slice(image: Tensor, sy: Tensor, sx: Tensor, patch_size: Tuple[int, in
     ):
         raise ValueError("Patch indices are out of bounds.")
     
-    x = torch.arange(patch_size[1])[None, :]
-    y = torch.arange(patch_size[0])[None, :]
+    x = torch.arange(patch_size[1], device=sx.device)[None, :]
+    y = torch.arange(patch_size[0], device=sy.device)[None, :]
     x = x.expand(len(sx), x.shape[1])
     y = y.expand(len(sy), y.shape[1])
     x = x + sx[:, None]
@@ -108,8 +108,8 @@ def batch_put(
         raise ValueError("Patch indices are out of bounds.")
     
     patch_size = patches.shape[-2:]
-    x = torch.arange(patch_size[1])[None, :]
-    y = torch.arange(patch_size[0])[None, :]
+    x = torch.arange(patch_size[1], device=sx.device)[None, :]
+    y = torch.arange(patch_size[0], device=sy.device)[None, :]
     x = x.expand(len(sx), x.shape[1])
     y = y.expand(len(sy), y.shape[1])
     x = x + sx[:, None]

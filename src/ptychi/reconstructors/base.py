@@ -265,10 +265,18 @@ class IterativeReconstructor(Reconstructor):
         return d
     
     def prepare_batch_data(self, batch_data: Sequence[Tensor]) -> Tuple[Sequence[Tensor], Tensor]:
-        # If data is not saved on device, move it to device.
         input_data = batch_data[:-1]
-        if input_data[0].device.type != torch.get_default_device().type:
-            input_data = [x.to(torch.get_default_device()) for x in input_data]
+        
+        if input_data[0].ndim != 1:
+            raise ValueError(
+                "The first returned value of the dataset should be a 1D tensor "
+                "giving the indices, but got a tensor of shape {}.".format(input_data[0].shape)
+            )
+            
+        # Put input data on CPU so that DataParallel can distribute them later.
+        input_data = [x.cpu() for x in input_data]
+        
+        # Put measured data on device.
         y_true = batch_data[-1]
         if y_true.device.type != torch.get_default_device().type:
             y_true = y_true.to(torch.get_default_device())

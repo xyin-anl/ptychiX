@@ -510,6 +510,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
         Tensor
             Predicted intensities (squared magnitudes).
         """
+        indices = indices.to(self.object.tensor.data.device)
         self.intermediate_variables = self.PlanarPtychographyIntermediateVariables()
         
         self.dip_generate()
