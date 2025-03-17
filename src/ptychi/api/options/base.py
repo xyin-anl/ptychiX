@@ -139,6 +139,18 @@ class ObjectL1NormConstraintOptions(FeatureOptions):
 
     weight: float = 0
     """The weight of the L1 norm constraint. Disabled if equal or less than 0."""
+    
+
+@dataclasses.dataclass
+class ObjectL2NormConstraintOptions(FeatureOptions):
+    """Settings for the L2 norm constraint."""
+
+    enabled: bool = False
+
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+
+    weight: float = 0
+    """The weight of the L2 norm constraint. Disabled if equal or less than 0."""
 
 
 @dataclasses.dataclass
@@ -221,6 +233,10 @@ class ObjectOptions(ParameterOptions):
 
     l1_norm_constraint: ObjectL1NormConstraintOptions = field(
         default_factory=ObjectL1NormConstraintOptions
+    )
+    
+    l2_norm_constraint: ObjectL2NormConstraintOptions = field(
+        default_factory=ObjectL2NormConstraintOptions
     )
 
     smoothness_constraint: ObjectSmoothnessConstraintOptions = field(
