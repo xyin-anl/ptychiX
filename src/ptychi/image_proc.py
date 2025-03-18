@@ -146,7 +146,7 @@ def extract_patches_integer(
     Parameters
     ----------
     image : Tensor
-        The whole image.
+        A (H, W) tensor giving the whole image.
     positions : Tensor
         A tensor of shape (N, 2) giving the center positions of the patches in pixels.
         The origin of the given positions are assumed to be the TOP LEFT corner of the image.
@@ -170,7 +170,12 @@ def extract_patches_integer(
         max(sys.max() + shape[0] - image.shape[0], 0),
     ]
     if any(pad_lengths):
-        image = torch.nn.functional.pad(image, pad_lengths, mode="replicate")
+        logging.warning(
+            f"Patch extractor has to pad the image by {[int(x) for x in pad_lengths]} "
+            "(left, right, top, bottom) to avoid out-of-bounds errors. This should be "
+            "avoided whenever possible. Consider using a larger object size."
+        )
+        image = torch.nn.functional.pad(image[None], pad_lengths, mode="replicate")[0]
         sys = sys + pad_lengths[2]
         sxs = sxs + pad_lengths[0]
     
@@ -222,6 +227,11 @@ def place_patches_integer(
         max(sys.max() + shape[0] - image.shape[0], 0),
     ]
     if any(pad_lengths):
+        logging.warning(
+            f"Patch placer has to pad the image by {[int(x) for x in pad_lengths]} "
+            "(left, right, top, bottom) to avoid out-of-bounds errors. This should be "
+            "avoided whenever possible. Consider using a larger object size."
+        )
         image = torch.nn.functional.pad(image, pad_lengths)
         sys = sys + pad_lengths[2]
         sxs = sxs + pad_lengths[0]
