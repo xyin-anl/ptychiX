@@ -2,7 +2,7 @@ from typing import Optional, Union, TYPE_CHECKING, Sequence
 import dataclasses
 from dataclasses import field
 import logging
-from math import inf
+from math import inf, ceil
 
 from numpy import ndarray
 from torch import Tensor
@@ -12,7 +12,9 @@ from ptychi.api.options.plan import OptimizationPlan
 
 if TYPE_CHECKING:
     import ptychi.api.options.task as task_options
-    
+    from ptychi.api.options.task import PtychographyTaskOptions
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -281,6 +283,22 @@ class ObjectOptions(ParameterOptions):
         d = super().get_non_data_fields()
         del d["initial_guess"]
         return d
+    
+    def check(self, options: "PtychographyTaskOptions"):
+        super().check(options)
+        pos_y = options.probe_position_options.position_y_px
+        pos_x = options.probe_position_options.position_x_px
+        probe_shape = options.probe_options.initial_guess.shape[-2:]
+        min_size = [
+            int(ceil((pos_y.max() - pos_y.min() + probe_shape[-2]).item())) + 2,
+            int(ceil((pos_x.max() - pos_x.min() + probe_shape[-1]).item())) + 2,
+        ]
+        if any([min_size[i] > options.data_options.data.shape[-2:][i] for i in range(2)]):
+            logging.warning(
+                f"An object tensor with a lateral size of at least {min_size} is "
+                "required to avoid padding when extracting/placing patches, but the provided "
+                f"object size is {list(options.object_options.initial_guess.shape[-2:])}."
+            )
 
 
 @dataclasses.dataclass

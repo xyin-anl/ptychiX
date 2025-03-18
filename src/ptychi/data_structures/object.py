@@ -102,6 +102,9 @@ class Object(dsbase.ReconstructParameter):
     
     def remove_object_probe_ambiguity(self):
         raise NotImplementedError
+    
+    def update_center_pixel_coordinates(self, *args, **kwargs):
+        raise NotImplementedError
 
 
 class PlanarObject(Object):
@@ -158,6 +161,20 @@ class PlanarObject(Object):
     @property
     def place_patches_function(self) -> "ip.PlacePatchesProtocol":
         return maps.get_patch_placer_function_by_name(self.options.patch_interpolation_method)
+    
+    def update_center_pixel_coordinates(self, positions: Tensor):
+        """Update the coordinates of the center pixel based on probe positions.
+
+        Parameters
+        ----------
+        positions : Tensor
+            A (n_pos, 2) tensor of probe positions in pixels.
+        """
+        positions = positions.detach()
+        buffer_center = torch.tensor([x / 2 for x in self.lateral_shape], device=positions.device)
+        position_center = (positions.max(0).values + positions.min(0).values) / 2
+        self.center_pixel = buffer_center - position_center
+        self.center_pixel = self.center_pixel.round() + 0.5
 
     def get_slice(self, index):
         return self.data[index, ...]
