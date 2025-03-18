@@ -7,6 +7,7 @@ import ptychi.data_structures.object
 import ptychi.forward_models as fm
 from ptychi.reconstructors.ad_general import AutodiffReconstructor
 from ptychi.reconstructors.base import IterativePtychographyReconstructor
+import ptychi.metrics as metrics
 
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg
@@ -72,24 +73,39 @@ class AutodiffPtychographyReconstructor(AutodiffReconstructor, IterativePtychogr
         This function calculates the regularization terms and backpropagates them. Since the gradients
         of the parameters haven't been zeroed, the regularizers' gradients will be added to them.
         """
-        super().apply_regularizers()
+        reg = super().apply_regularizers()
 
         object_ = self.parameter_group.object
         if object_.options.l1_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
             # object.data returns a copy, so we directly access the tensor here.
             obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]
-            reg = object_.options.l1_norm_constraint.weight * obj_data.abs().sum()
+            reg = reg + object_.options.l1_norm_constraint.weight * torch.mean(obj_data.abs())
+            
+        if object_.options.l2_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
+            obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]
+            reg = reg + object_.options.l2_norm_constraint.weight * torch.mean(obj_data.abs() ** 2)
+            
+        if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
+            obj_data = object_.tensor.data[..., 0] + 1j * object_.tensor.data[..., 1]
+            reg = reg + object_.options.total_variation.weight * metrics.TotalVariationLoss(reduction="mean")(obj_data)
+            
+        if reg.requires_grad:
             reg.backward()
+        return reg
 
-    def run_minibatch(self, input_data, y_true, *args, **kwargs):
+    def run_minibatch(self, input_data, y_true, *args, **kwargs):        
         y_pred = self.forward_model(*input_data)
         batch_loss = self.loss_function(
             y_pred[:, self.dataset.valid_pixel_mask], y_true[:, self.dataset.valid_pixel_mask]
         )
 
-        batch_loss.backward()
+        batch_loss.backward(retain_graph=True)
         self.run_post_differentiation_hooks(input_data, y_true)
+        reg_loss = self.apply_regularizers()
+        
         self.step_all_optimizers()
         self.forward_model.zero_grad()
         self.run_post_update_hooks()
+        
         self.loss_tracker.update_batch_loss(y_pred=y_pred, y_true=y_true, loss=batch_loss.item())
+        self.loss_tracker.update_batch_regularization_loss(reg_loss.item())

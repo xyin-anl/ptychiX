@@ -27,7 +27,10 @@ class ComplexTensor(Module):
     """
 
     def __init__(
-        self, data: Union[Tensor, ndarray], requires_grad: bool = True, data_as_parameter: bool = True,
+        self, 
+        data: Union[Tensor, ndarray], 
+        requires_grad: bool = True, 
+        data_as_parameter: bool = True, 
         *args, **kwargs
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -91,6 +94,24 @@ class ReconstructParameter(Module):
         *args,
         **kwargs,
     ) -> None:
+        """The base reconstructor parameter class.
+
+        Parameters
+        ----------
+        shape : Optional[Tuple[int, ...]], optional
+            The shape of the parameter.
+        data : Optional[Union[Tensor, ndarray]], optional
+            The data of the parameter.
+        is_complex : bool, optional
+            Whether the parameter is complex.
+        name : Optional[str], optional
+            The name of the parameter.
+        options : api.options.base.ParameterOptions, optional
+            Options of the parameter.
+        data_as_parameter : bool, optional
+            Whether the data is stored as a torch.Parameter. In most cases this should be True,
+            but for DIPObject, the data is not directly optimized so it should just be a buffer.
+        """
         super().__init__(*args, **kwargs)
         if shape is None and data is None:
             raise ValueError("Either shape or data must be specified.")

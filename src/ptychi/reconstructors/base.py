@@ -42,24 +42,29 @@ class LossTracker:
             only computing the loss when it is not.
         """
         super().__init__(*args, **kwargs)
-        self.table = pd.DataFrame(columns=["epoch", "loss"])
+        self.table = pd.DataFrame(columns=["epoch", "loss", "reg_loss"])
         self.table["epoch"] = self.table["epoch"].astype(int)
         self.metric_function = metric_function
         self.epoch_loss = 0.0
         self.accumulated_num_batches = 0
+        self.epoch_reg_loss = 0.0
+        self.accumulated_num_reg_batches = 0
         self.epoch = 0
         self.always_compute_loss = always_compute_loss
 
     def conclude_epoch(self, epoch: Optional[int] = None) -> None:
         self.epoch_loss = self.epoch_loss / self.accumulated_num_batches
+        self.epoch_reg_loss = self.epoch_reg_loss / max(self.accumulated_num_reg_batches, 1)
         if epoch is None:
             epoch = self.epoch
             self.epoch += 1
         else:
             self.epoch = epoch + 1
-        self.table.loc[len(self.table)] = [epoch, self.epoch_loss]
+        self.table.loc[len(self.table)] = [epoch, self.epoch_loss, self.epoch_reg_loss]
         self.epoch_loss = 0.0
+        self.epoch_reg_loss = 0.0
         self.accumulated_num_batches = 0
+        self.accumulated_num_reg_batches = 0
 
     def update_batch_loss(
         self,
@@ -123,6 +128,11 @@ class LossTracker:
         loss = to_numpy(loss)
         self.epoch_loss = self.epoch_loss + loss
         self.accumulated_num_batches = self.accumulated_num_batches + 1
+        
+    def update_batch_regularization_loss(self, reg_loss: float) -> None:
+        reg_loss = to_numpy(reg_loss)
+        self.epoch_reg_loss = self.epoch_reg_loss + reg_loss
+        self.accumulated_num_reg_batches = self.accumulated_num_reg_batches + 1
 
     def print(self) -> None:
         print(self.table)
@@ -255,10 +265,18 @@ class IterativeReconstructor(Reconstructor):
         return d
     
     def prepare_batch_data(self, batch_data: Sequence[Tensor]) -> Tuple[Sequence[Tensor], Tensor]:
-        # If data is not saved on device, move it to device.
         input_data = batch_data[:-1]
-        if input_data[0].device.type != torch.get_default_device().type:
-            input_data = [x.to(torch.get_default_device()) for x in input_data]
+        
+        if input_data[0].ndim != 1:
+            raise ValueError(
+                "The first returned value of the dataset should be a 1D tensor "
+                "giving the indices, but got a tensor of shape {}.".format(input_data[0].shape)
+            )
+            
+        # Put input data on CPU so that DataParallel can distribute them later.
+        input_data = [x.cpu() for x in input_data]
+        
+        # Put measured data on device.
         y_true = batch_data[-1]
         if y_true.device.type != torch.get_default_device().type:
             y_true = y_true.to(torch.get_default_device())
@@ -402,10 +420,6 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             # Apply smoothness constraint.
             if object_.options.smoothness_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_smoothness()
-
-            # Apply total variation constraint.
-            if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
-                object_.constrain_total_variation()
 
             # Remove grid artifacts.
             if object_.options.remove_grid_artifacts.is_enabled_on_this_epoch(self.current_epoch):
@@ -590,6 +604,14 @@ class AnalyticalIterativePtychographyReconstructor(
             # Apply object L1-norm constraint.
             if object_.options.l1_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_l1_norm()
+                
+            # Apply object L2-norm constraint.
+            if object_.options.l2_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
+                object_.constrain_l2_norm()
+                
+            # Apply total variation constraint.
+            if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
+                object_.constrain_total_variation()
 
     def run_pre_run_hooks(self) -> None:
         self.prepare_data()

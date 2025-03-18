@@ -141,11 +141,29 @@ class PtychographyTask(Task):
             "data": data,
             "options": self.object_options,
         }
-        self.object = object.PlanarObject(**kwargs)
+        if (
+            isinstance(self.object_options, api.options.AutodiffPtychographyObjectOptions)
+        ) and (
+            self.object_options.experimental.deep_image_prior_options.enabled
+        ):
+            self.object = object.DIPPlanarObject(**kwargs)
+        else:
+            self.object = object.PlanarObject(**kwargs)
 
     def build_probe(self):
         data = to_tensor(self.probe_options.initial_guess)
-        self.probe = probe.Probe(data=data, options=self.probe_options)
+        kwargs = {
+            "data": data,
+            "options": self.probe_options,
+        }
+        if (
+            isinstance(self.probe_options, api.options.AutodiffPtychographyProbeOptions)
+        ) and (
+            self.probe_options.experimental.deep_image_prior_options.enabled
+        ):
+            self.probe = probe.DIPProbe(**kwargs)
+        else:
+            self.probe = probe.Probe(**kwargs)
 
     def build_probe_positions(self):
         pos_y = to_tensor(self.position_options.position_y_px)

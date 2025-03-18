@@ -33,6 +33,11 @@ dependencies = [
     "sphinx-rtd-theme",
 ]
 
+[nn]
+dependencies = [
+    "torchinfo",
+]
+
 [tool.setuptools_scm]
 
 [tool.mypy]
