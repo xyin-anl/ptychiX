@@ -293,7 +293,7 @@ class ObjectOptions(ParameterOptions):
             int(ceil((pos_y.max() - pos_y.min() + probe_shape[-2]).item())) + 2,
             int(ceil((pos_x.max() - pos_x.min() + probe_shape[-1]).item())) + 2,
         ]
-        if any([min_size[i] > options.data_options.data.shape[-2:][i] for i in range(2)]):
+        if any([min_size[i] > options.object_options.initial_guess.shape[-2:][i] for i in range(2)]):
             logging.warning(
                 f"An object tensor with a lateral size of at least {min_size} is "
                 "required to avoid padding when extracting/placing patches, but the provided "
