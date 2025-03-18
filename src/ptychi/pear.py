@@ -172,8 +172,8 @@ def ptycho_recon(run_recon=True, **params):
             task.run(params['save_freq_iterations'])
             save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
     
-    torch.cuda.empty_cache()
-    return task
+        torch.cuda.empty_cache()
+    return task, recon_path, params
 
 class FileBasedTracker:
     def __init__(self, base_dir):
