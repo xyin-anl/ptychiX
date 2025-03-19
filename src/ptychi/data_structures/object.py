@@ -11,6 +11,7 @@ import ptychi.data_structures as ds
 import ptychi.data_structures.base as dsbase
 import ptychi.maths as pmath
 from ptychi.timing.timer_utils import timer
+import ptychi.api.enums as enums
 from ptychi.utils import (
     get_default_complex_dtype, 
     to_tensor, 
@@ -162,7 +163,7 @@ class PlanarObject(Object):
     def place_patches_function(self) -> "ip.PlacePatchesProtocol":
         return maps.get_patch_placer_function_by_name(self.options.patch_interpolation_method)
     
-    def update_center_pixel_coordinates(self, positions: Tensor):
+    def update_center_pixel_coordinates(self, positions: Tensor = None):
         """Update the coordinates of the center pixel based on probe positions.
 
         Parameters
@@ -170,11 +171,18 @@ class PlanarObject(Object):
         positions : Tensor
             A (n_pos, 2) tensor of probe positions in pixels.
         """
-        positions = positions.detach()
-        buffer_center = torch.tensor([x / 2 for x in self.lateral_shape], device=positions.device)
-        position_center = (positions.max(0).values + positions.min(0).values) / 2
-        self.center_pixel = buffer_center - position_center
-        self.center_pixel = self.center_pixel.round() + 0.5
+        if self.options.determine_center_coords_by == enums.ObjectCenterCoordsMethods.POSITIONS:
+            positions = positions.detach()
+            buffer_center = torch.tensor([x / 2 for x in self.lateral_shape], device=positions.device)
+            position_center = (positions.max(0).values + positions.min(0).values) / 2
+            self.center_pixel = buffer_center - position_center
+            self.center_pixel = self.center_pixel.round() + 0.5
+        elif self.options.determine_center_coords_by == enums.ObjectCenterCoordsMethods.SUPPORT:
+            center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
+            center_pixel = center_pixel.round() + 0.5
+            self.center_pixel = center_pixel
+        else:
+            raise ValueError(f"Invalid value for `determine_center_coords_by`: {self.options.determine_center_coords_by}")
 
     def get_slice(self, index):
         return self.data[index, ...]

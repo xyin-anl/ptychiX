@@ -108,3 +108,8 @@ class AffineDegreesOfFreedom(StrEnum):
 class DIPModels(StrEnum):
     UNET = auto()
     AUTOENCODER = auto()
+
+
+class ObjectCenterCoordsMethods(StrEnum):
+    POSITIONS = auto()
+    SUPPORT = auto()

@@ -6,6 +6,8 @@ from math import inf, ceil
 
 from numpy import ndarray
 from torch import Tensor
+import torch
+import numpy as np
 
 import ptychi.api.enums as enums
 from ptychi.api.options.plan import OptimizationPlan
@@ -278,6 +280,28 @@ class ObjectOptions(ParameterOptions):
     if the selected reconstructor uses preconditioner to regularize object updates.
     However, it might lead to slower convergence speed.
     """
+    
+    determine_center_coords_by: enums.ObjectCenterCoordsMethods = enums.ObjectCenterCoordsMethods.POSITIONS
+    """The method to determine the center coordinates of the object. The 
+    center coordinates are used to convert probe positions from their original frame
+    to the pixel-index coordinates of the object buffer, where the origin is at the
+    top left corner of the buffer. The pixel-index coordinates are calculated as
+    ```
+    positions_pind = positions + center_coords
+    ```
+    
+    - `POSITIONS`: the center coordinates are determined as 
+      `buffer_center - (positions.max() + positions.min()) / 2`. This puts the mid-point
+      of the position range at the center of the buffer. It is more adaptive; however,
+      in the case that one initializes a reconstruction with a previously reconstructed object
+      and corrected probe positions, the center coordinates are not necessarily the same, 
+      which can cause the positions to mismatch between both reconstructions. 
+      
+    - `SUPPORT`: the center coordinates are determined as the center of the support of the 
+      object. This is helpful to keep the center coordinates consistent between consecutive
+      reconstructions, but the probe positions given should (at least approximately) zero-centered,
+      i.e., `-postitions.min() ~ positions.max()` to prevent out-of-bound errors.
+    """
 
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
@@ -289,17 +313,35 @@ class ObjectOptions(ParameterOptions):
         pos_y = options.probe_position_options.position_y_px
         pos_x = options.probe_position_options.position_x_px
         probe_shape = options.probe_options.initial_guess.shape[-2:]
+        obj_shape = options.object_options.initial_guess.shape[-2:]
         min_size = [
             int(ceil((pos_y.max() - pos_y.min() + probe_shape[-2]).item())) + 2,
             int(ceil((pos_x.max() - pos_x.min() + probe_shape[-1]).item())) + 2,
         ]
-        if any([min_size[i] > options.object_options.initial_guess.shape[-2:][i] for i in range(2)]):
+        if any([min_size[i] > obj_shape[i] for i in range(2)]):
             logging.warning(
                 f"An object tensor with a lateral size of at least {min_size} is "
                 "required to avoid padding when extracting/placing patches, but the provided "
                 f"object size is {list(options.object_options.initial_guess.shape[-2:])}."
             )
-
+        if self.determine_center_coords_by == enums.ObjectCenterCoordsMethods.SUPPORT:
+            buffer_center = torch.tensor(
+                [np.round(x / 2) + 0.5 for x in obj_shape]
+            )
+            if (
+                pos_y.max() + buffer_center[0] + probe_shape[-2] // 2 > obj_shape[-2]
+                or pos_y.min() + buffer_center[0] - probe_shape[-2] // 2 < 0
+                or pos_x.max() + buffer_center[1] + probe_shape[-1] // 2 > obj_shape[-1]
+                or pos_x.min() + buffer_center[1] - probe_shape[-1] // 2 < 0
+            ):
+                logging.warning(
+                    "`object_options.determine_center_coords_by` is set to `SUPPORT`. This assumes "
+                    "that the probe positions are approximately zero-centered, i.e., "
+                    "`-pos_y.min() ~ pos_y.max()` and `-pos_x.min() ~ pos_x.max()`. "
+                    "However, the given probe positions will cause the reconstructor to access pixels "
+                    "out of the object support. Please provide probe positions that are approximately "
+                    "zero-centered, or set `object_options.determine_center_coords_by` to `POSITIONS`."
+                )
 
 @dataclasses.dataclass
 class ProbePowerConstraintOptions(FeatureOptions):
