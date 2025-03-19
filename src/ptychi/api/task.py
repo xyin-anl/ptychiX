@@ -83,9 +83,9 @@ class PtychographyTask(Task):
         self.build_default_device()
         self.build_default_dtype()
         self.build_data()
-        self.build_probe_positions()
         self.build_object()
         self.build_probe()
+        self.build_probe_positions()
         self.build_opr_mode_weights()
         self.build_reconstructor()
 
@@ -149,7 +149,6 @@ class PtychographyTask(Task):
             self.object = object.DIPPlanarObject(**kwargs)
         else:
             self.object = object.PlanarObject(**kwargs)
-        self.object.update_center_pixel_coordinates(self.probe_positions.data)
 
     def build_probe(self):
         data = to_tensor(self.probe_options.initial_guess)
