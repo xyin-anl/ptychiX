@@ -113,3 +113,4 @@ class DIPModels(StrEnum):
 class ObjectCenterCoordsMethods(StrEnum):
     POSITIONS = auto()
     SUPPORT = auto()
+    SPECIFIED = auto()

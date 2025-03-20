@@ -181,6 +181,14 @@ class PlanarObject(Object):
             center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
             center_pixel = center_pixel.round() + 0.5
             self.center_pixel = center_pixel
+        elif self.options.determine_center_coords_by == enums.ObjectCenterCoordsMethods.SPECIFIED:
+            if self.options.center_coords is None:
+                raise ValueError(
+                    "`object_options.center_coords` should be specified when "
+                    "`object_options.determine_center_coords_by` is set to "
+                    "`SPECIFIED`."
+                )
+            self.center_pixel = self.options.center_coords
         else:
             raise ValueError(f"Invalid value for `determine_center_coords_by`: {self.options.determine_center_coords_by}")
 

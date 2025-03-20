@@ -302,6 +302,18 @@ class ObjectOptions(ParameterOptions):
       reconstructions, but the probe positions given should (at least approximately) zero-centered,
       i.e., `-postitions.min() ~ positions.max()` to prevent out-of-bound errors.
     """
+    
+    center_coords: Optional[ndarray] = None
+    """The user-specified center coordinates of the object. To make this setting effective,
+    `determine_center_coords_by` should be set to `SPECIFIED`. 
+    
+    These coordinates are used to convert probe positions from their original frame
+    to the pixel-index coordinates of the object buffer, where the origin is at the
+    top left corner of the buffer. The pixel-index coordinates are calculated as
+    ```
+    positions_pind = positions + center_coords
+    ```
+    """
 
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
@@ -342,6 +354,19 @@ class ObjectOptions(ParameterOptions):
                     "out of the object support. Please provide probe positions that are approximately "
                     "zero-centered, or set `object_options.determine_center_coords_by` to `POSITIONS`."
                 )
+        if self.determine_center_coords_by == enums.ObjectCenterCoordsMethods.SPECIFIED:
+            if self.center_coords is None:
+                raise ValueError("`object_options.center_coords` should be specified when "
+                                 "`object_options.determine_center_coords_by` is set to "
+                                 "`SPECIFIED`.")
+        if self.center_coords is not None:
+            if self.determine_center_coords_by != enums.ObjectCenterCoordsMethods.SPECIFIED:
+                logging.warning(
+                    "`object_options.center_coords` will be disregarded when "
+                    "`object_options.determine_center_coords_by` is not set to "
+                    "`SPECIFIED`."
+                )
+
 
 @dataclasses.dataclass
 class ProbePowerConstraintOptions(FeatureOptions):
