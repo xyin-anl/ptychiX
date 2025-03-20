@@ -44,9 +44,9 @@ class Object(dsbase.ReconstructParameter):
         self.pixel_size_m = options.pixel_size_m
         self.roi_bbox: dsbase.BoundingBox = None
         
-        center_pixel = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
-        center_pixel = center_pixel.round() + 0.5
-        self.register_buffer("center_pixel", center_pixel)
+        pos_origin_coords = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
+        pos_origin_coords = pos_origin_coords.round() + 0.5
+        self.register_buffer("pos_origin_coords", pos_origin_coords)
 
     def extract_patches(self, positions, patch_shape, *args, **kwargs):
         raise NotImplementedError
@@ -89,7 +89,7 @@ class Object(dsbase.ReconstructParameter):
             ey=pos[:, 0].max(),
             sx=pos[:, 1].min(),
             ex=pos[:, 1].max(),
-            origin=tuple(to_numpy(self.center_pixel)),
+            origin=tuple(to_numpy(self.pos_origin_coords)),
         )
     
     def get_object_in_roi(self):
@@ -104,7 +104,7 @@ class Object(dsbase.ReconstructParameter):
     def remove_object_probe_ambiguity(self):
         raise NotImplementedError
     
-    def update_center_pixel_coordinates(self, *args, **kwargs):
+    def update_pos_origin_coordinates(self, *args, **kwargs):
         raise NotImplementedError
 
 
@@ -139,9 +139,9 @@ class PlanarObject(Object):
         else:
             self.slice_spacing_m = None
 
-        center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
-        center_pixel = center_pixel.round() + 0.5
-        self.register_buffer("center_pixel", center_pixel)
+        pos_origin_coords = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
+        pos_origin_coords = pos_origin_coords.round() + 0.5
+        self.register_buffer("pos_origin_coords", pos_origin_coords)
 
     @property
     def is_multislice(self) -> bool:
@@ -163,7 +163,7 @@ class PlanarObject(Object):
     def place_patches_function(self) -> "ip.PlacePatchesProtocol":
         return maps.get_patch_placer_function_by_name(self.options.patch_interpolation_method)
     
-    def update_center_pixel_coordinates(self, positions: Tensor = None):
+    def update_pos_origin_coordinates(self, positions: Tensor = None):
         """Update the coordinates of the center pixel based on probe positions.
 
         Parameters
@@ -171,26 +171,26 @@ class PlanarObject(Object):
         positions : Tensor
             A (n_pos, 2) tensor of probe positions in pixels.
         """
-        if self.options.determine_center_coords_by == enums.ObjectCenterCoordsMethods.POSITIONS:
+        if self.options.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.POSITIONS:
             positions = positions.detach()
             buffer_center = torch.tensor([x / 2 for x in self.lateral_shape], device=positions.device)
             position_center = (positions.max(0).values + positions.min(0).values) / 2
-            self.center_pixel = buffer_center - position_center
-            self.center_pixel = self.center_pixel.round() + 0.5
-        elif self.options.determine_center_coords_by == enums.ObjectCenterCoordsMethods.SUPPORT:
-            center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
-            center_pixel = center_pixel.round() + 0.5
-            self.center_pixel = center_pixel
-        elif self.options.determine_center_coords_by == enums.ObjectCenterCoordsMethods.SPECIFIED:
-            if self.options.center_coords is None:
+            self.pos_origin_coords = buffer_center - position_center
+            self.pos_origin_coords = self.pos_origin_coords.round() + 0.5
+        elif self.options.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.SUPPORT:
+            pos_origin_coords = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
+            pos_origin_coords = pos_origin_coords.round() + 0.5
+            self.pos_origin_coords = pos_origin_coords
+        elif self.options.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.SPECIFIED:
+            if self.options.position_origin_coords is None:
                 raise ValueError(
                     "`object_options.center_coords` should be specified when "
                     "`object_options.determine_center_coords_by` is set to "
                     "`SPECIFIED`."
                 )
-            self.center_pixel = self.options.center_coords
+            self.pos_origin_coords = self.options.position_origin_coords
         else:
-            raise ValueError(f"Invalid value for `determine_center_coords_by`: {self.options.determine_center_coords_by}")
+            raise ValueError(f"Invalid value for `determine_center_coords_by`: {self.options.determine_position_origin_coords_by}")
 
     def get_slice(self, index):
         return self.data[index, ...]
@@ -210,7 +210,7 @@ class PlanarObject(Object):
         ----------
         positions : Tensor
             Tensor of shape (N, 2) giving the center positions of the patches in pixels.
-            The origin of the given positions are assumed to be `self.center_pixel`.
+            The origin of the given positions are assumed to be `self.pos_origin_coords`.
         patch_shape : tuple
             Tuple giving the lateral patch shape in pixels.
         integer_mode : bool, optional
@@ -227,7 +227,7 @@ class PlanarObject(Object):
         """
         # Positions are provided with the origin in the center of the object support.
         # We shift the positions so that the origin is in the upper left corner.
-        positions = positions + self.center_pixel
+        positions = positions + self.pos_origin_coords
         patches_all_slices = []
         for i_slice in range(self.n_slices):
             if integer_mode:
@@ -258,7 +258,7 @@ class PlanarObject(Object):
         ----------
         positions : Tensor
             Tensor of shape (N, 2) giving the center positions of the patches in pixels.
-            The origin of the given positions are assumed to be `self.center_pixel`.
+            The origin of the given positions are assumed to be `self.pos_origin_coords`.
         patches : Tensor
             Tensor of shape (n_patches, n_slices, H, W) of image patches.
         integer_mode : bool, optional
@@ -268,7 +268,7 @@ class PlanarObject(Object):
             If given, patches are either padded (for adjoint mode) or cropped 
             (for forward mode) before applying subpixel shifts.
         """
-        positions = positions + self.center_pixel
+        positions = positions + self.pos_origin_coords
         updated_slices = []
         for i_slice in range(self.n_slices):
             if integer_mode:
@@ -300,7 +300,7 @@ class PlanarObject(Object):
         ----------
         positions : Tensor
             Tensor of shape (N, 2) giving the center positions of the patches in pixels.
-            The origin of the given positions are assumed to be `self.center_pixel`.
+            The origin of the given positions are assumed to be `self.pos_origin_coords`.
         patches : Tensor
             Tensor of shape (N, H, W) of image patches.
         integer_mode : bool, optional
@@ -315,7 +315,7 @@ class PlanarObject(Object):
         image : Tensor
             A tensor with the lateral shape of the object with patches added onto it.
         """
-        positions = positions + self.center_pixel
+        positions = positions + self.pos_origin_coords
         image = torch.zeros(
             self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device
         )
@@ -528,7 +528,7 @@ class PlanarObject(Object):
             func=ip.place_patches_integer,
             common_kwargs={"op": "add"},
             chunkable_kwargs={
-                "positions": positions_all.round().int() + self.center_pixel,
+                "positions": positions_all.round().int() + self.pos_origin_coords,
                 "patches": probe_int,
             },
             iterated_kwargs={

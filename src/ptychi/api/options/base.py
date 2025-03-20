@@ -281,37 +281,50 @@ class ObjectOptions(ParameterOptions):
     However, it might lead to slower convergence speed.
     """
     
-    determine_center_coords_by: enums.ObjectCenterCoordsMethods = enums.ObjectCenterCoordsMethods.POSITIONS
-    """The method to determine the center coordinates of the object. The 
-    center coordinates are used to convert probe positions from their original frame
-    to the pixel-index coordinates of the object buffer, where the origin is at the
-    top left corner of the buffer. The pixel-index coordinates are calculated as
+    determine_position_origin_coords_by: enums.ObjectPosOriginCoordsMethods = enums.ObjectPosOriginCoordsMethods.SUPPORT
+    """The method to determine the pixel coordinates of the object that corresponds 
+    to the origin of the probe positions. 
+    
+    Probe positions are given as a list of coordinates that can be either positive
+    or negative and have arbitrary offsets, while the object buffer is a discrete
+    tensor where the pixel indices are 0-based and the origin is at the top left corner.
+    The position origin coordinates are used to determine how the given probe positions
+    are mapped to the object buffer: the origin of the probe positions (0, 0) is mapped
+    to the pixel indices given by the position origin coordinates, and as such, the
+    pixel indices of all probe positions are calculated as
     ```
-    positions_pind = positions + center_coords
+    positions_pxind = positions + position_origin_coords
     ```
     
-    - `POSITIONS`: the center coordinates are determined as 
+    - `POSITIONS`: the origin coordinates are determined as 
       `buffer_center - (positions.max() + positions.min()) / 2`. This puts the mid-point
       of the position range at the center of the buffer. It is more adaptive; however,
       in the case that one initializes a reconstruction with a previously reconstructed object
       and corrected probe positions, the center coordinates are not necessarily the same, 
       which can cause the positions to mismatch between both reconstructions. 
       
-    - `SUPPORT`: the center coordinates are determined as the center of the support of the 
+    - `SUPPORT`: the origin coordinates are determined as the center of the support of the 
       object. This is helpful to keep the center coordinates consistent between consecutive
       reconstructions, but the probe positions given should (at least approximately) zero-centered,
       i.e., `-postitions.min() ~ positions.max()` to prevent out-of-bound errors.
+      
+    - `SPECIFIED`: the origin coordinates are specified by the user. To make this setting effective,
+      `position_origin_coords` should be specified.
     """
     
-    center_coords: Optional[ndarray] = None
-    """The user-specified center coordinates of the object. To make this setting effective,
-    `determine_center_coords_by` should be set to `SPECIFIED`. 
+    position_origin_coords: Optional[ndarray] = None
+    """The user-specified origin coordinates of the object. To make this setting effective,
+    `determine_position_origin_coords_by` should be set to `SPECIFIED`. 
     
-    These coordinates are used to convert probe positions from their original frame
-    to the pixel-index coordinates of the object buffer, where the origin is at the
-    top left corner of the buffer. The pixel-index coordinates are calculated as
+    Probe positions are given as a list of coordinates that can be either positive
+    or negative and have arbitrary offsets, while the object buffer is a discrete
+    tensor where the pixel indices are 0-based and the origin is at the top left corner.
+    The position origin coordinates are used to determine how the given probe positions
+    are mapped to the object buffer: the origin of the probe positions (0, 0) is mapped
+    to the pixel indices given by the position origin coordinates, and as such, the
+    pixel indices of all probe positions are calculated as
     ```
-    positions_pind = positions + center_coords
+    positions_pxind = positions + position_origin_coords
     ```
     """
 
@@ -336,7 +349,7 @@ class ObjectOptions(ParameterOptions):
                 "required to avoid padding when extracting/placing patches, but the provided "
                 f"object size is {list(options.object_options.initial_guess.shape[-2:])}."
             )
-        if self.determine_center_coords_by == enums.ObjectCenterCoordsMethods.SUPPORT:
+        if self.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.SUPPORT:
             buffer_center = torch.tensor(
                 [np.round(x / 2) + 0.5 for x in obj_shape]
             )
@@ -354,13 +367,13 @@ class ObjectOptions(ParameterOptions):
                     "out of the object support. Please provide probe positions that are approximately "
                     "zero-centered, or set `object_options.determine_center_coords_by` to `POSITIONS`."
                 )
-        if self.determine_center_coords_by == enums.ObjectCenterCoordsMethods.SPECIFIED:
-            if self.center_coords is None:
+        if self.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.SPECIFIED:
+            if self.position_origin_coords is None:
                 raise ValueError("`object_options.center_coords` should be specified when "
                                  "`object_options.determine_center_coords_by` is set to "
                                  "`SPECIFIED`.")
-        if self.center_coords is not None:
-            if self.determine_center_coords_by != enums.ObjectCenterCoordsMethods.SPECIFIED:
+        if self.position_origin_coords is not None:
+            if self.determine_position_origin_coords_by != enums.ObjectPosOriginCoordsMethods.SPECIFIED:
                 logging.warning(
                     "`object_options.center_coords` will be disregarded when "
                     "`object_options.determine_center_coords_by` is not set to "

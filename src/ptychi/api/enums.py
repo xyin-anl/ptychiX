@@ -110,7 +110,7 @@ class DIPModels(StrEnum):
     AUTOENCODER = auto()
 
 
-class ObjectCenterCoordsMethods(StrEnum):
+class ObjectPosOriginCoordsMethods(StrEnum):
     POSITIONS = auto()
     SUPPORT = auto()
     SPECIFIED = auto()

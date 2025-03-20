@@ -107,7 +107,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             delta_o_patches = delta_o_patches.sum(1, keepdim=True)
             delta_o = ip.place_patches_integer(
                 torch.zeros_like(object_.get_slice(0)),
-                positions.round().int() + object_.center_pixel,
+                positions.round().int() + object_.pos_origin_coords,
                 delta_o_patches[:, 0],
                 op="add",
             )
