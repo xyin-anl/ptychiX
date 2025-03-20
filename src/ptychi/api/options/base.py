@@ -222,7 +222,33 @@ class RemoveObjectProbeAmbiguityOptions(FeatureOptions):
     enabled: bool = True
 
     optimization_plan: OptimizationPlan = dataclasses.field(default_factory=lambda: OptimizationPlan(stride=10))
-
+    
+    
+@dataclasses.dataclass
+class SliceSpacingOptions(ParameterOptions):
+    
+    optimizable: bool = False
+    """Whether the slice spacings are optimizable."""
+    
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+    
+    optimizer: enums.Optimizers = enums.Optimizers.SGD
+    """The optimizer to use for optimizing the slice spacings."""
+    
+    step_size: float = 1e-10
+    """The step size for the optimizer. As a recommendation, start with 1e-10 for SGD
+    optimizer, and 1e-7 for ADAM optimizer.
+    """
+    
+    def check(self, options: "task_options.PtychographyTaskOptions"):
+        super().check(options)
+        
+        if (self.optimizable 
+            and options.reconstructor_options.get_reconstructor_type() != enums.Reconstructors.AD_PTYCHO
+        ):
+            raise ValueError("Slice spacing optimization is only supported for AD Ptychography.")
+    
+    
 
 @dataclasses.dataclass
 class ObjectOptions(ParameterOptions):
@@ -230,7 +256,13 @@ class ObjectOptions(ParameterOptions):
     """A (h, w) complex tensor of the object initial guess."""
 
     slice_spacings_m: Optional[ndarray] = None
-    """Slice spacing in meters. This should be provided if the object is multislice."""
+    """Slice spacings in meters. This should be provided if the object is multislice.
+    
+    If the slice spacings need to be optimized, set `slice_spacing_options.optimizable` to `True`.
+    In that case, the slice spacings provided here are supposed to be the initial guess.
+    """
+    
+    slice_spacing_options: SliceSpacingOptions = field(default_factory=SliceSpacingOptions)
 
     pixel_size_m: float = 1.0
     """The pixel size in meters."""

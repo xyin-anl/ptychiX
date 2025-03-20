@@ -28,6 +28,26 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class SliceSpacings(dsbase.ReconstructParameter):
+    options: "api.options.base.SliceSpacingOptions"
+
+    def __init__(
+        self,
+        *args,
+        name: str = "slice_spacings",
+        options: "api.options.base.SliceSpacingOptions" = None,
+        **kwargs,
+    ):
+        """
+        Slice spacings.
+
+        Parameters
+        ----------
+        data: a tensor of shape (n_slices,) giving the slice spacings in meters.
+        """
+        super().__init__(*args, name=name, options=options, is_complex=False, **kwargs)
+
+
 class Object(dsbase.ReconstructParameter):
     options: "api.options.base.ObjectOptions"
 
@@ -132,13 +152,21 @@ class PlanarObject(Object):
         ):
             raise ValueError("The number of slice spacings must be n_slices - 1.")
 
+        # Build slice spacing object.
         if self.is_multislice:
             if self.options.slice_spacings_m is None:
                 raise ValueError("slice_spacings_m must be specified for multislice objects.")
-            self.register_buffer("slice_spacings_m", to_tensor(self.options.slice_spacings_m))
+            slice_spacings_m = self.options.slice_spacings_m
         else:
-            self.slice_spacing_m = None
+            slice_spacings_m = torch.zeros(1)
+            
+        self.slice_spacings = SliceSpacings(
+            data=slice_spacings_m,
+            options=self.options.slice_spacing_options
+        )
+        self.register_optimizable_sub_module(self.slice_spacings)
 
+        # Initialize position origin coordinates.
         pos_origin_coords = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
         pos_origin_coords = pos_origin_coords.round() + 0.5
         self.register_buffer("pos_origin_coords", pos_origin_coords)
