@@ -125,21 +125,29 @@ def ptycho_recon(run_recon=True, **params):
     # convergence parameters
     # Set batch size based on parameters
     if params['update_batch_size'] is not None:
+        params['auto_batch_size_estimation'] = False
         options.reconstructor_options.batch_size = params['update_batch_size']
+        params['number_of_batches'] = dp.shape[0] // options.reconstructor_options.batch_size
+        print(f"User-specified batch size: {options.reconstructor_options.batch_size} " 
+              f"({params['number_of_batches']} batches for {dp.shape[0]} data points)")
     elif params['number_of_batches'] is not None:
+        params['auto_batch_size_estimation'] = False
         # Calculate batch size from number of batches
         total_data_points = dp.shape[0]
         options.reconstructor_options.batch_size = max(1, total_data_points // params['number_of_batches'])
+        print(f"User-specified batch size: {options.reconstructor_options.batch_size} " 
+              f"({params['number_of_batches']} batches for {dp.shape[0]} data points)")
     else:
+        params['auto_batch_size_estimation'] = True
         # Auto-configure based on batch selection scheme
         total_data_points = dp.shape[0]
         # Use smaller number of batches for 'compact' scheme
-        num_of_batches = 1 if params['batch_selection_scheme'] == 'compact' else 10
-        options.reconstructor_options.batch_size = max(1, total_data_points // num_of_batches)
+        params['number_of_batches'] = 1 if params['batch_selection_scheme'] == 'compact' else 10
+        options.reconstructor_options.batch_size = max(1, total_data_points // params['number_of_batches'])
         
         # Log the auto-configuration for transparency
         print(f"Auto-configured batch size: {options.reconstructor_options.batch_size} " 
-              f"({num_of_batches} batches for {total_data_points} data points)")
+              f"({params['number_of_batches']} batches for {total_data_points} data points)")
 
     #options.reconstructor_options.forward_model_options.pad_for_shift = 16
     #options.reconstructor_options.use_low_memory_forward_model = True
@@ -168,19 +176,61 @@ def ptycho_recon(run_recon=True, **params):
     task = PtychographyTask(options)
     
     if run_recon:
-        for i in range(params['number_of_iterations'] // params['save_freq_iterations']):
-            task.run(params['save_freq_iterations'])
-            save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
-    
+        if params['auto_batch_size_estimation']:
+            # Set up a loop to handle potential out of memory errors
+            max_retries = 10  # Limit the number of retries to prevent infinite loops
+            retry_count = 0
+            
+            while retry_count <= max_retries:
+                try:
+                    # Try to run the reconstruction
+                    #print(f"Starting reconstruction with batch size: {options.reconstructor_options.batch_size}")
+                    for i in range(params['number_of_iterations'] // params['save_freq_iterations']):
+                        task.run(params['save_freq_iterations'])
+                        save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
+                    break  # If successful, exit the retry loop
+                    
+                except RuntimeError as e:
+                    # Check if this is an out of memory error
+                    if "CUDA out of memory" in str(e) or "cudaErrorOutOfMemory" in str(e):
+                        retry_count += 1
+                        print(f"CUDA out of memory error. Increasing number of batches by 1")
+                        if retry_count > max_retries:
+                            print(f"Failed after {max_retries} attempts. Giving up.")
+                            raise  # Re-raise the exception if we've exceeded max retries
+                        
+                        # Update number of batches for logging
+                        params['number_of_batches'] = params['number_of_batches'] + 1
+                        options.reconstructor_options.batch_size = max(1, total_data_points // params['number_of_batches'])
+                        print(f"Updated batch size: {options.reconstructor_options.batch_size} " 
+                            f"({params['number_of_batches']} batches for {dp.shape[0]} data points)")
+
+                        # reinitialize the recon path and task
+                        recon_path = create_reconstruction_path(params, options)
+                        save_initial_conditions(recon_path, params, options)
+                        task = PtychographyTask(options)
+
+                        # # Clear CUDA cache before retrying
+                        torch.cuda.empty_cache()
+                        #time.sleep(10)
+                    else:
+                        # If it's not an out of memory error, re-raise the exception
+                        raise
+        else:
+            for i in range(params['number_of_iterations'] // params['save_freq_iterations']):
+                task.run(params['save_freq_iterations'])
+                save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
+                              
         torch.cuda.empty_cache()
     return task, recon_path, params
 
 class FileBasedTracker:
-    def __init__(self, base_dir):
+    def __init__(self, base_dir, overwrite_ongoing=False):
         """Initialize the tracker with a base directory for status files."""
         self.base_dir = base_dir
         self.status_dir = os.path.join(base_dir, 'status')
         self.lock_dir = os.path.join(base_dir, 'locks')
+        self.overwrite_ongoing = overwrite_ongoing
         
         # Create directories if they don't exist
         os.makedirs(self.status_dir, exist_ok=True)
@@ -231,7 +281,9 @@ class FileBasedTracker:
                 try:
                     with open(status_file, 'r') as f:
                         data = json.load(f)
-                        if data.get('status') in ['ongoing', 'done']:
+                        if data.get('status') =='done':
+                            return False
+                        if data.get('status') == 'ongoing' and not self.overwrite_ongoing:
                             return False
                 except (json.JSONDecodeError, FileNotFoundError):
                     # Corrupted or missing status file, we can proceed
@@ -329,7 +381,7 @@ class FileBasedTracker:
             except Exception as e:
                 print(f"Error updating status for scan {scan_id}: {str(e)}")
 
-def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', scan_order='ascending', exclude_scans=[]):
+def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', scan_order='ascending', exclude_scans=[], overwrite_ongoing=False):
     """
     Process a range of scans with automatic error handling.
     
@@ -339,6 +391,7 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
         base_params: Dictionary of parameters to use as a template
         log_dir_suffix: Suffix for the log directory
         scan_order: Order to process the scans
+        overwrite_ongoing: Overwrite ongoing scans
     """
     
     log_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 
@@ -347,7 +400,7 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
     os.makedirs(log_dir, exist_ok=True)
     
     # Create tracker
-    tracker = FileBasedTracker(log_dir)
+    tracker = FileBasedTracker(log_dir, overwrite_ongoing=overwrite_ongoing)
     
     # Generate a unique worker ID
     worker_id = f"worker_{os.getpid()}_{uuid.uuid4().hex[:8]}"
@@ -381,11 +434,11 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
             status = tracker.get_status(scan_num)
             
             if status == 'done':
-                print(f"Scan {scan_num} already completed, skipping reconstruction")
+                #print(f"Scan {scan_num} already completed, skipping reconstruction")
                 successful_scans.append(scan_num)
                 continue
                 
-            if status == 'ongoing':
+            if status == 'ongoing' and not overwrite_ongoing:
                 print(f"Scan {scan_num} already ongoing, skipping reconstruction")
                 ongoing_scans.append(scan_num)
                 continue
@@ -427,9 +480,10 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
                 tracker.complete_recon(scan_num, success=False, error=str(e))
         
         # Print summary of processing
-        print(f"Successfully processed scans: {successful_scans}")
-        print(f"Failed scans: {[f[0] for f in failed_scans]}")
-        print(f"Ongoing scans: {ongoing_scans}")
+        #print(f"Successfully processed scans: {successful_scans}")
+        print(f"Number of completed scans:{len(successful_scans)}/{end_scan - start_scan + 1}.")
+        print(f"Number of failed scans:{len(failed_scans)}.")
+        print(f"Number of ongoing scans:{len(ongoing_scans)}.")
         
         if len(successful_scans) == end_scan - start_scan + 1:
             print(f"All scans completed successfully")

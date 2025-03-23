@@ -410,7 +410,7 @@ def create_reconstruction_path(params, options):
         recon_path += '_ic'
 
     if params['object_thickness_m'] > 0 and params['number_of_slices'] > 1:
-        recon_path += f'_Ns{params['number_of_slices']}_T{params['object_thickness_m']/1e-6}um'
+        recon_path += f'_Ns{params['number_of_slices']}_T{params['object_thickness_m']/1e-6:.3f}um'
         if options.object_options.multislice_regularization.enabled and options.object_options.multislice_regularization.weight > 0:
             recon_path += f'_reg{options.object_options.multislice_regularization.weight}'
  
@@ -619,7 +619,12 @@ def initialize_recon(params):
     print("Pixel size of reconstructed object (nm):", f"{params['obj_pixel_size_m'] * 1e9:.3f}")
 
     init_positions_px = positions_m / params['obj_pixel_size_m']
-
+    # Check if positions contain NaN values
+    if np.isnan(init_positions_px).any():
+        print(f"WARNING: Initial positions contain {np.sum(np.isnan(init_positions_px))} NaN values!")
+        print(f"Position array shape: {init_positions_px.shape}")
+    else:
+        print(f"Initial positions shape: {init_positions_px.shape}, no NaN values detected")
     # Load initial probe
     init_probe = _prepare_initial_probe(dp, params)
 
@@ -1489,9 +1494,9 @@ def _load_data_lynx(base_path, scan_num, det_Npixel, cen_x, cen_y):
     x_positions = -out_orch['Average_x_st_fzp'] 
     y_positions = -out_orch['Average_y_st_fzp'] 
 
-    # Center positions around (0,0)
-    x_positions = x_positions - np.mean(x_positions)
-    y_positions = y_positions - np.mean(y_positions)
+    # Center positions so that max positive value equals max negative value
+    x_positions = x_positions - (np.max(x_positions) + np.min(x_positions)) / 2
+    y_positions = y_positions - (np.max(y_positions) + np.min(y_positions)) / 2
     
     # Convert to meters if needed (adjust multiplier as needed)
     x_positions = x_positions * 1e-6  # Adjust this factor based on your data units
