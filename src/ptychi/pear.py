@@ -175,7 +175,10 @@ def ptycho_recon(run_recon=True, **params):
 
     task = PtychographyTask(options)
     
-    if run_recon:
+    if not run_recon:
+        return task, recon_path, params
+    
+    try:
         if params['auto_batch_size_estimation']:
             # Set up a loop to handle potential out of memory errors
             max_retries = 10  # Limit the number of retries to prevent infinite loops
@@ -184,15 +187,15 @@ def ptycho_recon(run_recon=True, **params):
             while retry_count <= max_retries:
                 try:
                     # Try to run the reconstruction
-                    #print(f"Starting reconstruction with batch size: {options.reconstructor_options.batch_size}")
                     for i in range(params['number_of_iterations'] // params['save_freq_iterations']):
                         task.run(params['save_freq_iterations'])
                         save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
                     break  # If successful, exit the retry loop
                     
                 except RuntimeError as e:
+                    error_msg = str(e)
                     # Check if this is an out of memory error
-                    if "CUDA out of memory" in str(e) or "cudaErrorOutOfMemory" in str(e):
+                    if "CUDA out of memory" in error_msg or "cudaErrorOutOfMemory" in error_msg:
                         retry_count += 1
                         print(f"CUDA out of memory error. Increasing number of batches by 1")
                         if retry_count > max_retries:
@@ -202,27 +205,67 @@ def ptycho_recon(run_recon=True, **params):
                         # Update number of batches for logging
                         params['number_of_batches'] = params['number_of_batches'] + 1
                         options.reconstructor_options.batch_size = max(1, total_data_points // params['number_of_batches'])
-                        print(f"Updated batch size: {options.reconstructor_options.batch_size} " 
-                            f"({params['number_of_batches']} batches for {dp.shape[0]} data points)")
+                        print(f"CUDA out of memory error. Attempt {retry_count}/{max_retries}: "
+                                f"Increasing to {params['number_of_batches']} batches")
+                        print(f"New batch size: {options.reconstructor_options.batch_size} "
+                                f"({params['number_of_batches']} batches for {dp.shape[0]} data points)")
+                        
+                        # Delete everything in the current recon_path folder
+                        if os.path.exists(recon_path):
+                            print(f"Deleting contents of {recon_path} before retrying...")
+                            try:
+                                # Walk through all files and directories in recon_path
+                                for root, dirs, files in os.walk(recon_path, topdown=False):
+                                    # First remove all files
+                                    for file in files:
+                                        file_path = os.path.join(root, file)
+                                        os.unlink(file_path)
+                                    # Then remove all directories
+                                    for dir in dirs:
+                                        dir_path = os.path.join(root, dir)
+                                        os.rmdir(dir_path)
+                                # Finally remove the main directory
+                                os.rmdir(recon_path)
+                                print(f"Successfully deleted {recon_path}")
+                            except Exception as e:
+                                print(f"Error while deleting {recon_path}: {str(e)}")
 
-                        # reinitialize the recon path and task
+                        # Reinitialize the reconstruction path and task
                         recon_path = create_reconstruction_path(params, options)
                         save_initial_conditions(recon_path, params, options)
-                        task = PtychographyTask(options)
-
-                        # # Clear CUDA cache before retrying
+                        
+                        # Clear CUDA cache before retrying
                         torch.cuda.empty_cache()
-                        #time.sleep(10)
+                        time.sleep(5)  # Longer delay to ensure memory is freed
+                        
+                        # Create a fresh task with the new options
+                        task = PtychographyTask(options)
                     else:
                         # If it's not an out of memory error, re-raise the exception
+                        print(f"Encountered non-memory error: {error_msg}")
                         raise
-        else:
+        else: # try recon once with fixed batch size
             for i in range(params['number_of_iterations'] // params['save_freq_iterations']):
                 task.run(params['save_freq_iterations'])
                 save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
-                              
+                            
+        return task, recon_path, params
+    finally:
+        # Ensure GPU memory is cleaned up even if an exception occurs
         torch.cuda.empty_cache()
-    return task, recon_path, params
+        # Release all memory currently held
+        #gc.collect()
+
+        # Reset the CUDA device
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.reset_accumulated_memory_stats()
+
+        # If you need a complete reset, you can also:
+        torch.cuda.empty_cache()
+        torch._C._cuda_clearCublasWorkspaces()
+
+        # Allow time for complete cleanup
+        time.sleep(5)
 
 class FileBasedTracker:
     def __init__(self, base_dir, overwrite_ongoing=False):
@@ -452,19 +495,102 @@ def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', sca
             start_time = time.time()
             
             try:
-                # Run reconstruction
-                ptycho_recon(run_recon=True, **scan_params)
+                # Run reconstruction as a subprocess
+                import subprocess
+                import sys
+                import json
                 
-                # Handle successful completion
-                elapsed_time = time.time() - start_time
-                print(f"Scan {scan_num} completed successfully in {elapsed_time:.2f} seconds")
-                successful_scans.append(scan_num)
+                # Create a directory for temp files
+                temp_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 'temp_files')
+                os.makedirs(temp_dir, exist_ok=True)
                 
-                # Update status
-                tracker.complete_recon(scan_num, success=True)
+                # Create paths for temp files with scan number included
+                params_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_params.json")
+                script_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_script.py")
                 
-                print(f"Waiting for 5 seconds before next scan...")
-                time.sleep(5)
+                # Save parameters to the JSON file
+                with open(params_path, 'w') as params_file:
+                    # Convert NumPy arrays to lists to make them JSON serializable
+                    json_compatible_params = {}
+                    for key, value in scan_params.items():
+                        if isinstance(value, np.ndarray):
+                            json_compatible_params[key] = value.tolist()
+                        else:
+                            json_compatible_params[key] = value
+                    
+                    json.dump(json_compatible_params, params_file, indent=2)
+                
+                try:
+                    # Create a Python script for subprocess
+                    script_content = f"""
+import json
+import sys
+import os
+from pathlib import Path
+
+# Add the parent directory to path so imports work correctly
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from ptychi.pear import ptycho_recon
+
+# Load parameters 
+with open('{params_path}', 'r') as f:
+    params = json.load(f)
+
+# Run reconstruction with real-time output
+ptycho_recon(run_recon=True, **params)
+"""
+                    # Write the script to the file
+                    with open(script_path, 'w') as script_file:
+                        script_file.write(script_content)
+                    
+                    # Run the script as a subprocess with output streamed in real-time
+                    process = subprocess.Popen(
+                        [sys.executable, script_path],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,  # Line buffered
+                    )
+                    
+                    # Stream and print the output in real-time
+                    for line in iter(process.stdout.readline, ''):
+                        print(line, end='')  # Already has newline
+                    
+                    # Wait for process to complete and get return code
+                    return_code = process.wait()
+                    
+                    if return_code != 0:
+                        raise subprocess.CalledProcessError(return_code, f"{sys.executable} {script_path}")
+                    
+                    # If we reached here, reconstruction was successful
+                    elapsed_time = time.time() - start_time
+                    print(f"Scan {scan_num} completed successfully in {elapsed_time:.2f} seconds")
+                    successful_scans.append(scan_num)
+                    
+                    # Update status
+                    tracker.complete_recon(scan_num, success=True)
+                    
+                except subprocess.CalledProcessError as e:
+                    # Handle subprocess failure
+                    elapsed_time = time.time() - start_time
+                    error_message = f"Subprocess failed with exit code {e.returncode}"
+                    
+                    print(f"Scan {scan_num} failed after {elapsed_time:.2f} seconds with error: {error_message}")
+                    failed_scans.append((scan_num, error_message))
+                    
+                    # Update status
+                    tracker.complete_recon(scan_num, success=False, error=error_message)
+                finally:
+                    # Optionally remove the temporary files when done
+                    # Uncomment these lines if you want to clean up after successful runs
+                    if os.path.exists(params_path):
+                        os.unlink(params_path)
+                    if os.path.exists(script_path):
+                        os.unlink(script_path)
+                    
+                    # Give system time to fully clean up resources
+                    print(f"Waiting for 5 seconds before next scan...")
+                    time.sleep(5)
 
                 if scan_order == 'descending':
                     # Break the for loop after processing the current scan

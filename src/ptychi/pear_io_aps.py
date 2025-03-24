@@ -373,7 +373,7 @@ def save_reconstructions(task, recon_path, iter, params):
             obj_ph_collection_dir = os.path.join(params['data_directory'], 'ptychi_recons', params['recon_parent_dir'], 'object_ph_collection')
             os.makedirs(obj_ph_collection_dir, exist_ok=True)
             object_full_ph_unwrapped = unwrap_phase_2d(recon_object[0,].cuda(), image_grad_method='fourier_differentiation', image_integration_method='fourier')
-            print(f"Saving final object phase to {obj_ph_collection_dir}/S{params['scan_num']:04d}.tiff")
+            print(f"\nSaving final object phase to {obj_ph_collection_dir}/S{params['scan_num']:04d}.tiff")
             imwrite(f'{obj_ph_collection_dir}/S{params["scan_num"]:04d}.tiff', 
                     normalize_by_bit_depth(object_full_ph_unwrapped.cpu(), '16'),
                     photometric='minisblack',
