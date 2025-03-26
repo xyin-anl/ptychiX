@@ -58,13 +58,13 @@ class AutodiffReconstructor(IterativeReconstructor):
 
     def run_post_differentiation_hooks(self, input_data, y_true):
         self.get_forward_model().post_differentiation_hook(*input_data, y_true)
-        self.apply_regularizers()
 
     def apply_regularizers(self) -> None:
         """
         Apply Tikonov regularizers.
         """
-        pass
+        reg = torch.tensor(0.0)
+        return reg
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs):
         y_pred = self.forward_model(*input_data)
@@ -72,16 +72,21 @@ class AutodiffReconstructor(IterativeReconstructor):
 
         batch_loss.backward()
         self.run_post_differentiation_hooks(input_data, y_true)
+        reg_loss = self.apply_regularizers()
         self.step_all_optimizers()
         self.forward_model.zero_grad()
         self.run_post_update_hooks()
 
         self.loss_tracker.update_batch_loss(y_pred=y_pred, y_true=y_true, loss=batch_loss.item())
+        self.loss_tracker.update_batch_regularization_loss(reg_loss.item())
 
     def step_all_optimizers(self):
         for var in self.parameter_group.get_optimizable_parameters():
             if var.optimization_enabled(self.current_epoch):
                 var.optimizer.step()
+                for sub_module in var.optimizable_sub_modules:
+                    if sub_module.optimization_enabled(self.current_epoch):
+                        sub_module.optimizer.step()
 
     def get_forward_model(self) -> "fm.ForwardModel":
         if isinstance(self.forward_model, torch.nn.DataParallel):

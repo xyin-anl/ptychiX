@@ -11,6 +11,7 @@ import ptychi.data_structures as ds
 import ptychi.data_structures.base as dsbase
 import ptychi.maths as pmath
 from ptychi.timing.timer_utils import timer
+import ptychi.api.enums as enums
 from ptychi.utils import (
     get_default_complex_dtype, 
     to_tensor, 
@@ -25,6 +26,26 @@ if TYPE_CHECKING:
     from ptychi.data_structures.probe_positions import ProbePositions
     
 logger = logging.getLogger(__name__)
+
+
+class SliceSpacings(dsbase.ReconstructParameter):
+    options: "api.options.base.SliceSpacingOptions"
+
+    def __init__(
+        self,
+        *args,
+        name: str = "slice_spacings",
+        options: "api.options.base.SliceSpacingOptions" = None,
+        **kwargs,
+    ):
+        """
+        Slice spacings.
+
+        Parameters
+        ----------
+        data: a tensor of shape (n_slices,) giving the slice spacings in meters.
+        """
+        super().__init__(*args, name=name, options=options, is_complex=False, **kwargs)
 
 
 class Object(dsbase.ReconstructParameter):
@@ -43,9 +64,9 @@ class Object(dsbase.ReconstructParameter):
         self.pixel_size_m = options.pixel_size_m
         self.roi_bbox: dsbase.BoundingBox = None
         
-        center_pixel = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
-        center_pixel = center_pixel.round() + 0.5
-        self.register_buffer("center_pixel", center_pixel)
+        pos_origin_coords = torch.tensor(self.shape, device=torch.get_default_device()) / 2.0
+        pos_origin_coords = pos_origin_coords.round() + 0.5
+        self.register_buffer("pos_origin_coords", pos_origin_coords)
 
     def extract_patches(self, positions, patch_shape, *args, **kwargs):
         raise NotImplementedError
@@ -58,10 +79,19 @@ class Object(dsbase.ReconstructParameter):
         if self.options.l1_norm_constraint.weight <= 0:
             return
         data = self.data
-        l1_grad = torch.sgn(data)
+        l1_grad = torch.sgn(data) / data.numel()
         data = data - self.options.l1_norm_constraint.weight * l1_grad
         self.set_data(data)
         logger.debug("L1 norm constraint applied to object.")
+        
+    def constrain_l2_norm(self):
+        if self.options.l2_norm_constraint.weight <= 0:
+            return
+        data = self.data
+        l2_grad = data * 2 / data.numel()
+        data = data - self.options.l2_norm_constraint.weight * l2_grad
+        self.set_data(data)
+        logger.debug("L2 norm constraint applied to object.")
 
     def constrain_smoothness(self):
         raise NotImplementedError
@@ -79,7 +109,7 @@ class Object(dsbase.ReconstructParameter):
             ey=pos[:, 0].max(),
             sx=pos[:, 1].min(),
             ex=pos[:, 1].max(),
-            origin=tuple(to_numpy(self.center_pixel)),
+            origin=tuple(to_numpy(self.pos_origin_coords)),
         )
     
     def get_object_in_roi(self):
@@ -92,6 +122,9 @@ class Object(dsbase.ReconstructParameter):
         raise NotImplementedError
     
     def remove_object_probe_ambiguity(self):
+        raise NotImplementedError
+    
+    def update_pos_origin_coordinates(self, *args, **kwargs):
         raise NotImplementedError
 
 
@@ -119,16 +152,24 @@ class PlanarObject(Object):
         ):
             raise ValueError("The number of slice spacings must be n_slices - 1.")
 
+        # Build slice spacing object.
         if self.is_multislice:
             if self.options.slice_spacings_m is None:
                 raise ValueError("slice_spacings_m must be specified for multislice objects.")
-            self.register_buffer("slice_spacings_m", to_tensor(self.options.slice_spacings_m))
+            slice_spacings_m = self.options.slice_spacings_m
         else:
-            self.slice_spacing_m = None
+            slice_spacings_m = torch.zeros(1)
+            
+        self.slice_spacings = SliceSpacings(
+            data=slice_spacings_m,
+            options=self.options.slice_spacing_options
+        )
+        self.register_optimizable_sub_module(self.slice_spacings)
 
-        center_pixel = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
-        center_pixel = center_pixel.round() + 0.5
-        self.register_buffer("center_pixel", center_pixel)
+        # Initialize position origin coordinates.
+        pos_origin_coords = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
+        pos_origin_coords = pos_origin_coords.round() + 0.5
+        self.register_buffer("pos_origin_coords", pos_origin_coords)
 
     @property
     def is_multislice(self) -> bool:
@@ -149,6 +190,35 @@ class PlanarObject(Object):
     @property
     def place_patches_function(self) -> "ip.PlacePatchesProtocol":
         return maps.get_patch_placer_function_by_name(self.options.patch_interpolation_method)
+    
+    def update_pos_origin_coordinates(self, positions: Tensor = None):
+        """Update the coordinates of the center pixel based on probe positions.
+
+        Parameters
+        ----------
+        positions : Tensor
+            A (n_pos, 2) tensor of probe positions in pixels.
+        """
+        if self.options.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.POSITIONS:
+            positions = positions.detach()
+            buffer_center = torch.tensor([x / 2 for x in self.lateral_shape], device=positions.device)
+            position_center = (positions.max(0).values + positions.min(0).values) / 2
+            self.pos_origin_coords = buffer_center - position_center
+            self.pos_origin_coords = self.pos_origin_coords.round() + 0.5
+        elif self.options.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.SUPPORT:
+            pos_origin_coords = torch.tensor(self.shape[1:], device=torch.get_default_device()) / 2.0
+            pos_origin_coords = pos_origin_coords.round() + 0.5
+            self.pos_origin_coords = pos_origin_coords
+        elif self.options.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.SPECIFIED:
+            if self.options.position_origin_coords is None:
+                raise ValueError(
+                    "`object_options.center_coords` should be specified when "
+                    "`object_options.determine_center_coords_by` is set to "
+                    "`SPECIFIED`."
+                )
+            self.pos_origin_coords = self.options.position_origin_coords
+        else:
+            raise ValueError(f"Invalid value for `determine_center_coords_by`: {self.options.determine_position_origin_coords_by}")
 
     def get_slice(self, index):
         return self.data[index, ...]
@@ -168,7 +238,7 @@ class PlanarObject(Object):
         ----------
         positions : Tensor
             Tensor of shape (N, 2) giving the center positions of the patches in pixels.
-            The origin of the given positions are assumed to be `self.center_pixel`.
+            The origin of the given positions are assumed to be `self.pos_origin_coords`.
         patch_shape : tuple
             Tuple giving the lateral patch shape in pixels.
         integer_mode : bool, optional
@@ -185,7 +255,7 @@ class PlanarObject(Object):
         """
         # Positions are provided with the origin in the center of the object support.
         # We shift the positions so that the origin is in the upper left corner.
-        positions = positions + self.center_pixel
+        positions = positions + self.pos_origin_coords
         patches_all_slices = []
         for i_slice in range(self.n_slices):
             if integer_mode:
@@ -216,7 +286,7 @@ class PlanarObject(Object):
         ----------
         positions : Tensor
             Tensor of shape (N, 2) giving the center positions of the patches in pixels.
-            The origin of the given positions are assumed to be `self.center_pixel`.
+            The origin of the given positions are assumed to be `self.pos_origin_coords`.
         patches : Tensor
             Tensor of shape (n_patches, n_slices, H, W) of image patches.
         integer_mode : bool, optional
@@ -226,7 +296,7 @@ class PlanarObject(Object):
             If given, patches are either padded (for adjoint mode) or cropped 
             (for forward mode) before applying subpixel shifts.
         """
-        positions = positions + self.center_pixel
+        positions = positions + self.pos_origin_coords
         updated_slices = []
         for i_slice in range(self.n_slices):
             if integer_mode:
@@ -258,7 +328,7 @@ class PlanarObject(Object):
         ----------
         positions : Tensor
             Tensor of shape (N, 2) giving the center positions of the patches in pixels.
-            The origin of the given positions are assumed to be `self.center_pixel`.
+            The origin of the given positions are assumed to be `self.pos_origin_coords`.
         patches : Tensor
             Tensor of shape (N, H, W) of image patches.
         integer_mode : bool, optional
@@ -273,7 +343,7 @@ class PlanarObject(Object):
         image : Tensor
             A tensor with the lateral shape of the object with patches added onto it.
         """
-        positions = positions + self.center_pixel
+        positions = positions + self.pos_origin_coords
         image = torch.zeros(
             self.lateral_shape, dtype=get_default_complex_dtype(), device=self.tensor.data.device
         )
@@ -338,7 +408,7 @@ class PlanarObject(Object):
 
     @timer()
     def regularize_multislice(self):
-        """
+        """ 
         Regularize multislice by applying a low-pass transfer function to the
         3D Fourier space of the magnitude and phase (unwrapped) of all slices.
 
@@ -486,7 +556,7 @@ class PlanarObject(Object):
             func=ip.place_patches_integer,
             common_kwargs={"op": "add"},
             chunkable_kwargs={
-                "positions": positions_all.round().int() + self.center_pixel,
+                "positions": positions_all.round().int() + self.pos_origin_coords,
                 "patches": probe_int,
             },
             iterated_kwargs={
@@ -549,3 +619,160 @@ class PlanarObject(Object):
         probe_data = probe_data / (math.sqrt(probe.shape[-1] * probe.shape[-2]) * 2 * probe_renormalization_factor)
         probe_temp = ds.probe.Probe(data=probe_data, options=copy.deepcopy(probe.options))
         self.preconditioner = self.calculate_illumination_map(probe_temp, probe_positions, use_all_modes=False)
+
+
+class DIPObject(Object):
+    
+    options: "api.options.ad_ptychography.AutodiffPtychographyObjectOptions"
+    
+    def __init__(
+        self,
+        name: str = "object",
+        options: "api.options.ad_ptychography.AutodiffPtychographyObjectOptions" = None,
+        *args,
+        **kwargs
+    ) -> None:
+        """Deep image prior object.
+
+        Parameters
+        ----------
+        name : str, optional
+            The name of the object.
+        options : api.options.base.ObjectOptions, optional
+            The options for the object.
+        """
+        super().__init__(name=name, options=options, *args, **kwargs)
+        self.model = None
+        self.dip_output_magnitude = None
+        self.dip_output_phase = None
+        
+        self.build_model()
+        self.build_dip_optimizer()
+        
+        # `self.tensor` is used to hold the object generated by the DIP model and
+        # is not trainable.
+        self.tensor.requires_grad_(False)
+        
+        self.initial_data = None
+        if self.options.experimental.deep_image_prior_options.residual_generation:
+            self.initial_data = self.data.clone()   
+        
+    def build_model(self):
+        if not self.options.experimental.deep_image_prior_options.enabled:
+            return
+        model_class = maps.get_nn_model_by_enum(self.options.experimental.deep_image_prior_options.model)
+        self.model = model_class(
+            **self.options.experimental.deep_image_prior_options.model_params
+        )
+        
+    def build_dip_optimizer(self):
+        if self.optimizable and self.optimizer_class is None:
+            raise ValueError(
+                "Parameter {} is optimizable but no optimizer is specified.".format(self.name)
+            )
+        if self.optimizable:
+            self.optimizer = self.optimizer_class(self.model.parameters(), **self.optimizer_params)
+        
+    def generate(self):
+        raise NotImplementedError
+
+
+class DIPPlanarObject(DIPObject, PlanarObject):
+    def __init__(
+        self,
+        name: str = "object",
+        options: "api.options.base.ObjectOptions" = None,
+        *args,
+        **kwargs
+    ) -> None:
+        """Deep image prior planar object.
+
+        Parameters
+        ----------
+        name : str, optional
+            The name of the object.
+        options : api.options.base.ObjectOptions, optional
+            The options for the object.
+        """
+        super().__init__(name=name, options=options, data_as_parameter=False, *args, **kwargs)
+        
+        nn_input = self.get_nn_input()
+        self.register_buffer("nn_input", nn_input)
+        
+    def get_nn_input(self):
+        z = torch.rand(
+            [self.n_slices, self.options.experimental.deep_image_prior_options.net_input_channels, *self.lateral_shape], 
+        ) * 0.1
+        return z
+
+    def generate(self) -> Tensor:
+        """Generate the object using the deep image prior model, and set the
+        generated object to self.data.
+        
+        Returns
+        -------
+        Tensor
+            The generated object.
+        """
+        if self.model is None:
+            raise ValueError("Model is not built.")
+        o = self.model(self.nn_input)
+        
+        o, mag, phase = self.process_net_output(o)
+        
+        with torch.no_grad():
+            self.dip_output_magnitude = mag.clone()
+            self.dip_output_phase = phase.clone()
+        
+        if self.options.experimental.deep_image_prior_options.residual_generation:
+            init_data = torch.stack([self.initial_data.real, self.initial_data.imag], dim=-1)
+            o = o + init_data
+        self.tensor.data = o
+        return self.data
+
+    def process_net_output(self, o):
+        """Apply constraints to the DIP network's output and transform the tensor.
+        For the magnitude, it is clipped at 0 and then added by 1.0.
+
+        Parameters
+        ----------
+        o : Tensor | tuple[Tensor, Tensor]
+            The output of the DIP network. It should either be a [n_slices, 2, h, w] 
+            tensor with the channels giving the magnitude and phase of the object,
+            or a tuple of two [n_slices, 1, h, w] tensors giving the magnitude and phase
+            of the object.
+            
+        Returns
+        -------
+        Tensor
+            A [n_slices, h, w, 2] tensor representing the real and imaginary parts 
+            of the object.
+        Tensor
+            The magnitude of the object.
+        Tensor
+            The phase of the object.
+        """
+        if isinstance(o, (list, tuple)):
+            mag, phase = o
+            mag = mag[:, 0]
+            phase = phase[:, 0]
+        else:
+            mag = o[:, 0]
+            phase = o[:, 1]
+            
+        expected_phase_shape = (self.n_slices, *self.lateral_shape)
+        if tuple(phase.shape) != expected_phase_shape:
+            logger.warning(
+                "Shape of phase output by NN is expected to be "
+                f"(n_slices, h, w) = {expected_phase_shape} but got {phase.shape}. "
+                "Padding/cropping generated object to match expected shape."
+            )
+            mag = ip.central_crop_or_pad(mag, expected_phase_shape[1:])
+            phase = ip.central_crop_or_pad(phase, expected_phase_shape[1:])
+        
+        if self.options.experimental.deep_image_prior_options.constrain_object_outside_network:
+            mag = torch.sigmoid(mag)
+        
+        o_complex = mag * torch.exp(1j * phase)
+        o = torch.stack([o_complex.real, o_complex.imag], dim=-1)
+        return o, mag, phase

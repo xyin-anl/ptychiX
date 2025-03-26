@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union, Callable
 
 import torch
 import numpy as np
@@ -439,16 +439,108 @@ def masked_argmin(
         return np.argmin(x)
 
 
-def reprod(a, b):
+def decompose_2x2_affine_transform_matrix(
+    m: torch.Tensor
+) -> torch.Tensor:
+    """Decompose a 2x2 affine transformation matrix (without translation) into 
+    scale, asymmetry, rotation, and shear.
+    
+    Let x1, x2, x3, x4 be the scale, asymmetry, rotation, and shear. The affine
+    transformation matrix is decomposed into
+    x1 * ((1+x2/2, 0     )  * ((cos x3,  sin x3)  * ((1,      0)
+          (0,      1-x2/2))    (-sin x3, cos x3))    (tan x4, 1))
+    and the 
     """
-    Real part of the product of 2 arrays
-    """
-    return a.real * b.real + a.imag * b.imag
+    def f(x):
+        y = torch.stack([
+            (1 + x[1] / 2) * (torch.cos(x[2]) + torch.sin(x[2]) * torch.tan(x[3])),
+            (1 + x[1] / 2) * torch.sin(x[2]),
+            (1 - x[1] / 2) * (-torch.sin(x[2]) + torch.cos(x[2]) * torch.tan(x[3])),
+            (1 - x[1] / 2) * torch.cos(x[2])
+        ]) * x[0]
+        return y
+    x = nonlinear_lsq(torch.tensor([1.0, 0.0, 0.0, 0.0]), m.reshape(-1), f)
+    return x
 
 
-def redot(a, b, axis=None):
+def compose_2x2_affine_transform_matrix(
+    scale: torch.Tensor,
+    assymetry: torch.Tensor,
+    rotation: torch.Tensor,
+    shear: torch.Tensor
+) -> torch.Tensor:
     """
-    Real part of the dot product of 2 arrays
+    Compose a 2x2 affine transformation matrix from scale, asymmetry, rotation, and shear.
     """
-    res = torch.sum(reprod(a, b), axis=axis)
-    return res
+    x = [scale, assymetry, rotation, shear]
+    m = torch.stack([
+        (1 + x[1] / 2) * (torch.cos(x[2]) + torch.sin(x[2]) * torch.tan(x[3])),
+        (1 + x[1] / 2) * torch.sin(x[2]),
+        (1 - x[1] / 2) * (-torch.sin(x[2]) + torch.cos(x[2]) * torch.tan(x[3])),
+        (1 - x[1] / 2) * torch.cos(x[2])
+    ]) * x[0]
+    return m.reshape(2, 2)
+
+
+def nonlinear_lsq(
+    x0: torch.Tensor,
+    y: torch.Tensor,
+    f: Callable[[torch.Tensor], torch.Tensor],
+    n_iter: int = 20,
+    **kwargs
+) -> torch.Tensor:
+    """Solve a nonlinear least squares problem.
+    
+    Parameters
+    ----------
+    x0 : torch.Tensor
+        The initial guess for the solution.
+    y : torch.Tensor
+        The data.
+    f : Callable[torch.Tensor, torch.Tensor]
+        The function to minimize.
+    """
+    x = x0.clone().requires_grad_(True)
+    optimizer = torch.optim.LBFGS([x], **kwargs)
+    loss_history = []
+    
+    def compute_loss():
+        return ((y - f(x)).abs() ** 2).sum()
+    
+    def closure():
+        optimizer.zero_grad()
+        loss = compute_loss()
+        loss.backward()
+        return loss
+    
+    for _ in range(n_iter):
+        loss_history.append(compute_loss().item())
+        optimizer.step(closure)
+    
+    # Convergence check.
+    loss_history = torch.tensor(loss_history)
+    window_size = max(len(loss_history) // 10, 1)
+    avg_loss_1 = loss_history[-window_size:].mean()
+    avg_loss_2 = loss_history[-2 * window_size:-window_size].mean()
+    if torch.abs(avg_loss_2) > 0 and avg_loss_1 / avg_loss_2 > 1.1:
+        raise ValueError("Non-linear least squares did not converge.")
+    return x.detach()
+
+
+def fit_linear_transform_matrix(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Fit a linear transformation matrix A, so that y = A @ x.
+    
+    Parameters
+    ----------
+    x : torch.Tensor
+        A (n_points, n_features_in) tensor of input data.
+    y : torch.Tensor
+        A (n_points, n_features_out) tensor of output data.
+    
+    Returns
+    -------
+    torch.Tensor
+        The linear transformation matrix.
+    """
+    a_mat = torch.linalg.lstsq(x, y, rcond=None)[0]
+    return a_mat

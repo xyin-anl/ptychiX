@@ -47,8 +47,16 @@ def batch_slice(image: Tensor, sy: Tensor, sx: Tensor, patch_size: Tuple[int, in
         A tensor of shape (N, h, w) containing the extracted patches.
     """
     h, w = image.shape[-2:]
-    x = torch.arange(patch_size[1])[None, :]
-    y = torch.arange(patch_size[0])[None, :]
+    if (
+        sy.min() < 0 
+        or sy.max() + patch_size[0] > image.shape[-2] 
+        or sx.min() < 0 
+        or sx.max() + patch_size[1] > image.shape[-1]
+    ):
+        raise ValueError("Patch indices are out of bounds.")
+    
+    x = torch.arange(patch_size[1], device=sx.device)[None, :]
+    y = torch.arange(patch_size[0], device=sy.device)[None, :]
     x = x.expand(len(sx), x.shape[1])
     y = y.expand(len(sy), y.shape[1])
     x = x + sx[:, None]
@@ -91,19 +99,29 @@ def batch_put(
         A tensor of shape (H, W) containing the image with patches added or set.
     """
     h, w = image.shape[-2:]
+    if (
+        sy.min() < 0 
+        or sy.max() + patches.shape[-2] > image.shape[-2] 
+        or sx.min() < 0 
+        or sx.max() + patches.shape[-1] > image.shape[-1]
+    ):
+        raise ValueError("Patch indices are out of bounds.")
+    
     patch_size = patches.shape[-2:]
-    x = torch.arange(patch_size[1])[None, :]
-    y = torch.arange(patch_size[0])[None, :]
+    x = torch.arange(patch_size[1], device=sx.device)[None, :]
+    y = torch.arange(patch_size[0], device=sy.device)[None, :]
     x = x.expand(len(sx), x.shape[1])
     y = y.expand(len(sy), y.shape[1])
     x = x + sx[:, None]
     y = y + sy[:, None]
     inds = (y * w).unsqueeze(-1) + x.unsqueeze(1)
     image = image.reshape(-1)
+    
     try:
         patches_flattened = patches.view(-1)
     except RuntimeError:
         patches_flattened = patches.reshape(-1)
+        
     if pmath.get_allow_nondeterministic_algorithms():
         # scatter_add_ and scatter_ are non-deterministic but faster.
         if op == "add":
@@ -128,7 +146,7 @@ def extract_patches_integer(
     Parameters
     ----------
     image : Tensor
-        The whole image.
+        A (H, W) tensor giving the whole image.
     positions : Tensor
         A tensor of shape (N, 2) giving the center positions of the patches in pixels.
         The origin of the given positions are assumed to be the TOP LEFT corner of the image.
@@ -144,6 +162,23 @@ def extract_patches_integer(
     """
     sys = (positions[:, 0] - (shape[0] - 1.0) / 2.0).round().int()
     sxs = (positions[:, 1] - (shape[1] - 1.0) / 2.0).round().int()
+    
+    pad_lengths = [
+        max(-sxs.min(), 0),
+        max(sxs.max() + shape[1] - image.shape[1], 0),
+        max(-sys.min(), 0),
+        max(sys.max() + shape[0] - image.shape[0], 0),
+    ]
+    if any(pad_lengths):
+        logging.warning(
+            f"Patch extractor has to pad the image by {[int(x) for x in pad_lengths]} "
+            "(left, right, top, bottom) to avoid out-of-bounds errors. This should be "
+            "avoided whenever possible. Consider using a larger object size."
+        )
+        image = torch.nn.functional.pad(image[None], pad_lengths, mode="replicate")[0]
+        sys = sys + pad_lengths[2]
+        sxs = sxs + pad_lengths[0]
+    
     patches = batch_slice(image, sys, sxs, patch_size=shape)
     return patches
 
@@ -184,7 +219,29 @@ def place_patches_integer(
     shape = patches.shape[-2:]
     sys = (positions[:, 0] - (shape[0] - 1.0) / 2.0).round().int()
     sxs = (positions[:, 1] - (shape[1] - 1.0) / 2.0).round().int()
+    
+    pad_lengths = [
+        max(-sxs.min(), 0),
+        max(sxs.max() + shape[1] - image.shape[1], 0),
+        max(-sys.min(), 0),
+        max(sys.max() + shape[0] - image.shape[0], 0),
+    ]
+    if any(pad_lengths):
+        logging.warning(
+            f"Patch placer has to pad the image by {[int(x) for x in pad_lengths]} "
+            "(left, right, top, bottom) to avoid out-of-bounds errors. This should be "
+            "avoided whenever possible. Consider using a larger object size."
+        )
+        image = torch.nn.functional.pad(image, pad_lengths)
+        sys = sys + pad_lengths[2]
+        sxs = sxs + pad_lengths[0]
+    
     image = batch_put(image, patches, sys, sxs, op=op)
+    if any(pad_lengths):
+        image = image[
+            pad_lengths[2] : image.shape[0] - pad_lengths[3],
+            pad_lengths[0] : image.shape[1] - pad_lengths[1],
+        ]
     return image
 
 
@@ -1366,7 +1423,8 @@ def vignette(
     img: Tensor, 
     margin: int = 20, 
     sigma: float = 1.0, 
-    method: Literal["gaussian", "linear"] = "gaussian"):
+    method: Literal["gaussian", "linear"] = "gaussian",
+    dim=(-2, -1)):
     """
     Vignett an image so that it gradually decays near the boundary.
     For each dimension of the image, a mask with a width of `2 * margin`
@@ -1389,8 +1447,9 @@ def vignette(
     method : Literal["gaussian", "linear"]
         The method to use to generate the vignette mask.
     """
+    dims = [d % img.ndim for d in dim]
     img = img.clone()
-    for i_dim in range(img.ndim):
+    for i_dim in dims:
         if img.shape[i_dim] <= 2 * margin:
             continue
         mask_shape = (

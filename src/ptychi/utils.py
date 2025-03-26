@@ -1,4 +1,4 @@
-from typing import Union, Literal, Callable, Optional
+from typing import Union, Literal, Callable, Optional, Sequence
 import math
 
 import torch
@@ -35,7 +35,7 @@ def rescale_probe(
     patterns : Tensor
         A (n, h, w) tensor of diffraction patterns.
     weights : Tensor, optional
-        A (n_opr_modes,) tensor of weights for each OPR mode.
+        A (n_points, n_opr_modes) tensor of weights for each OPR mode.
 
     Returns
     -------
@@ -45,6 +45,10 @@ def rescale_probe(
     propagator = propagate.FourierPropagator()
 
     probe_tensor = torch.tensor(probe)
+    
+    if probe_tensor.ndim == 4:
+        if probe_tensor.shape[0] == 1 or weights is None:
+            probe_tensor = probe_tensor[0]
 
     if probe_tensor.ndim == 3:
         i_probe = (
@@ -56,6 +60,7 @@ def rescale_probe(
         )
     else:
         weights = torch.tensor(weights)
+        weights = weights.mean(dim=0) 
         probe_corrected = (probe_tensor * weights[:, None, None, None]).sum(0)
         i_probe = (
             (torch.abs(propagator.propagate_forward(probe_corrected)) ** 2)
@@ -386,3 +391,77 @@ def chunked_processing(
         return tuple(iterated_kwargs.values())[0]
     else:
         return tuple(iterated_kwargs.values())
+
+
+def calculate_data_size_gb(
+    shape: Sequence[int], 
+    dtype: torch.dtype | np.dtype
+) -> float:
+    """
+    Calculate the size of the data in GB.
+    """
+    shape = list(shape)
+    return np.prod(shape) * dtype.itemsize / 1024 ** 3
+
+
+def get_max_batch_size(
+    probe_shape: Sequence[int], 
+    object_shape: Sequence[int],
+    double_precision: bool = False, 
+    data_saved_on_device: bool = False, 
+    all_data_shape: Sequence[int] = None,
+    reconstructor_type: Literal["lsqml"] = "lsqml",
+    margin_factor: float = 0.2
+) -> int:
+    """
+    Estimate the maximum batch size that fits in the available device memory.
+    
+    We estimate the memory usage using an empirical formula:
+    ```
+    mem = x0 * n_p * batch_size + x1 * n_p + x2 * object_numel
+    ```
+    where `n_p = n_modes * probe_size ** 2` and the coefficients `x0`, `x1`, `x2` 
+    were fit from experimental data.
+    
+    Parameters
+    ----------
+    probe_shape : Sequence[int]
+        The shape of the 4D probe, expected to be (n_opr_modes, n_modes, h, w).
+    object_shape : Sequence[int]
+        The shape of the object, expected to be (n_slcies, h, w).
+    double_precision : bool, optional
+        Whether to use double precision.
+    data_saved_on_device : bool, optional
+        Whether the raw data is kept on device.
+    all_data_shape : Sequence[int], optional
+        The shape of the data, expected to be (n_points, h, w).
+    reconstructor_type : Literal["lsqml"], optional
+        The type of reconstructor. Currently only `lsqml` is supported.
+    margin_factor : float, optional
+        The fraction of the device memory to be left free.
+    
+    Returns
+    -------
+    int
+        The suggested batch size.
+    """
+    if reconstructor_type == "lsqml":
+        x0 = 6.26e-8
+        x1 = 3.73e-7
+        x2 = 1.39e-7
+    else:
+        raise ValueError(f"Unknown reconstructor type: {reconstructor_type}")
+    
+    dtype = torch.float64 if double_precision else torch.float32
+    n_p = np.prod(list(probe_shape[1:]))
+    n_o = np.prod(list(object_shape))
+    if data_saved_on_device:
+        data_size_gb = calculate_data_size_gb(all_data_shape, dtype)
+    else:
+        data_size_gb = 0.0
+        
+    mem_avail = torch.cuda.mem_get_info()[0] * (1 - margin_factor) / 1024 ** 3
+    mem_compute = mem_avail - data_size_gb
+    batch_size = (mem_compute - x1 * n_p + x2 * n_o) / (x0 * n_p)
+    batch_size = batch_size * (8 / dtype.itemsize)
+    return max(int(batch_size), 1)

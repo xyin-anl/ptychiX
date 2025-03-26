@@ -47,11 +47,10 @@ class TestMultislicePtychoAutodiffRegularized(tutils.BaseTester):
         options.probe_position_options.optimizable = True
         options.probe_position_options.optimizer = api.Optimizers.SGD
         options.probe_position_options.step_size = 1e-1
-        options.probe_position_options.magnitude_limit.enabled = True
-        options.probe_position_options.magnitude_limit.limit = 1.0
         
         options.reconstructor_options.forward_model_class = api.ForwardModels.PLANAR_PTYCHOGRAPHY
         options.reconstructor_options.loss_function = api.LossFunctions.MSE_SQRT
+        options.reconstructor_options.use_double_precision_for_fft = True
         options.reconstructor_options.batch_size = 101
         options.reconstructor_options.num_epochs = 8
         options.reconstructor_options.default_device = api.Devices.GPU

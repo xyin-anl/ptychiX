@@ -91,7 +91,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         obj_patches = self.forward_model.intermediate_variables["obj_patches"]
         psi = self.forward_model.intermediate_variables["psi"]
         psi_far = self.forward_model.intermediate_variables["psi_far"]
-        unique_probes = self.forward_model.intermediate_variables["shifted_unique_probes"]
+        unique_probes = self.forward_model.intermediate_variables.shifted_unique_probes[0]
 
         psi_prime = self.replace_propagated_exit_wave_magnitude(psi_far, y_true)
         # Do not swap magnitude for bad pixels.
@@ -107,7 +107,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             delta_o_patches = delta_o_patches.sum(1, keepdim=True)
             delta_o = ip.place_patches_integer(
                 torch.zeros_like(object_.get_slice(0)),
-                positions.round().int() + object_.center_pixel,
+                positions.round().int() + object_.pos_origin_coords,
                 delta_o_patches[:, 0],
                 op="add",
             )
@@ -121,7 +121,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
                 psi_prime - psi,
                 obj_patches,
                 delta_o_patches,
-                self.forward_model.intermediate_variables["shifted_unique_probes"],
+                self.forward_model.intermediate_variables.shifted_unique_probes[0],
                 object_.optimizer_params["lr"],
             )
 
@@ -132,7 +132,7 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             delta_p_i = self.adjoint_shift_probe_update_direction(indices, delta_p_i, first_mode_only=True)
 
         # Calculate and apply opr mode updates
-        if not self.parameter_group.opr_mode_weights.is_dummy:
+        if self.parameter_group.opr_mode_weights.optimization_enabled(self.current_epoch):
             opr_mode_weights.update_variable_probe(
                 probe,
                 indices,
@@ -222,7 +222,9 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
 
         if delta_pos is not None:
             probe_positions.set_grad(-delta_pos)
-            probe_positions.optimizer.step()
+            probe_positions.step_optimizer(
+                limit=probe_positions.options.correction_options.update_magnitude_limit
+            )
 
 
 class EPIEReconstructor(PIEReconstructor):

@@ -24,10 +24,18 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+movies = ["opencv-python"]
+
 [docs]
 dependencies = [
     "sphinx",
     "sphinx-rtd-theme",
+]
+
+[nn]
+dependencies = [
+    "torchinfo",
 ]
 
 [tool.setuptools_scm]

@@ -3,6 +3,7 @@ import ptychi.image_proc as ip
 import ptychi.api as api
 from ptychi.timing.timer_utils import timer
 
+
 class PositionCorrection:
     """
     Class containing the various position correction functions used to
@@ -32,11 +33,17 @@ class PositionCorrection:
         chi : torch.Tensor
             A (batch_size, n_modes, h, w) tensor of the exit wave update.
         obj_patches : torch.Tensor
-            A (batch_size, n_slices, h, w) tensor of patches of the object.
+            A (batch_size, n_slices, h, w) tensor of patches of the object. The slice dimension
+            is only there to maintain the consistency to the general shape of object patches. 
+            Correction algorithms only use the first slice. If position correction should be done
+            using other slices, pass the correct slice of the object patches to this function as
+            `obj_patches[:, i_slice:i_slice + 1]`.
         delta_o_patches : torch.Tensor
             A (batch_size, n_slices or 1, h, w) tensor of patches of the update to be applied to the object.
         unique_probes : torch.Tensor
             A (batch_size, n_modes, h, w) tensor of unique probes for all positions in the batch.
+            The mode dimension is only there to maintain the consistency to the general shape of probe
+            patches. Correction algorithms only use the first mode.
         object_step_size : float
             The step size/learning rate of the object optimizer.
 
@@ -45,13 +52,11 @@ class PositionCorrection:
         Tensor
             A (n_positions, 2) tensor of updates to the probe positions.
         """
-        probe_m0 = unique_probes[:, 0]
-
         if self.options.correction_type is api.PositionCorrectionTypes.GRADIENT:
-            return self.get_gradient_update(chi, obj_patches, probe_m0)
+            return self.get_gradient_update(chi, obj_patches, unique_probes)
         elif self.options.correction_type is api.PositionCorrectionTypes.CROSS_CORRELATION:
             return self.get_cross_correlation_update(
-                obj_patches, delta_o_patches, probe_m0, object_step_size
+                obj_patches, delta_o_patches, unique_probes, object_step_size
             )
 
     @timer()
@@ -70,6 +75,7 @@ class PositionCorrection:
         """
         # Just take the first slice.
         obj_patches = obj_patches[:, 0]
+        probe = probe[:, 0]
         delta_o_patches = delta_o_patches[:, 0]
         
         updated_obj_patches = obj_patches + delta_o_patches * object_step_size
@@ -105,6 +111,8 @@ class PositionCorrection:
         # Just take the first slice.
         obj_patches = obj_patches[:, 0]
         
+        # Take the first mode of probe and chi.
+        probe = probe[:, 0, :, :]
         chi_m0 = chi[:, 0, :, :]
         
         if self.options.differentiation_method == api.ImageGradientMethods.GAUSSIAN:

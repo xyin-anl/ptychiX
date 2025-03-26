@@ -27,14 +27,21 @@ class ComplexTensor(Module):
     """
 
     def __init__(
-        self, data: Union[Tensor, ndarray], requires_grad: bool = True, *args, **kwargs
+        self, 
+        data: Union[Tensor, ndarray], 
+        requires_grad: bool = True, 
+        data_as_parameter: bool = True, 
+        *args, **kwargs
     ) -> None:
         super().__init__(*args, **kwargs)
         data = to_tensor(data)
         data = torch.stack([data.real, data.imag], dim=-1).requires_grad_(requires_grad)
         data = data.type(torch.get_default_dtype())
 
-        self.register_parameter(name="data", param=Parameter(data))
+        if data_as_parameter:
+            self.register_parameter(name="data", param=Parameter(data))
+        else:
+            self.register_buffer("data", data)
 
     def mag(self) -> Tensor:
         return torch.sqrt(self.data[..., 0] ** 2 + self.data[..., 1] ** 2)
@@ -83,9 +90,28 @@ class ReconstructParameter(Module):
         is_complex: bool = False,
         name: Optional[str] = None,
         options: "api.options.base.ParameterOptions" = None,
+        data_as_parameter: bool = True,
         *args,
         **kwargs,
     ) -> None:
+        """The base reconstructor parameter class.
+
+        Parameters
+        ----------
+        shape : Optional[Tuple[int, ...]], optional
+            The shape of the parameter.
+        data : Optional[Union[Tensor, ndarray]], optional
+            The data of the parameter.
+        is_complex : bool, optional
+            Whether the parameter is complex.
+        name : Optional[str], optional
+            The name of the parameter.
+        options : api.options.base.ParameterOptions, optional
+            Options of the parameter.
+        data_as_parameter : bool, optional
+            Whether the data is stored as a torch.Parameter. In most cases this should be True,
+            but for DIPObject, the data is not directly optimized so it should just be a buffer.
+        """
         super().__init__(*args, **kwargs)
         if shape is None and data is None:
             raise ValueError("Either shape or data must be specified.")
@@ -111,6 +137,8 @@ class ReconstructParameter(Module):
             {"lr": self.options.step_size}, **self.options.optimizer_params
         )
         self.optimizer = None
+        
+        self.optimizable_sub_modules = []
 
         self.is_complex = is_complex
         self.preconditioner = None
@@ -118,9 +146,9 @@ class ReconstructParameter(Module):
 
         if is_complex:
             if data is not None:
-                self.tensor = ComplexTensor(data).requires_grad_(self.optimizable)
+                self.tensor = ComplexTensor(data, data_as_parameter=data_as_parameter).requires_grad_(self.optimizable)
             else:
-                self.tensor = ComplexTensor(torch.zeros(shape), requires_grad=self.optimizable)
+                self.tensor = ComplexTensor(torch.zeros(shape), data_as_parameter=data_as_parameter, requires_grad=self.optimizable)
         else:
             if data is not None:
                 tensor = to_tensor(data).requires_grad_(self.optimizable)
@@ -129,7 +157,10 @@ class ReconstructParameter(Module):
             # Register the tensor as a parameter. In subclasses, do the same for any
             # additional differentiable parameters. If you have a buffer that does not
             # need gradients, use register_buffer instead.
-            self.register_parameter("tensor", Parameter(tensor))
+            if data_as_parameter:
+                self.register_parameter("tensor", Parameter(tensor))
+            else:
+                self.register_buffer("tensor", tensor)
 
         self.build_optimizer()
 
@@ -139,10 +170,24 @@ class ReconstructParameter(Module):
 
     @property
     def data(self) -> Tensor:
+        """Get a copy of the parameter data. For complex parameters,
+        it returns a complex tensor rather than real tensors giving the
+        real and imaginary parts as in the internal representation
+        of ComplexTensor.
+
+        Returns
+        -------
+        Tensor
+            A copy of the parameter data.
+        """
         if self.is_complex:
             return self.tensor.complex()
         else:
             return self.tensor.clone()
+        
+    def register_optimizable_sub_module(self, sub_module):
+        if sub_module.optimizable and sub_module not in self.optimizable_sub_modules:
+            self.optimizable_sub_modules.append(sub_module)
 
     def build_optimizer(self):
         if self.optimizable and self.optimizer_class is None:
@@ -264,6 +309,30 @@ class ReconstructParameter(Module):
 
     def get_config_dict(self):
         return self.options.get_non_data_fields()
+    
+    def step_optimizer(self, limit: float = None):
+        """Step the optimizer with gradient filled in. This function
+        can optionally impose a limit on the magnitude of the update.
+
+        Parameters
+        ----------
+        limit : float, optional
+            The maximum allowed magnitude of the update. Set to None to disable the limit.
+        """
+        if limit is not None and limit <= 0:
+            raise ValueError("`limit` should either be None or a positive number.")
+        if limit == torch.inf:
+            limit = None
+        if limit is not None:
+            data0 = self.data
+        self.optimizer.step()
+        if limit is not None:
+            data = self.data
+            dx = data - data0
+            update_mag = dx.abs()
+            exceed_mask = update_mag > limit
+            dx[exceed_mask] = dx[exceed_mask] * limit / update_mag[exceed_mask]
+            self.set_data(data0 + dx)
 
 
 class DummyParameter(ReconstructParameter):

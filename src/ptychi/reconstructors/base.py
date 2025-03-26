@@ -7,6 +7,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 import tqdm
 from ptychi.timing.timer_utils import timer
+import ptychi.movies as movies
 
 from ptychi.utils import to_numpy, chunked_processing
 import ptychi.maps as maps
@@ -41,24 +42,29 @@ class LossTracker:
             only computing the loss when it is not.
         """
         super().__init__(*args, **kwargs)
-        self.table = pd.DataFrame(columns=["epoch", "loss"])
+        self.table = pd.DataFrame(columns=["epoch", "loss", "reg_loss"])
         self.table["epoch"] = self.table["epoch"].astype(int)
         self.metric_function = metric_function
         self.epoch_loss = 0.0
         self.accumulated_num_batches = 0
+        self.epoch_reg_loss = 0.0
+        self.accumulated_num_reg_batches = 0
         self.epoch = 0
         self.always_compute_loss = always_compute_loss
 
     def conclude_epoch(self, epoch: Optional[int] = None) -> None:
         self.epoch_loss = self.epoch_loss / self.accumulated_num_batches
+        self.epoch_reg_loss = self.epoch_reg_loss / max(self.accumulated_num_reg_batches, 1)
         if epoch is None:
             epoch = self.epoch
             self.epoch += 1
         else:
             self.epoch = epoch + 1
-        self.table.loc[len(self.table)] = [epoch, self.epoch_loss]
+        self.table.loc[len(self.table)] = [epoch, self.epoch_loss, self.epoch_reg_loss]
         self.epoch_loss = 0.0
+        self.epoch_reg_loss = 0.0
         self.accumulated_num_batches = 0
+        self.accumulated_num_reg_batches = 0
 
     def update_batch_loss(
         self,
@@ -122,6 +128,11 @@ class LossTracker:
         loss = to_numpy(loss)
         self.epoch_loss = self.epoch_loss + loss
         self.accumulated_num_batches = self.accumulated_num_batches + 1
+        
+    def update_batch_regularization_loss(self, reg_loss: float) -> None:
+        reg_loss = to_numpy(reg_loss)
+        self.epoch_reg_loss = self.epoch_reg_loss + reg_loss
+        self.accumulated_num_reg_batches = self.accumulated_num_reg_batches + 1
 
     def print(self) -> None:
         print(self.table)
@@ -180,6 +191,9 @@ class PtychographyReconstructor(Reconstructor):
     ) -> None:
         super().__init__(parameter_group, options=options, *args, **kwargs)
         
+        self.parameter_group.object.update_pos_origin_coordinates(
+            self.parameter_group.probe_positions.data
+        )
         self.parameter_group.object.build_roi_bounding_box(
             self.parameter_group.probe_positions
         )
@@ -241,6 +255,11 @@ class IterativeReconstructor(Reconstructor):
         self.loss_tracker = LossTracker(metric_function=self.displayed_loss_function)
 
     def build_counter(self):
+        self.pbar = tqdm.tqdm(
+            total=self.options.num_epochs, 
+            disable=logger.level > logging.INFO, 
+            leave=False
+        )
         self.current_epoch = 0
 
     def get_config_dict(self) -> dict:
@@ -249,10 +268,18 @@ class IterativeReconstructor(Reconstructor):
         return d
     
     def prepare_batch_data(self, batch_data: Sequence[Tensor]) -> Tuple[Sequence[Tensor], Tensor]:
-        # If data is not saved on device, move it to device.
         input_data = batch_data[:-1]
-        if input_data[0].device.type != torch.get_default_device().type:
-            input_data = [x.to(torch.get_default_device()) for x in input_data]
+        
+        if input_data[0].ndim != 1:
+            raise ValueError(
+                "The first returned value of the dataset should be a 1D tensor "
+                "giving the indices, but got a tensor of shape {}.".format(input_data[0].shape)
+            )
+            
+        # Put input data on CPU so that DataParallel can distribute them later.
+        input_data = [x.cpu() for x in input_data]
+        
+        # Put measured data on device.
         y_true = batch_data[-1]
         if y_true.device.type != torch.get_default_device().type:
             y_true = y_true.to(torch.get_default_device())
@@ -290,8 +317,9 @@ class IterativeReconstructor(Reconstructor):
     def run(self, n_epochs: Optional[int] = None, *args, **kwargs):
         if self.current_epoch == 0:
             self.run_pre_run_hooks()
+
         n_epochs = n_epochs if n_epochs is not None else self.n_epochs
-        for _ in tqdm.trange(n_epochs, disable=logger.level > logging.INFO):
+        for _ in range(n_epochs):
             self.run_pre_epoch_hooks()
             self.current_minibatch = 0
             for batch_data in self.dataloader:
@@ -304,7 +332,11 @@ class IterativeReconstructor(Reconstructor):
             self.loss_tracker.conclude_epoch(epoch=self.current_epoch)
             self.loss_tracker.print_latest()
 
+            if movies.MOVIES_INSTALLED:
+                movies.api.update_movie_builders(self)
+
             self.current_epoch += 1
+            self.pbar.update(1)
 
 
 class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyReconstructor):
@@ -354,7 +386,9 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             )
             
     def run_pre_epoch_hooks(self) -> None:
-        self.update_preconditioners()
+        with torch.no_grad():
+            self.update_preconditioners()
+            
 
     def run_post_epoch_hooks(self) -> None:
         with torch.no_grad():
@@ -390,10 +424,6 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             if object_.options.smoothness_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_smoothness()
 
-            # Apply total variation constraint.
-            if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
-                object_.constrain_total_variation()
-
             # Remove grid artifacts.
             if object_.options.remove_grid_artifacts.is_enabled_on_this_epoch(self.current_epoch):
                 object_.remove_grid_artifacts()
@@ -427,10 +457,21 @@ class IterativePtychographyReconstructor(IterativeReconstructor, PtychographyRec
             
             # Smooth OPR weights.
             opr_mode_weights = self.parameter_group.opr_mode_weights
-            if not opr_mode_weights.is_dummy:
-                if opr_mode_weights.options.smoothing.is_enabled_on_this_epoch(self.current_epoch):
-                    opr_mode_weights.smooth_weights()
-                opr_mode_weights.remove_outliers()
+            if opr_mode_weights.options.smoothing.is_enabled_on_this_epoch(self.current_epoch):
+                opr_mode_weights.smooth_weights()
+            opr_mode_weights.remove_outliers()
+            
+            # Position affine transformation constraint.
+            if (
+                positions.options.affine_transform_constraint.is_position_weight_update_enabled_on_this_epoch(
+                    self.current_epoch
+                )
+            ):
+                positions.update_position_weights(probe, object_, self.options.batch_size)
+            if positions.options.affine_transform_constraint.is_enabled_on_this_epoch(self.current_epoch):
+                positions.update_affine_transform_matrix()
+                if positions.options.affine_transform_constraint.apply_constraint:
+                    positions.apply_affine_transform_constraint()
 
 
 class AnalyticalIterativeReconstructor(IterativeReconstructor):
@@ -566,6 +607,14 @@ class AnalyticalIterativePtychographyReconstructor(
             # Apply object L1-norm constraint.
             if object_.options.l1_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
                 object_.constrain_l1_norm()
+                
+            # Apply object L2-norm constraint.
+            if object_.options.l2_norm_constraint.is_enabled_on_this_epoch(self.current_epoch):
+                object_.constrain_l2_norm()
+                
+            # Apply total variation constraint.
+            if object_.options.total_variation.is_enabled_on_this_epoch(self.current_epoch):
+                object_.constrain_total_variation()
 
     def run_pre_run_hooks(self) -> None:
         self.prepare_data()

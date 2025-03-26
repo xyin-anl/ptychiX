@@ -16,13 +16,13 @@ import ptychi.data_structures.probe as probe
 import ptychi.data_structures.probe_positions as probepos
 import ptychi.data_structures.parameter_group as paramgrp
 import ptychi.maps as maps
-from ptychi.data_structures.base import DummyParameter
 from ptychi.io_handles import PtychographyDataset
 from ptychi.reconstructors.base import Reconstructor
 from ptychi.utils import to_tensor
 import ptychi.utils as utils
 import ptychi.maths as pmath
 from ptychi.timing import timer_utils
+import ptychi.movies as movies
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ class Task:
 class PtychographyTask(Task):
     def __init__(self, options: api.options.task.PtychographyTaskOptions, *args, **kwargs) -> None:
         super().__init__(options, *args, **kwargs)
+        self.options = options
         self.data_options = options.data_options
         self.object_options = options.object_options
         self.probe_options = options.probe_options
@@ -71,7 +72,11 @@ class PtychographyTask(Task):
         self.opr_mode_weights = None
         self.reconstructor: Reconstructor | None = None
 
+        self.check_options()
         self.build()
+        
+    def check_options(self):
+        self.options.check()
 
     def build(self):
         self.build_random_seed()
@@ -127,6 +132,7 @@ class PtychographyTask(Task):
             free_space_propagation_distance_m=self.data_options.free_space_propagation_distance_m,
             fft_shift=self.data_options.fft_shift,
             save_data_on_device=self.data_options.save_data_on_device,
+            valid_pixel_mask=self.data_options.valid_pixel_mask
         )
 
     def build_object(self):
@@ -135,11 +141,29 @@ class PtychographyTask(Task):
             "data": data,
             "options": self.object_options,
         }
-        self.object = object.PlanarObject(**kwargs)
+        if (
+            isinstance(self.object_options, api.options.AutodiffPtychographyObjectOptions)
+        ) and (
+            self.object_options.experimental.deep_image_prior_options.enabled
+        ):
+            self.object = object.DIPPlanarObject(**kwargs)
+        else:
+            self.object = object.PlanarObject(**kwargs)
 
     def build_probe(self):
         data = to_tensor(self.probe_options.initial_guess)
-        self.probe = probe.Probe(data=data, options=self.probe_options)
+        kwargs = {
+            "data": data,
+            "options": self.probe_options,
+        }
+        if (
+            isinstance(self.probe_options, api.options.AutodiffPtychographyProbeOptions)
+        ) and (
+            self.probe_options.experimental.deep_image_prior_options.enabled
+        ):
+            self.probe = probe.DIPProbe(**kwargs)
+        else:
+            self.probe = probe.Probe(**kwargs)
 
     def build_probe_positions(self):
         pos_y = to_tensor(self.position_options.position_y_px)
@@ -148,23 +172,18 @@ class PtychographyTask(Task):
         self.probe_positions = probepos.ProbePositions(data=data, options=self.position_options)
 
     def build_opr_mode_weights(self):
-        n_opr_modes = self.probe_options.initial_guess.shape[0]
-        if n_opr_modes == 1:
-            self.opr_mode_weights = DummyParameter()
-            return
         if self.opr_mode_weight_options.initial_weights is None:
-            self.opr_mode_weights = DummyParameter()
-            return
+            initial_weights = torch.ones([self.data_options.data.shape[0], 1])
         else:
             initial_weights = to_tensor(self.opr_mode_weight_options.initial_weights)
-            if self.opr_mode_weight_options.initial_weights.ndim == 1:
-                # If a 1D array is given, expand it to all scan points.
-                initial_weights = initial_weights.unsqueeze(0).repeat(
-                    len(self.position_options.position_x_px), 1
-                )
-            self.opr_mode_weights = oprweights.OPRModeWeights(
-                data=initial_weights, options=self.opr_mode_weight_options
+        if initial_weights.ndim == 1:
+            # If a 1D array is given, expand it to all scan points.
+            initial_weights = initial_weights.unsqueeze(0).repeat(
+                len(self.position_options.position_x_px), 1
             )
+        self.opr_mode_weights = oprweights.OPRModeWeights(
+            data=initial_weights, options=self.opr_mode_weight_options
+        )
 
     def build_reconstructor(self):
         par_group = paramgrp.PlanarPtychographyParameterGroup(
@@ -199,6 +218,8 @@ class PtychographyTask(Task):
             The number of epochs to run. If None, use the number of epochs specified in the
             option object.
         """
+        if movies.MOVIES_INSTALLED and self.reconstructor.current_epoch == 0:
+            movies.api.reset_movie_builders()
         timer_utils.clear_timer_globals()
         self.reconstructor.run(n_epochs=n_epochs)
 
