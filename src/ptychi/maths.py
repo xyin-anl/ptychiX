@@ -545,7 +545,7 @@ def fit_linear_transform_matrix(x: torch.Tensor, y: torch.Tensor) -> torch.Tenso
     a_mat = torch.linalg.lstsq(x, y, rcond=None)[0]
     return a_mat
 
-
+  
 def reprod(a, b):
     """
     Real part of the product of 2 arrays
@@ -559,3 +559,4 @@ def redot(a, b, axis=None):
     """
     res = torch.sum(reprod(a, b), axis=axis)
     return res
+
