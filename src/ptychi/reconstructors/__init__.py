@@ -3,6 +3,7 @@ from .ad_ptychography import AutodiffPtychographyReconstructor
 from .lsqml import LSQMLReconstructor
 from .pie import PIEReconstructor, EPIEReconstructor, RPIEReconstructor
 from .dm import DMReconstructor
+from .bh import BHReconstructor
 
 __all__ = [
     "AutodiffReconstructor",
@@ -12,4 +13,5 @@ __all__ = [
     "EPIEReconstructor",
     "RPIEReconstructor",
     "DMReconstructor",
+    "BHReconstructor"
 ]
