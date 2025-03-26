@@ -618,6 +618,94 @@ def initialize_recon(params):
     params['obj_pixel_size_m'] = params['wavelength_m'] * params['det_sample_dist_m'] / params['det_pixel_size_m'] / dp_Npix #pixel size
     print("Pixel size of reconstructed object (nm):", f"{params['obj_pixel_size_m'] * 1e9:.3f}")
 
+    # Find clusters of scan positions where distances between points are smaller than 20 nm
+    if params.get('burst_ptycho', False):
+        print(f"Performing burst ptycho clustering assuming threshold of {params['obj_pixel_size_m']*1e9:.3f} nm.")
+        from sklearn.cluster import DBSCAN
+        
+        # Apply DBSCAN clustering
+        # eps is the maximum distance between two samples to be considered in the same cluster
+        # min_samples is the minimum number of samples in a neighborhood to form a core point
+        clustering = DBSCAN(eps=params['obj_pixel_size_m'], min_samples=1).fit(positions_m)
+        
+        # Get cluster labels for each position
+        cluster_labels = clustering.labels_
+        
+        # Count number of clusters (excluding noise points with label -1)
+        n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
+        
+        # Count points in each cluster
+        unique_labels, counts = np.unique(cluster_labels, return_counts=True)
+        
+        print(f"Found {n_clusters} position clusters with distance threshold of 20 nm")
+        for i, label in enumerate(unique_labels):
+            if label == -1:
+                print(f"  Noise points: {counts[i]}")
+            else:
+                #print(f"  Cluster {label}: {counts[i]} positions")
+                pass
+        
+        # Create a new positions array with one position per cluster (using cluster centroids)
+        # This will reduce the number of scan points to the number of clusters
+        
+        # Initialize the new positions array
+        positions_m_clustered = np.zeros((n_clusters, 2))
+        
+        # For each cluster, calculate the centroid (average position)
+        for i, label in enumerate(unique_labels):
+            if label != -1:  # Skip noise points (if any)
+                # Get all positions in this cluster
+                cluster_positions = positions_m[cluster_labels == label]
+                
+                # Calculate the average position (centroid)
+                cluster_centroid = np.mean(cluster_positions, axis=0)
+                
+                # Store the centroid in the new positions array
+                positions_m_clustered[label] = cluster_centroid
+        
+        print(f"Created new positions array with {n_clusters} points (one per cluster)")
+        print(f"Original positions shape: {positions_m.shape}, Clustered positions shape: {positions_m_clustered.shape}")
+        
+        # Optionally, replace the original positions with the clustered ones
+        # Uncomment the next line to use the clustered positions instead of the original ones
+        positions_m = positions_m_clustered
+        
+        # Average diffraction patterns for each cluster
+        print("Averaging diffraction patterns within each cluster...")
+        
+        # Create a new array to store the averaged diffraction patterns
+        dp_shape = dp.shape[1:]  # Get the shape of a single diffraction pattern
+        dp_clustered = np.zeros((n_clusters, *dp_shape), dtype=dp.dtype)
+        
+        # For each cluster, average the diffraction patterns
+        for i, label in enumerate(unique_labels):
+            if label != -1:  # Skip noise points (if any)
+                # Get indices of all positions in this cluster
+                cluster_indices = np.where(cluster_labels == label)[0]
+                
+                # Extract diffraction patterns for this cluster
+                cluster_dps = dp[cluster_indices]
+                
+                # Average the diffraction patterns
+                cluster_dp_avg = np.mean(cluster_dps, axis=0)
+                
+                # Store the averaged diffraction pattern
+                dp_clustered[label] = cluster_dp_avg
+                
+                #print(f"  Cluster {label}: Averaged {len(cluster_indices)} diffraction patterns")
+                
+        print(f"Original dp shape: {dp.shape}, Clustered dp shape: {dp_clustered.shape}")
+        
+        # Replace the original diffraction patterns with the clustered ones
+        dp = dp_clustered
+
+        # Store cluster information in params for later use
+        params['burst_mode_clusters'] = {
+            'labels': cluster_labels.tolist(),
+            'count': n_clusters,
+            'threshold_m': params.get('burst_clustering_threshold_m')
+        }
+
     init_positions_px = positions_m / params['obj_pixel_size_m']
     # Check if positions contain NaN values
     if np.isnan(init_positions_px).any():
@@ -1540,7 +1628,7 @@ def _load_data_lynx(base_path, scan_num, det_Npixel, cen_x, cen_y):
     # Clean up data
     dp[dp < 0] = 0
     dp[dp > 1e7] = 0
-
+    #dp[dp > 4090] = 0
     return dp, positions
 
 def _load_data_velo(base_path, scan_num, det_Npixel, cen_x, cen_y):

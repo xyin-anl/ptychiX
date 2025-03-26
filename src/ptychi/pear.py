@@ -424,19 +424,32 @@ class FileBasedTracker:
             except Exception as e:
                 print(f"Error updating status for scan {scan_id}: {str(e)}")
 
-def ptycho_batch_recon(start_scan, end_scan, base_params, log_dir_suffix='', scan_order='ascending', exclude_scans=[], overwrite_ongoing=False):
+def ptycho_batch_recon(base_params):
     """
-    Process a range of scans with automatic error handling.
+    Process a range of ptychography scans with automatic error handling and status tracking.
     
     Args:
-        start_scan: First scan number to process
-        end_scan: Last scan number to process (inclusive)
-        base_params: Dictionary of parameters to use as a template
-        log_dir_suffix: Suffix for the log directory
-        scan_order: Order to process the scans
-        overwrite_ongoing: Overwrite ongoing scans
+        base_params: Dictionary of parameters to use as a template for all scans
+            start_scan: First scan number to process
+            end_scan: Last scan number to process (inclusive)
+            log_dir_suffix: Optional suffix for the log directory
+            scan_order: Order to process the scans ('ascending', 'descending', or 'random')
+            exclude_scans: List of scan numbers to exclude from processing
+            overwrite_ongoing: Whether to overwrite scans marked as ongoing
+            reset_scan_list: Whether to reset the scan list and process all scans again
+            
+    The function creates a tracker to monitor the status of each scan and processes
+    them according to the specified order, skipping completed scans unless forced to reprocess.
     """
-    
+    # Extract parameters from base_params
+    start_scan = base_params.get('start_scan')
+    end_scan = base_params.get('end_scan')
+    log_dir_suffix = base_params.get('log_dir_suffix', '')
+    scan_order = base_params.get('scan_order', 'ascending')
+    exclude_scans = base_params.get('exclude_scans', [])
+    overwrite_ongoing = base_params.get('overwrite_ongoing', False)
+    reset_scan_list = base_params.get('reset_scan_list', False)
+
     log_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 
                           base_params['recon_parent_dir'], 
                           f'recon_logs_{log_dir_suffix}' if log_dir_suffix else 'recon_logs')
@@ -592,7 +605,7 @@ ptycho_recon(run_recon=True, **params)
                     print(f"Waiting for 5 seconds before next scan...")
                     time.sleep(5)
 
-                if scan_order == 'descending':
+                if reset_scan_list:
                     # Break the for loop after processing the current scan
                     break
                     
