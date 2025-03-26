@@ -317,7 +317,7 @@ class BHReconstructor(AnalyticalIterativePtychographyReconstructor):
             pad_for_shift=self.options.forward_model_options.pad_for_shift
         )
         patches = obj.extract_patches_function(
-            o, self.positions + obj.center_pixel, 
+            o, self.positions + obj.pos_origin_coords, 
             self.parameter_group.probe.get_spatial_shape(), 
             pad=self.options.forward_model_options.pad_for_shift
         )

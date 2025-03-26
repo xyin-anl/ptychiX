@@ -38,8 +38,8 @@ class Test2DPtychoBH(tutils.TungstenDataTester):
         options.reconstructor_options.batch_size = 96
         options.reconstructor_options.num_epochs = 16
         options.reconstructor_options.allow_nondeterministic_algorithms = False
-        options.reconstructor_options.use_double_precision_for_fft = True
-        options.reconstructor_options.forward_model_options.pad_for_shift = 1
+        options.reconstructor_options.use_double_precision_for_fft = False
+        options.reconstructor_options.forward_model_options.pad_for_shift = 4
 
         task = PtychographyTask(options)
         task.run()
@@ -75,8 +75,8 @@ class Test2DPtychoBH(tutils.TungstenDataTester):
         options.reconstructor_options.batch_size = 96
         options.reconstructor_options.num_epochs = 16
         options.reconstructor_options.allow_nondeterministic_algorithms = False
-        options.reconstructor_options.use_double_precision_for_fft = True
-        options.reconstructor_options.forward_model_options.pad_for_shift = 1
+        options.reconstructor_options.use_double_precision_for_fft = False
+        options.reconstructor_options.forward_model_options.pad_for_shift = 4
 
         task = PtychographyTask(options)
         task.run()
@@ -112,8 +112,8 @@ class Test2DPtychoBH(tutils.TungstenDataTester):
         options.reconstructor_options.batch_size = 96
         options.reconstructor_options.num_epochs = 16
         options.reconstructor_options.allow_nondeterministic_algorithms = False
-        options.reconstructor_options.use_double_precision_for_fft = True
-        options.reconstructor_options.forward_model_options.pad_for_shift = 1
+        options.reconstructor_options.use_double_precision_for_fft = False
+        options.reconstructor_options.forward_model_options.pad_for_shift = 4
 
         task = PtychographyTask(options)
         task.run()
@@ -149,8 +149,8 @@ class Test2DPtychoBH(tutils.TungstenDataTester):
         options.reconstructor_options.batch_size = 96
         options.reconstructor_options.num_epochs = 8
         options.reconstructor_options.allow_nondeterministic_algorithms = False
-        options.reconstructor_options.use_double_precision_for_fft = True
-        options.reconstructor_options.forward_model_options.pad_for_shift = 1
+        options.reconstructor_options.use_double_precision_for_fft = False
+        options.reconstructor_options.forward_model_options.pad_for_shift = 4
 
         task = PtychographyTask(options)
         task.run()
