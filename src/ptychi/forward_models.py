@@ -232,7 +232,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             width_px=self.probe.shape[-1],
             height_px=self.probe.shape[-2],
             pixel_width_m=self.object.pixel_size_m,
-            pixel_height_m=self.object.pixel_size_m,
+            pixel_height_m=self.object.pixel_size_m / self.object.options.pixel_size_aspect_ratio,
             propagation_distance_m=self.object.slice_spacings.data[0],
         )
         self.in_object_propagator = AngularSpectrumPropagator(self.in_object_prop_params)
@@ -445,7 +445,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             width_px=self.probe.shape[-1],
             height_px=self.probe.shape[-2],
             pixel_width_m=self.object.pixel_size_m,
-            pixel_height_m=self.object.pixel_size_m,
+            pixel_height_m=self.object.pixel_size_m / self.object.options.pixel_size_aspect_ratio,
             propagation_distance_m=self.object.slice_spacings.data[slice_index],
         )
         self.in_object_propagator.update(self.in_object_prop_params)
@@ -478,7 +478,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             width_px=self.probe.shape[-1],
             height_px=self.probe.shape[-2],
             pixel_width_m=self.object.pixel_size_m,
-            pixel_height_m=self.object.pixel_size_m,
+            pixel_height_m=self.object.pixel_size_m / self.object.options.pixel_size_aspect_ratio,
             propagation_distance_m=self.object.slice_spacings.data[slice_index - 1],
         )
         self.in_object_propagator.update(self.in_object_prop_params)

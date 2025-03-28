@@ -265,7 +265,12 @@ class ObjectOptions(ParameterOptions):
     slice_spacing_options: SliceSpacingOptions = field(default_factory=SliceSpacingOptions)
 
     pixel_size_m: float = 1.0
-    """The pixel size in meters."""
+    """The pixel size in meters. When pixel size is non-square, this should be the width (x)
+    of the pixel size."""
+    
+    pixel_size_aspect_ratio: float = 1.0
+    """The aspect ratio of the pixel size, defined as width (x) / height (y).
+    """
 
     l1_norm_constraint: ObjectL1NormConstraintOptions = field(
         default_factory=ObjectL1NormConstraintOptions
