@@ -250,7 +250,8 @@ def ptycho_recon(run_recon=True, **params):
                 save_reconstructions(task, recon_path, params['save_freq_iterations']*(i+1), params)
                             
         return task, recon_path, params
-    finally:
+    
+    finally: # does seem to work
         # Ensure GPU memory is cleaned up even if an exception occurs
         torch.cuda.empty_cache()
         # Release all memory currently held
@@ -265,7 +266,7 @@ def ptycho_recon(run_recon=True, **params):
         torch._C._cuda_clearCublasWorkspaces()
 
         # Allow time for complete cleanup
-        time.sleep(5)
+        #time.sleep(5)
 
 class FileBasedTracker:
     def __init__(self, base_dir, overwrite_ongoing=False):
@@ -633,3 +634,217 @@ ptycho_recon(run_recon=True, **params)
             time.sleep(10)
    
     print(f"Batch processing complete.")
+
+def ptycho_batch_recon_affine_calibration(base_params):
+    """
+    Automatically calibrate the geometric parameters based on coarse reconstructions.
+    
+    Args:
+        base_params: Dictionary of parameters to use as a template for all scans
+            start_scan: First scan number to process
+            end_scan: Last scan number to process (inclusive)
+    """
+    import subprocess
+    import sys
+    import json
+    import h5py
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import os
+
+    N_runs = 2
+    
+    # Extract parameters
+    start_scan = base_params.get('start_scan')
+    end_scan = base_params.get('end_scan')
+    scan_list = list(range(start_scan, end_scan + 1))
+    det_sample_dist_m = base_params['det_sample_dist_m']  # initial distance
+    
+    # Setup directories
+    geom_calibration_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 
+                                        base_params['recon_parent_dir'], 'geom_calibration')
+    temp_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 'temp_files')
+    os.makedirs(geom_calibration_dir, exist_ok=True)
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    # Parameters to track and plot
+    params_to_plot = ['scale', 'asymmetry', 'rotation', 'shear']
+    affine_params = {}
+    
+    for i in range(N_runs):
+        print(f"\033[94mCalibration run {i+1}/{N_runs} with distance {det_sample_dist_m}m\033[0m")
+        
+        for scan_num in scan_list:
+            # Create scan-specific parameters
+            scan_params = base_params.copy()
+            scan_params['scan_num'] = scan_num
+            scan_params['det_sample_dist_m'] = det_sample_dist_m
+            scan_params['recon_dir_suffix'] = f'd{det_sample_dist_m}'
+            
+            print(f"\033[91mStarting reconstruction for scan {scan_num}\033[0m")
+            
+            # Create temporary files
+            params_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_params.json")
+            script_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_script.py")
+            
+            # Save parameters to JSON
+            with open(params_path, 'w') as params_file:
+                json_compatible_params = {
+                    key: value.tolist() if isinstance(value, np.ndarray) else value 
+                    for key, value in scan_params.items()
+                }
+                json.dump(json_compatible_params, params_file, indent=2)
+            
+            # Create Python script for subprocess
+            script_content = f"""
+import json
+import sys
+import os
+from pathlib import Path
+
+# Add the parent directory to path so imports work correctly
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from ptychi.pear import ptycho_recon
+
+# Load parameters 
+with open('{params_path}', 'r') as f:
+    params = json.load(f)
+
+# Run reconstruction with real-time output
+ptycho_recon(run_recon=True, **params)
+"""
+            with open(script_path, 'w') as script_file:
+                script_file.write(script_content)
+            
+            # Run subprocess with real-time output
+            process = subprocess.Popen(
+                [sys.executable, script_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            
+            recon_path = None
+            for line in iter(process.stdout.readline, ''):
+                print(line, end='')
+                if "Reconstruction results will be saved in:" in line:
+                    recon_path = line.split("Reconstruction results will be saved in:")[1].strip()
+            
+            # Wait for process to complete
+            return_code = process.wait()
+            
+            # Clean up temporary files
+            for path in [params_path, script_path]:
+                if os.path.exists(path):
+                    os.unlink(path)
+            
+            if return_code != 0:
+                raise subprocess.CalledProcessError(return_code, f"{sys.executable} {script_path}")    
+            
+            # Extract affine parameters from reconstruction file
+            try:
+                h5_path = f'{recon_path}/recon_Niter{base_params["number_of_iterations"]}.h5'
+                with h5py.File(h5_path, 'r') as f:
+                    if 'pos_corr' in f:
+                        affine_params_temp = {}
+                        for var in params_to_plot + ['iterations']:
+                            if var in f['pos_corr']:
+                                affine_params_temp[var] = f[f'/pos_corr/{var}'][:]
+                        
+                        if affine_params_temp:
+                            affine_params[scan_num] = affine_params_temp
+                            print(f"Scan {scan_num}: Position correction data loaded")
+                        else:
+                            print(f"Scan {scan_num}: Position correction data not found in file")
+            except Exception as e:
+                print(f"Error reading HDF5 file for scan {scan_num}: {str(e)}")
+        
+        print(f"Batch processing complete for run {i+1}.")
+        
+        # Plot parameter evolution
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        axes = axes.flatten()
+        
+        for idx, param in enumerate(params_to_plot):
+            ax = axes[idx]
+            for scan_num, data in affine_params.items():
+                if param in data:
+                    ax.plot(data['iterations'], data[param], 'o-', 
+                            label=f'Scan {scan_num}', markersize=4, alpha=0.7)
+            
+            ax.set_xlabel('Iterations')
+            ax.set_ylabel(param.capitalize())
+            ax.set_title(f'{param.capitalize()}')
+            ax.grid(True, alpha=0.3)
+            ax.legend()
+        
+        plt.tight_layout()
+        fig_path = os.path.join(geom_calibration_dir, f'affine_evolution_d{det_sample_dist_m}.png')
+        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+        print(f"Saved affine evolution plot to: {fig_path}")
+        
+        # Plot final parameter values
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        axes = axes.flatten()
+        
+        for idx, param in enumerate(params_to_plot):
+            ax = axes[idx]
+            final_affine_values = {scan_num: data[param][-1] 
+                                  for scan_num, data in affine_params.items() 
+                                  if param in data}
+            
+            if final_affine_values:
+                ax.plot(list(final_affine_values.keys()), list(final_affine_values.values()), 
+                        'o-', markersize=8)
+                
+                mean_val = np.mean(list(final_affine_values.values()))
+                std_val = np.std(list(final_affine_values.values()))
+                
+                ax.axhline(y=mean_val, color='r', linestyle='--', alpha=0.5)
+                ax.text(0.02, 0.98, f'Mean: {mean_val:.4f}\nStd: {std_val:.4f}', 
+                        transform=ax.transAxes, verticalalignment='top',
+                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+            ax.set_xlabel('Scan Number')
+            ax.set_ylabel(f'Final {param.capitalize()}')
+            ax.set_title(f'Final {param.capitalize()} for Each Scan')
+            ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        fig_path = os.path.join(geom_calibration_dir, f'affine_summary_d{det_sample_dist_m}.png')
+        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+        print(f"Saved affine summary plot to: {fig_path}")
+        
+        # Save calibration results
+        calibration_results = {
+            'params': {},
+            'calibrated_distance': det_sample_dist_m
+        }
+        
+        for param in params_to_plot:
+            final_values = [data[param][-1] for data in affine_params.values() if param in data]
+            if final_values:
+                calibration_results['params'][param] = {
+                    'mean': float(np.mean(final_values)),
+                    'std': float(np.std(final_values)),
+                    'min': float(np.min(final_values)),
+                    'max': float(np.max(final_values)),
+                    'values': {scan_num: float(data[param][-1]) 
+                              for scan_num, data in affine_params.items() if param in data}
+                }
+        
+        # Calculate calibrated distance for next run
+        old_distance = det_sample_dist_m
+        if 'scale' in calibration_results['params']:
+            mean_scale = calibration_results['params']['scale']['mean']
+            calibrated_distance = round(det_sample_dist_m / mean_scale, 4)
+            calibration_results['calibrated_distance'] = calibrated_distance
+            det_sample_dist_m = calibrated_distance
+            print(f"Calibrated distance: {det_sample_dist_m}m")
+        
+        # Save to file
+        calibration_file = os.path.join(geom_calibration_dir, f'calibration_results_d{old_distance}.json')
+        with open(calibration_file, 'w') as f:
+            json.dump(calibration_results, f, indent=4)
+        print(f"Saved calibration results to: {calibration_file}")

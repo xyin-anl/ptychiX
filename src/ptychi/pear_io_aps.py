@@ -361,6 +361,14 @@ def save_reconstructions(task, recon_path, iter, params):
         hdf_file.create_dataset('loss', data=loss)
         hdf_file.create_dataset('positions_px', data=scan_positions)
         hdf_file.create_dataset('obj_pixel_size_m', data=task.object_options.pixel_size_m)
+        if params['position_correction']:
+            pos_corr_group = hdf_file.create_group('pos_corr')
+            pos_corr_group.create_dataset('scale', data=pos_scale)
+            pos_corr_group.create_dataset('asymmetry', data=pos_assymetry)
+            pos_corr_group.create_dataset('rotation', data=pos_rotation)
+            pos_corr_group.create_dataset('shear', data=pos_shear)
+            pos_corr_group.create_dataset('iterations', data=iterations)
+            pos_corr_group.create_dataset('affine_matrix', data=mat.cpu().numpy())
         if recon_probe.shape[0] > 1:
             hdf_file.create_dataset('opr_mode_weights', data=opr_mode_weights)
         if recon_object_roi.shape[0] > 1:  # multislice recon
