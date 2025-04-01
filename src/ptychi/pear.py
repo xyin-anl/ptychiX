@@ -6,6 +6,7 @@ import os
 os.environ['HDF5_PLUGIN_PATH'] = '/mnt/micdata3/ptycho_tools/DectrisFileReader/HDF5Plugin'
 
 from .pear_utils import select_gpu
+from .pear_plot import plot_affine_evolution, plot_affine_summary
 import numpy as np
 
 import logging
@@ -763,58 +764,12 @@ ptycho_recon(run_recon=True, **params)
         print(f"Batch processing complete for run {i+1}.")
         
         # Plot parameter evolution
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        axes = axes.flatten()
-        
-        for idx, param in enumerate(params_to_plot):
-            ax = axes[idx]
-            for scan_num, data in affine_params.items():
-                if param in data:
-                    ax.plot(data['iterations'], data[param], 'o-', 
-                            label=f'Scan {scan_num}', markersize=4, alpha=0.7)
-            
-            ax.set_xlabel('Iterations')
-            ax.set_ylabel(param.capitalize())
-            ax.set_title(f'{param.capitalize()}')
-            ax.grid(True, alpha=0.3)
-            ax.legend()
-        
-        plt.tight_layout()
         fig_path = os.path.join(geom_calibration_dir, f'affine_evolution_d{det_sample_dist_m}.png')
-        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
-        print(f"Saved affine evolution plot to: {fig_path}")
+        plot_affine_evolution(affine_params, params_to_plot, fig_path)
         
         # Plot final parameter values
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        axes = axes.flatten()
-        
-        for idx, param in enumerate(params_to_plot):
-            ax = axes[idx]
-            final_affine_values = {scan_num: data[param][-1] 
-                                  for scan_num, data in affine_params.items() 
-                                  if param in data}
-            
-            if final_affine_values:
-                ax.plot(list(final_affine_values.keys()), list(final_affine_values.values()), 
-                        'o-', markersize=8)
-                
-                mean_val = np.mean(list(final_affine_values.values()))
-                std_val = np.std(list(final_affine_values.values()))
-                
-                ax.axhline(y=mean_val, color='r', linestyle='--', alpha=0.5)
-                ax.text(0.02, 0.98, f'Mean: {mean_val:.4f}\nStd: {std_val:.4f}', 
-                        transform=ax.transAxes, verticalalignment='top',
-                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-            
-            ax.set_xlabel('Scan Number')
-            ax.set_ylabel(f'Final {param.capitalize()}')
-            ax.set_title(f'Final {param.capitalize()} for Each Scan')
-            ax.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
         fig_path = os.path.join(geom_calibration_dir, f'affine_summary_d{det_sample_dist_m}.png')
-        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
-        print(f"Saved affine summary plot to: {fig_path}")
+        plot_affine_summary(affine_params, params_to_plot, fig_path)
         
         # Save calibration results
         calibration_results = {
@@ -848,3 +803,432 @@ ptycho_recon(run_recon=True, **params)
         with open(calibration_file, 'w') as f:
             json.dump(calibration_results, f, indent=4)
         print(f"Saved calibration results to: {calibration_file}")
+
+def ptycho_batch_recon_affine_calibration2(base_params):
+    """
+    Automatically calibrate the geometric parameters based on coarse reconstructions.
+    Run multiple reconstructions in parallel using different GPUs.
+    
+    Args:
+        base_params: Dictionary containing:
+            - gpu_ids: List of GPU IDs to use for parallel processing
+            - start_scan, end_scan: Range of scans to process
+            - det_sample_dist_m: Initial detector-sample distance
+            - Other standard reconstruction parameters
+    """
+    import subprocess
+    import sys
+    import json
+    import h5py
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import os
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # Get available GPU IDs
+    gpu_ids = base_params.get('gpu_id', [0])  # Default to GPU 0 if not specified
+    max_workers = len(gpu_ids)  # Number of parallel processes = number of GPUs
+    print(f"Using {max_workers} GPUs: {gpu_ids}")
+    
+    def run_single_reconstruction(scan_num, gpu_id, det_sample_dist_m):
+        """Run a single reconstruction on specified GPU"""
+        # Create scan-specific parameters
+        scan_params = base_params.copy()
+        scan_params['scan_num'] = scan_num
+        scan_params['det_sample_dist_m'] = det_sample_dist_m
+        scan_params['recon_dir_suffix'] = f'd{det_sample_dist_m}'
+        scan_params['gpu_id'] = gpu_id  # Specify a single GPU to use
+        
+        print(f"\033[91mStarting reconstruction for scan {scan_num} on GPU {gpu_id}\033[0m")
+        
+        # Create temporary files
+        params_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_gpu{gpu_id}_params.json")
+        script_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_gpu{gpu_id}_script.py")
+        
+        try:
+            # Save parameters to JSON
+            with open(params_path, 'w') as params_file:
+                json_compatible_params = {
+                    key: value.tolist() if isinstance(value, np.ndarray) else value 
+                    for key, value in scan_params.items()
+                }
+                json.dump(json_compatible_params, params_file, indent=2)
+            
+            # Create Python script for subprocess
+            script_content = f"""
+import json
+import sys
+import os
+import numpy as np
+from pathlib import Path
+
+# Add the parent directory to path so imports work correctly
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from ptychi.pear import ptycho_recon
+
+# Load parameters 
+with open('{params_path}', 'r') as f:
+    params = json.load(f)
+
+# Convert lists back to NumPy arrays where needed
+for key, value in params.items():
+    if isinstance(value, list) and key in ['scan_positions', 'positions']:
+        params[key] = np.array(value)
+
+# Run reconstruction
+ptycho_recon(run_recon=True, **params)
+"""
+            with open(script_path, 'w') as script_file:
+                script_file.write(script_content)
+            
+            # Run subprocess
+            process = subprocess.Popen(
+                [sys.executable, script_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            
+            recon_path = None
+            last_print_time = time.time()
+            output_buffer = []
+            
+            # Stream output in real-time with GPU identifier
+            for line in iter(process.stdout.readline, ''):
+                output_buffer.append(line)
+                if "Reconstruction results will be saved in:" in line:
+                    recon_path = line.split("Reconstruction results will be saved in:")[1].strip()
+                
+                # Print the most recent line every 5 seconds
+                current_time = time.time()
+                if current_time - last_print_time > 5:
+                    if output_buffer:
+                        print(f"[Scan {scan_num}, GPU {gpu_id}] {output_buffer[-1]}", end='')
+                    output_buffer = []
+                    last_print_time = current_time
+            
+            # Print any remaining output
+            # if output_buffer:
+            #     print(f"[Scan {scan_num}, GPU {gpu_id}] {output_buffer[-1]}", end='')
+            
+            # Wait for process to complete
+            return_code = process.wait()
+            if return_code != 0:
+                raise subprocess.CalledProcessError(return_code, f"{sys.executable} {script_path}")
+                
+            return recon_path, scan_num
+            
+        finally:
+            # Clean up temporary files
+            for path in [params_path, script_path]:
+                if os.path.exists(path):
+                    os.unlink(path)
+            
+            # Ensure GPU memory is cleaned up
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    
+    N_runs = 2
+    params_to_plot = ['scale', 'asymmetry', 'rotation', 'shear']
+    affine_params = {}
+    
+    # Setup directories
+    geom_calibration_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 
+                                       base_params['recon_parent_dir'], 'geom_calibration')
+    temp_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 'temp_files')
+    os.makedirs(geom_calibration_dir, exist_ok=True)
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    # Extract parameters
+    start_scan = base_params.get('start_scan')
+    end_scan = base_params.get('end_scan')
+    scan_list = list(range(start_scan, end_scan + 1))
+    det_sample_dist_m = base_params['det_sample_dist_m']
+    
+    for i in range(N_runs):
+        print(f"\033[94mCalibration run {i+1}/{N_runs} with distance {det_sample_dist_m}m\033[0m")
+        
+        # Run reconstructions in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Create tasks for each scan, cycling through available GPUs
+            futures = []
+            for idx, scan_num in enumerate(scan_list):
+                gpu_id = gpu_ids[idx % len(gpu_ids)]
+                future = executor.submit(run_single_reconstruction, scan_num, gpu_id, det_sample_dist_m)
+                futures.append((future, scan_num))
+            
+            # Collect results as they complete
+            for future, scan_num in futures:
+                try:
+                    recon_path, _ = future.result()
+                    
+                    # Extract affine parameters from reconstruction file
+                    try:
+                        h5_path = f'{recon_path}/recon_Niter{base_params["number_of_iterations"]}.h5'
+                        with h5py.File(h5_path, 'r') as f:
+                            if 'pos_corr' in f:
+                                affine_params_temp = {}
+                                for var in params_to_plot + ['iterations']:
+                                    if var in f['pos_corr']:
+                                        affine_params_temp[var] = f[f'/pos_corr/{var}'][:]
+                                
+                                if affine_params_temp:
+                                    affine_params[scan_num] = affine_params_temp
+                                    print(f"Scan {scan_num}: Position correction data loaded")
+                    except Exception as e:
+                        print(f"Error reading HDF5 file for scan {scan_num}: {str(e)}")
+                        
+                except Exception as e:
+                    print(f"Error processing scan {scan_num}: {str(e)}")
+        
+        print(f"Batch processing complete for run {i+1}.")
+        
+        # Plot parameter evolution
+        fig_path = os.path.join(geom_calibration_dir, f'affine_evolution_d{det_sample_dist_m}.png')
+        plot_affine_evolution(affine_params, params_to_plot, fig_path)
+        
+        # Plot final parameter values
+        fig_path = os.path.join(geom_calibration_dir, f'affine_summary_d{det_sample_dist_m}.png')
+        plot_affine_summary(affine_params, params_to_plot, fig_path)
+        
+        # Save calibration results
+        calibration_results = {
+            'params': {},
+            'calibrated_distance': det_sample_dist_m
+        }
+        
+        for param in params_to_plot:
+            final_values = [data[param][-1] for data in affine_params.values() if param in data]
+            if final_values:
+                calibration_results['params'][param] = {
+                    'mean': float(np.mean(final_values)),
+                    'std': float(np.std(final_values)),
+                    'min': float(np.min(final_values)),
+                    'max': float(np.max(final_values)),
+                    'values': {scan_num: float(data[param][-1]) 
+                              for scan_num, data in affine_params.items() if param in data}
+                }
+        
+        # Calculate calibrated distance for next run
+        old_distance = det_sample_dist_m
+        if 'scale' in calibration_results['params']:
+            mean_scale = calibration_results['params']['scale']['mean']
+            calibrated_distance = round(det_sample_dist_m / mean_scale, 4)
+            calibration_results['calibrated_distance'] = calibrated_distance
+            det_sample_dist_m = calibrated_distance
+            print(f"Calibrated distance: {det_sample_dist_m}m")
+        
+        # Save to file
+        calibration_file = os.path.join(geom_calibration_dir, f'calibration_results_d{old_distance}.json')
+        with open(calibration_file, 'w') as f:
+            json.dump(calibration_results, f, indent=4)
+        print(f"Saved calibration results to: {calibration_file}")
+
+def ptycho_batch_recon2(base_params):
+    """
+    Process multiple ptychography scans in parallel with automatic error handling and status tracking.
+    
+    Args:
+        base_params: Dictionary of parameters to use as a template for all scans
+            start_scan: First scan number to process
+            end_scan: Last scan number to process (inclusive)
+            log_dir_suffix: Optional suffix for the log directory
+            scan_order: Order to process the scans ('ascending', 'descending', or 'random')
+            exclude_scans: List of scan numbers to exclude from processing
+            overwrite_ongoing: Whether to overwrite scans marked as ongoing
+            max_workers: Maximum number of parallel processes (default: number of available GPUs)
+            gpu_ids: List of GPU IDs to use (default: [0])
+            print_interval: Interval to print the most recent line (default: 5 seconds)
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # Extract parameters
+    start_scan = base_params.get('start_scan')
+    end_scan = base_params.get('end_scan')
+    log_dir_suffix = base_params.get('log_dir_suffix', '')
+    scan_order = base_params.get('scan_order', 'ascending')
+    exclude_scans = base_params.get('exclude_scans', [])
+    overwrite_ongoing = base_params.get('overwrite_ongoing', False)
+    gpu_ids = base_params.get('gpu_ids', [0])
+    max_workers = base_params.get('max_workers', len(gpu_ids))
+    print_interval = base_params.get('print_interval', 5)
+
+    log_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 
+                          base_params['recon_parent_dir'], 
+                          f'recon_logs_{log_dir_suffix}' if log_dir_suffix else 'recon_logs')
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Create tracker
+    tracker = FileBasedTracker(log_dir, overwrite_ongoing=overwrite_ongoing)
+    
+    def run_single_reconstruction(scan_num, gpu_id):
+        """Run a single reconstruction on specified GPU"""
+        import subprocess
+        import sys
+        import json
+        import time
+        import uuid
+        worker_id = f"worker_{os.getpid()}_{uuid.uuid4().hex[:8]}"
+        
+        # Create scan-specific parameters
+        scan_params = base_params.copy()
+        scan_params['scan_num'] = scan_num
+        scan_params['gpu_id'] = gpu_id
+        
+        # Check status using tracker
+        status = tracker.get_status(scan_num)
+        if status == 'done':
+            print(f"Scan {scan_num} already completed, skipping reconstruction")
+            return 'success', scan_num, None
+        if status == 'ongoing' and not overwrite_ongoing:
+            print(f"Scan {scan_num} already ongoing, skipping reconstruction")
+            return 'ongoing', scan_num, None
+        
+        # Try to start reconstruction
+        if not tracker.start_recon(scan_num, worker_id, scan_params):
+            print(f"Could not acquire lock for scan {scan_num}, skipping")
+            return 'locked', scan_num, None
+        
+        print(f"\033[91mStarting reconstruction for scan {scan_num} on GPU {gpu_id}\033[0m")
+        start_time = time.time()
+        
+        try:
+            # Create temp directory and files
+            temp_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 'temp_files')
+            os.makedirs(temp_dir, exist_ok=True)
+            params_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_gpu{gpu_id}_params.json")
+            script_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_gpu{gpu_id}_script.py")
+            
+            # Save parameters to JSON
+            with open(params_path, 'w') as params_file:
+                json_compatible_params = {
+                    key: value.tolist() if isinstance(value, np.ndarray) else value 
+                    for key, value in scan_params.items()
+                }
+                json.dump(json_compatible_params, params_file, indent=2)
+            
+            # Create reconstruction script
+            script_content = f"""
+import json
+import sys
+import os
+import numpy as np
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from ptychi.pear import ptycho_recon
+
+with open('{params_path}', 'r') as f:
+    params = json.load(f)
+
+# Convert lists back to NumPy arrays
+for key, value in params.items():
+    if isinstance(value, list) and key in ['scan_positions', 'positions']:
+        params[key] = np.array(value)
+
+ptycho_recon(run_recon=True, **params)
+"""
+            with open(script_path, 'w') as script_file:
+                script_file.write(script_content)
+            
+            # Run reconstruction subprocess
+            process = subprocess.Popen(
+                [sys.executable, script_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+
+            last_print_time = time.time()
+            output_buffer = []
+            
+            # Stream output in real-time with GPU identifier
+            for line in iter(process.stdout.readline, ''):
+                output_buffer.append(line)
+                    
+                # Print the most recent line
+                current_time = time.time()
+                if current_time - last_print_time > print_interval:
+                    if output_buffer:
+                        print(f"[Scan {scan_num} - GPU {gpu_id}] {output_buffer[-1]}", end='')
+                    output_buffer = []
+                    last_print_time = current_time
+            
+            return_code = process.wait()
+            if return_code != 0:
+                raise subprocess.CalledProcessError(return_code, f"{sys.executable} {script_path}")
+            
+            elapsed_time = time.time() - start_time
+            print(f"Scan {scan_num} completed successfully in {elapsed_time:.2f} seconds")
+            tracker.complete_recon(scan_num, success=True)
+            return 'success', scan_num, None
+            
+        except Exception as e:
+            elapsed_time = time.time() - start_time
+            error_message = str(e)
+            print(f"Scan {scan_num} failed after {elapsed_time:.2f} seconds with error: {error_message}")
+            tracker.complete_recon(scan_num, success=False, error=error_message)
+            return 'failed', scan_num, error_message
+            
+        finally:
+            # Clean up temporary files
+            for path in [params_path, script_path]:
+                if os.path.exists(path):
+                    os.unlink(path)
+            
+            # Ensure GPU memory is cleaned up
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    
+    # Generate scan list based on order
+    if scan_order == 'ascending':
+        scan_list = list(range(start_scan, end_scan + 1))
+    elif scan_order == 'descending':
+        scan_list = list(range(end_scan, start_scan - 1, -1))
+    elif scan_order == 'random':
+        import random
+        scan_list = list(range(start_scan, end_scan + 1))
+        random.shuffle(scan_list)
+    
+    scan_list = [scan for scan in scan_list if scan not in exclude_scans]
+    
+    # Process scans in parallel
+    successful_scans = []
+    failed_scans = []
+    ongoing_scans = []
+    
+    print(f"Processing {len(scan_list)} scans using {max_workers} workers on GPUs: {gpu_ids}")
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit tasks for each scan, cycling through available GPUs
+        futures = []
+        for idx, scan_num in enumerate(scan_list):
+            gpu_id = gpu_ids[idx % len(gpu_ids)]
+            future = executor.submit(run_single_reconstruction, scan_num, gpu_id)
+            futures.append(future)
+        
+        # Collect results as they complete
+        for future in futures:
+            status, scan_num, error = future.result()
+            if status == 'success':
+                successful_scans.append(scan_num)
+            elif status == 'failed':
+                failed_scans.append((scan_num, error))
+            elif status == 'ongoing':
+                ongoing_scans.append(scan_num)
+    
+    # Print summary
+    print(f"\nProcessing complete:")
+    print(f"Successfully processed scans: {successful_scans}")
+    print(f"Number of completed scans: {len(successful_scans)}/{end_scan - start_scan + 1}")
+    print(f"Number of failed scans: {len(failed_scans)}")
+    print(f"Number of ongoing scans: {len(ongoing_scans)}")
+    
+    if failed_scans:
+        print("\nFailed scans and errors:")
+        for scan_num, error in failed_scans:
+            print(f"Scan {scan_num}: {error}")

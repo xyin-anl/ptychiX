@@ -3,6 +3,7 @@ import re
 import numpy as np
 import glob
 import os
+import matplotlib.pyplot as plt
 
 def select_gpu(params):
     # Get GPU stats
@@ -366,4 +367,3 @@ def find_matching_recon(path, scan_num):
         return matching_files[0]
     else:
         raise FileNotFoundError(f"No matching reconstruction file found for pattern: {formatted_path}")
-
