@@ -305,14 +305,14 @@ class DMReconstructor(AnalyticalIterativePtychographyReconstructor):
 
             object_numerator = ip.place_patches_integer(
                 object_numerator,
-                positions[start_pts[i] : end_pts[i]].round().int() + object_.center_pixel,
+                positions[start_pts[i] : end_pts[i]].round().int() + object_.pos_origin_coords,
                 patches=(p.conj() * self.psi[start_pts[i] : end_pts[i]]).sum(1),
                 op="add",
             )
 
             object_denominator = ip.place_patches_integer(
                 object_denominator,
-                positions[start_pts[i] : end_pts[i]].round().int() + object_.center_pixel,
+                positions[start_pts[i] : end_pts[i]].round().int() + object_.pos_origin_coords,
                 patches=(p.abs() ** 2).sum(1),
                 op="add",
             )

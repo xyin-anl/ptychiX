@@ -2,17 +2,21 @@ from typing import Optional, Union, TYPE_CHECKING, Sequence
 import dataclasses
 from dataclasses import field
 import logging
-from math import inf
+from math import inf, ceil
 
 from numpy import ndarray
 from torch import Tensor
+import torch
+import numpy as np
 
 import ptychi.api.enums as enums
 from ptychi.api.options.plan import OptimizationPlan
 
 if TYPE_CHECKING:
     import ptychi.api.options.task as task_options
-    
+    from ptychi.api.options.task import PtychographyTaskOptions
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -218,7 +222,33 @@ class RemoveObjectProbeAmbiguityOptions(FeatureOptions):
     enabled: bool = True
 
     optimization_plan: OptimizationPlan = dataclasses.field(default_factory=lambda: OptimizationPlan(stride=10))
-
+    
+    
+@dataclasses.dataclass
+class SliceSpacingOptions(ParameterOptions):
+    
+    optimizable: bool = False
+    """Whether the slice spacings are optimizable."""
+    
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+    
+    optimizer: enums.Optimizers = enums.Optimizers.SGD
+    """The optimizer to use for optimizing the slice spacings."""
+    
+    step_size: float = 1e-10
+    """The step size for the optimizer. As a recommendation, start with 1e-10 for SGD
+    optimizer, and 1e-7 for ADAM optimizer.
+    """
+    
+    def check(self, options: "task_options.PtychographyTaskOptions"):
+        super().check(options)
+        
+        if (self.optimizable 
+            and options.reconstructor_options.get_reconstructor_type() != enums.Reconstructors.AD_PTYCHO
+        ):
+            raise ValueError("Slice spacing optimization is only supported for AD Ptychography.")
+    
+    
 
 @dataclasses.dataclass
 class ObjectOptions(ParameterOptions):
@@ -226,7 +256,13 @@ class ObjectOptions(ParameterOptions):
     """A (h, w) complex tensor of the object initial guess."""
 
     slice_spacings_m: Optional[ndarray] = None
-    """Slice spacing in meters. This should be provided if the object is multislice."""
+    """Slice spacings in meters. This should be provided if the object is multislice.
+    
+    If the slice spacings need to be optimized, set `slice_spacing_options.optimizable` to `True`.
+    In that case, the slice spacings provided here are supposed to be the initial guess.
+    """
+    
+    slice_spacing_options: SliceSpacingOptions = field(default_factory=SliceSpacingOptions)
 
     pixel_size_m: float = 1.0
     """The pixel size in meters."""
@@ -276,11 +312,105 @@ class ObjectOptions(ParameterOptions):
     if the selected reconstructor uses preconditioner to regularize object updates.
     However, it might lead to slower convergence speed.
     """
+    
+    determine_position_origin_coords_by: enums.ObjectPosOriginCoordsMethods = enums.ObjectPosOriginCoordsMethods.SUPPORT
+    """The method to determine the pixel coordinates of the object that corresponds 
+    to the origin of the probe positions. 
+    
+    Probe positions are given as a list of coordinates that can be either positive
+    or negative and have arbitrary offsets, while the object buffer is a discrete
+    tensor where the pixel indices are 0-based and the origin is at the top left corner.
+    The position origin coordinates are used to determine how the given probe positions
+    are mapped to the object buffer: the origin of the probe positions (0, 0) is mapped
+    to the pixel indices given by the position origin coordinates, and as such, the
+    pixel indices of all probe positions are calculated as
+    ```
+    positions_pxind = positions + position_origin_coords
+    ```
+    
+    - `POSITIONS`: the origin coordinates are determined as 
+      `buffer_center - (positions.max() + positions.min()) / 2`. This puts the mid-point
+      of the position range at the center of the buffer. It is more adaptive; however,
+      in the case that one initializes a reconstruction with a previously reconstructed object
+      and corrected probe positions, the center coordinates are not necessarily the same, 
+      which can cause the positions to mismatch between both reconstructions. 
+      
+    - `SUPPORT`: the origin coordinates are determined as the center of the support of the 
+      object. This is helpful to keep the center coordinates consistent between consecutive
+      reconstructions, but the probe positions given should (at least approximately) zero-centered,
+      i.e., `-postitions.min() ~ positions.max()` to prevent out-of-bound errors.
+      
+    - `SPECIFIED`: the origin coordinates are specified by the user. To make this setting effective,
+      `position_origin_coords` should be specified.
+    """
+    
+    position_origin_coords: Optional[ndarray] = None
+    """The user-specified origin coordinates of the object. To make this setting effective,
+    `determine_position_origin_coords_by` should be set to `SPECIFIED`. 
+    
+    Probe positions are given as a list of coordinates that can be either positive
+    or negative and have arbitrary offsets, while the object buffer is a discrete
+    tensor where the pixel indices are 0-based and the origin is at the top left corner.
+    The position origin coordinates are used to determine how the given probe positions
+    are mapped to the object buffer: the origin of the probe positions (0, 0) is mapped
+    to the pixel indices given by the position origin coordinates, and as such, the
+    pixel indices of all probe positions are calculated as
+    ```
+    positions_pxind = positions + position_origin_coords
+    ```
+    """
 
     def get_non_data_fields(self) -> dict:
         d = super().get_non_data_fields()
         del d["initial_guess"]
         return d
+    
+    def check(self, options: "PtychographyTaskOptions"):
+        super().check(options)
+        pos_y = options.probe_position_options.position_y_px
+        pos_x = options.probe_position_options.position_x_px
+        probe_shape = options.probe_options.initial_guess.shape[-2:]
+        obj_shape = options.object_options.initial_guess.shape[-2:]
+        min_size = [
+            int(ceil((pos_y.max() - pos_y.min() + probe_shape[-2]).item())) + 2,
+            int(ceil((pos_x.max() - pos_x.min() + probe_shape[-1]).item())) + 2,
+        ]
+        if any([min_size[i] > obj_shape[i] for i in range(2)]):
+            logging.warning(
+                f"An object tensor with a lateral size of at least {min_size} is "
+                "required to avoid padding when extracting/placing patches, but the provided "
+                f"object size is {list(options.object_options.initial_guess.shape[-2:])}."
+            )
+        if self.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.SUPPORT:
+            buffer_center = torch.tensor(
+                [np.round(x / 2) + 0.5 for x in obj_shape]
+            )
+            if (
+                pos_y.max() + buffer_center[0] + probe_shape[-2] // 2 > obj_shape[-2]
+                or pos_y.min() + buffer_center[0] - probe_shape[-2] // 2 < 0
+                or pos_x.max() + buffer_center[1] + probe_shape[-1] // 2 > obj_shape[-1]
+                or pos_x.min() + buffer_center[1] - probe_shape[-1] // 2 < 0
+            ):
+                logging.warning(
+                    "`object_options.determine_center_coords_by` is set to `SUPPORT`. This assumes "
+                    "that the probe positions are approximately zero-centered, i.e., "
+                    "`-pos_y.min() ~ pos_y.max()` and `-pos_x.min() ~ pos_x.max()`. "
+                    "However, the given probe positions will cause the reconstructor to access pixels "
+                    "out of the object support. Please provide probe positions that are approximately "
+                    "zero-centered, or set `object_options.determine_center_coords_by` to `POSITIONS`."
+                )
+        if self.determine_position_origin_coords_by == enums.ObjectPosOriginCoordsMethods.SPECIFIED:
+            if self.position_origin_coords is None:
+                raise ValueError("`object_options.center_coords` should be specified when "
+                                 "`object_options.determine_center_coords_by` is set to "
+                                 "`SPECIFIED`.")
+        if self.position_origin_coords is not None:
+            if self.determine_position_origin_coords_by != enums.ObjectPosOriginCoordsMethods.SPECIFIED:
+                logging.warning(
+                    "`object_options.center_coords` will be disregarded when "
+                    "`object_options.determine_center_coords_by` is not set to "
+                    "`SPECIFIED`."
+                )
 
 
 @dataclasses.dataclass

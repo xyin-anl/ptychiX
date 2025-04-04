@@ -122,7 +122,7 @@ class ProbePositions(dsbase.ReconstructParameter):
             illumination_map = ip.gaussian_filter(illumination_map, sigma=np.mean(probe.shape[-2:]) * 0.1)
             illum_patches = ip.extract_patches_integer(
                 object_.preconditioner, 
-                self.data[ind_st:ind_end] + object_.center_pixel,
+                self.data[ind_st:ind_end] + object_.pos_origin_coords,
                 half_probe_shape
             )
             

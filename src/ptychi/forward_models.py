@@ -233,7 +233,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             height_px=self.probe.shape[-2],
             pixel_width_m=self.object.pixel_size_m,
             pixel_height_m=self.object.pixel_size_m,
-            propagation_distance_m=self.object.slice_spacings_m[0],
+            propagation_distance_m=self.object.slice_spacings.data[0],
         )
         self.in_object_propagator = AngularSpectrumPropagator(self.in_object_prop_params)
         
@@ -425,7 +425,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
     def propagate_to_next_slice(self, psi: Tensor, slice_index: int):
         """
         Propagate wavefield to the next slice by the distance given by
-        `self.object.slice_spacing_m[slice_index]`.
+        `self.object.slice_spacings.data[slice_index]`.
 
         Parameters
         ----------
@@ -446,7 +446,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             height_px=self.probe.shape[-2],
             pixel_width_m=self.object.pixel_size_m,
             pixel_height_m=self.object.pixel_size_m,
-            propagation_distance_m=self.object.slice_spacings_m[slice_index],
+            propagation_distance_m=self.object.slice_spacings.data[slice_index],
         )
         self.in_object_propagator.update(self.in_object_prop_params)
         slice_psi_prop = self.in_object_propagator.propagate_forward(psi)
@@ -456,7 +456,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
     def propagate_to_previous_slice(self, psi: Tensor, slice_index: int):
         """
         Propagate wavefield to the previous slice by the distance given by
-        `self.object.slice_spacing_m[slice_index - 1]`.
+        `self.object.slice_spacings.data[slice_index - 1]`.
 
         Parameters
         ----------
@@ -479,7 +479,7 @@ class PlanarPtychographyForwardModel(ForwardModel):
             height_px=self.probe.shape[-2],
             pixel_width_m=self.object.pixel_size_m,
             pixel_height_m=self.object.pixel_size_m,
-            propagation_distance_m=self.object.slice_spacings_m[slice_index - 1],
+            propagation_distance_m=self.object.slice_spacings.data[slice_index - 1],
         )
         self.in_object_propagator.update(self.in_object_prop_params)
         slice_psi_prop = self.in_object_propagator.propagate_backward(psi)

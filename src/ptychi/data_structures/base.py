@@ -137,6 +137,8 @@ class ReconstructParameter(Module):
             {"lr": self.options.step_size}, **self.options.optimizer_params
         )
         self.optimizer = None
+        
+        self.optimizable_sub_modules = []
 
         self.is_complex = is_complex
         self.preconditioner = None
@@ -182,6 +184,10 @@ class ReconstructParameter(Module):
             return self.tensor.complex()
         else:
             return self.tensor.clone()
+        
+    def register_optimizable_sub_module(self, sub_module):
+        if sub_module.optimizable and sub_module not in self.optimizable_sub_modules:
+            self.optimizable_sub_modules.append(sub_module)
 
     def build_optimizer(self):
         if self.optimizable and self.optimizer_class is None:

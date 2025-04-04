@@ -877,7 +877,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         if positions is not None:
             delta_o_patches = ip.extract_patches_integer(
                 delta_o_hat,
-                positions.round().int() + self.parameter_group.object.center_pixel,
+                positions.round().int() + self.parameter_group.object.pos_origin_coords,
                 self.parameter_group.probe.shape[-2:],
             )
 

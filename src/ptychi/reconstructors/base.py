@@ -191,6 +191,9 @@ class PtychographyReconstructor(Reconstructor):
     ) -> None:
         super().__init__(parameter_group, options=options, *args, **kwargs)
         
+        self.parameter_group.object.update_pos_origin_coordinates(
+            self.parameter_group.probe_positions.data
+        )
         self.parameter_group.object.build_roi_bounding_box(
             self.parameter_group.probe_positions
         )

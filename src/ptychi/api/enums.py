@@ -36,6 +36,7 @@ class Reconstructors(StrEnum):
     EPIE = auto()
     RPIE = auto()
     DM = auto()
+    BH = auto()
 
 
 class PositionCorrectionTypes(StrEnum):
@@ -108,3 +109,9 @@ class AffineDegreesOfFreedom(StrEnum):
 class DIPModels(StrEnum):
     UNET = auto()
     AUTOENCODER = auto()
+
+
+class ObjectPosOriginCoordsMethods(StrEnum):
+    POSITIONS = auto()
+    SUPPORT = auto()
+    SPECIFIED = auto()
