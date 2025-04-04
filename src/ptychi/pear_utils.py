@@ -4,8 +4,13 @@ import numpy as np
 import glob
 import os
 import matplotlib.pyplot as plt
+import json
+import tempfile
+import shutil
+import fcntl
+from datetime import datetime
 
-def select_gpu(params):
+def select_gpu(gpu_list=None):
     # Get GPU stats
     gpu_stats = get_gpu_usage()
 
@@ -13,6 +18,13 @@ def select_gpu(params):
         # Default to GPU 0 if can't get stats
         return 0
     else:
+        # Filter GPUs based on gpu_list if provided
+        if gpu_list is not None:
+            gpu_stats = [gpu for gpu in gpu_stats if gpu['index'] in gpu_list]
+            if not gpu_stats:
+                print(f"No GPUs from the provided list {gpu_list} are available. Defaulting to GPU 0.")
+                return 0
+        
         # Find GPU with 0% utilization and lowest memory usage
         zero_util_gpus = [gpu for gpu in gpu_stats if gpu['utilization'] == 0]
         
@@ -367,3 +379,180 @@ def find_matching_recon(path, scan_num):
         return matching_files[0]
     else:
         raise FileNotFoundError(f"No matching reconstruction file found for pattern: {formatted_path}")
+
+def generate_scan_list(start_scan, end_scan, scan_order='ascending', exclude_scans=None):
+    """Generate a list of scan numbers based on the specified order and exclusions."""
+    """Used for batch reconstruction"""
+    
+    if exclude_scans is None:
+        exclude_scans = []
+        
+    if scan_order == 'ascending':
+        scan_list = list(range(start_scan, end_scan + 1))
+    elif scan_order == 'descending':
+        scan_list = list(range(end_scan, start_scan - 1, -1))
+    elif scan_order == 'random':
+        import random
+        scan_list = list(range(start_scan, end_scan + 1))
+        random.shuffle(scan_list)
+    else:
+        raise ValueError(f"Invalid scan_order: {scan_order}. Must be 'ascending', 'descending', or 'random'.")
+    
+    return [scan for scan in scan_list if scan not in exclude_scans]
+
+class FileBasedTracker:
+    def __init__(self, base_dir, overwrite_ongoing=False):
+        """Initialize the tracker with a base directory for status files."""
+        self.base_dir = base_dir
+        self.status_dir = os.path.join(base_dir, 'status')
+        self.lock_dir = os.path.join(base_dir, 'locks')
+        self.overwrite_ongoing = overwrite_ongoing
+        
+        # Create directories if they don't exist
+        os.makedirs(self.status_dir, exist_ok=True)
+        os.makedirs(self.lock_dir, exist_ok=True)
+    
+    def _get_status_file(self, scan_id):
+        """Get the path to the status file for a scan."""
+        return os.path.join(self.status_dir, f"scan_{scan_id:04d}.json")
+    
+    def _get_lock_file(self, scan_id):
+        """Get the path to the lock file for a scan."""
+        return os.path.join(self.lock_dir, f"scan_{scan_id:04d}.lock")
+    
+    def get_status(self, scan_id):
+        """Get the current status of a scan."""
+        status_file = self._get_status_file(scan_id)
+        
+        if not os.path.exists(status_file):
+            return None
+        
+        try:
+            with open(status_file, 'r') as f:
+                data = json.load(f)
+                return data.get('status')
+        except (json.JSONDecodeError, FileNotFoundError):
+            return None
+    
+    def start_recon(self, scan_id, worker_id, params):
+        """
+        Try to start a reconstruction for a scan.
+        Returns True if successful, False if already in progress or completed.
+        """
+        lock_file = self._get_lock_file(scan_id)
+        status_file = self._get_status_file(scan_id)
+        
+        # Create or open the lock file
+        try:
+            lock_fd = open(lock_file, 'w')
+            # Try to acquire an exclusive, non-blocking lock
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, BlockingIOError):
+            # Another process has the lock
+            return False
+        
+        try:
+            # Check if status file exists and scan is already done or in progress
+            if os.path.exists(status_file):
+                try:
+                    with open(status_file, 'r') as f:
+                        data = json.load(f)
+                        if data.get('status') =='done':
+                            return False
+                        if data.get('status') == 'ongoing' and not self.overwrite_ongoing:
+                            return False
+                except (json.JSONDecodeError, FileNotFoundError):
+                    # Corrupted or missing status file, we can proceed
+                    pass
+            
+            # Create a temporary file first to avoid partial writes
+            temp_file = tempfile.NamedTemporaryFile(
+                mode='w', 
+                dir=self.status_dir,
+                delete=False
+            )
+            
+            # Prepare status data
+            status_data = {
+                'status': 'ongoing',
+                'scan_id': scan_id,
+                'worker_id': worker_id,
+                'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                # No params included as requested
+            }
+            
+            # Write to temporary file
+            json.dump(status_data, temp_file)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+            temp_file.close()
+            
+            # Atomically move the temporary file to the final location
+            shutil.move(temp_file.name, status_file)
+            
+            return True
+            
+        finally:
+            # Release the lock
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
+    
+    def complete_recon(self, scan_id, success=True, error=None):
+        """Mark a reconstruction as completed or failed."""
+        lock_file = self._get_lock_file(scan_id)
+        status_file = self._get_status_file(scan_id)
+        
+        # Acquire lock
+        with open(lock_file, 'w') as lock_fd:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            
+            try:
+                # Read current status
+                if os.path.exists(status_file):
+                    with open(status_file, 'r') as f:
+                        status_data = json.load(f)
+                else:
+                    # Create new status data if file doesn't exist
+                    status_data = {
+                        'scan_id': scan_id,
+                        'start_time': 'unknown'
+                    }
+                
+                # Update status
+                status_data['status'] = 'done' if success else 'failed'
+                status_data['end_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                if error:
+                    status_data['error'] = str(error)
+                
+                # Write to temporary file first
+                temp_file = tempfile.NamedTemporaryFile(
+                    mode='w', 
+                    dir=self.status_dir,
+                    delete=False
+                )
+                
+                # Write status data line by line
+                temp_file.write("{\n")
+                for i, (key, value) in enumerate(status_data.items()):
+                    if isinstance(value, str):
+                        temp_file.write(f'    "{key}": "{value}"')
+                    else:
+                        # Convert the value to JSON format
+                        json_value = json.dumps(value)
+                        # Write the key-value pair with proper formatting
+                        temp_file.write(f'    "{key}": {json_value}')
+                    
+                    if i < len(status_data) - 1:
+                        temp_file.write(",\n")
+                    else:
+                        temp_file.write("\n")
+                temp_file.write("}\n")
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+                temp_file.close()
+                
+                # Atomically move the temporary file to the final location
+                shutil.move(temp_file.name, status_file)
+                
+            except Exception as e:
+                print(f"Error updating status for scan {scan_id}: {str(e)}")

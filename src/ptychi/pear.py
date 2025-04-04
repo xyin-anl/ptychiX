@@ -5,13 +5,12 @@ from ptychi.utils import (set_default_complex_dtype,
 import os
 os.environ['HDF5_PLUGIN_PATH'] = '/mnt/micdata3/ptycho_tools/DectrisFileReader/HDF5Plugin'
 
-from .pear_utils import select_gpu
+from .pear_utils import select_gpu, generate_scan_list, FileBasedTracker
 from .pear_plot import plot_affine_evolution, plot_affine_summary
 import numpy as np
 
 import logging
 logging.basicConfig(level=logging.ERROR)
-import traceback
 import time
 from datetime import datetime  # Correct import for datetime.now()
 import uuid
@@ -269,163 +268,6 @@ def ptycho_recon(run_recon=True, **params):
         # Allow time for complete cleanup
         #time.sleep(5)
 
-class FileBasedTracker:
-    def __init__(self, base_dir, overwrite_ongoing=False):
-        """Initialize the tracker with a base directory for status files."""
-        self.base_dir = base_dir
-        self.status_dir = os.path.join(base_dir, 'status')
-        self.lock_dir = os.path.join(base_dir, 'locks')
-        self.overwrite_ongoing = overwrite_ongoing
-        
-        # Create directories if they don't exist
-        os.makedirs(self.status_dir, exist_ok=True)
-        os.makedirs(self.lock_dir, exist_ok=True)
-    
-    def _get_status_file(self, scan_id):
-        """Get the path to the status file for a scan."""
-        return os.path.join(self.status_dir, f"scan_{scan_id:04d}.json")
-    
-    def _get_lock_file(self, scan_id):
-        """Get the path to the lock file for a scan."""
-        return os.path.join(self.lock_dir, f"scan_{scan_id:04d}.lock")
-    
-    def get_status(self, scan_id):
-        """Get the current status of a scan."""
-        status_file = self._get_status_file(scan_id)
-        
-        if not os.path.exists(status_file):
-            return None
-        
-        try:
-            with open(status_file, 'r') as f:
-                data = json.load(f)
-                return data.get('status')
-        except (json.JSONDecodeError, FileNotFoundError):
-            return None
-    
-    def start_recon(self, scan_id, worker_id, params):
-        """
-        Try to start a reconstruction for a scan.
-        Returns True if successful, False if already in progress or completed.
-        """
-        lock_file = self._get_lock_file(scan_id)
-        status_file = self._get_status_file(scan_id)
-        
-        # Create or open the lock file
-        try:
-            lock_fd = open(lock_file, 'w')
-            # Try to acquire an exclusive, non-blocking lock
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (IOError, BlockingIOError):
-            # Another process has the lock
-            return False
-        
-        try:
-            # Check if status file exists and scan is already done or in progress
-            if os.path.exists(status_file):
-                try:
-                    with open(status_file, 'r') as f:
-                        data = json.load(f)
-                        if data.get('status') =='done':
-                            return False
-                        if data.get('status') == 'ongoing' and not self.overwrite_ongoing:
-                            return False
-                except (json.JSONDecodeError, FileNotFoundError):
-                    # Corrupted or missing status file, we can proceed
-                    pass
-            
-            # Create a temporary file first to avoid partial writes
-            temp_file = tempfile.NamedTemporaryFile(
-                mode='w', 
-                dir=self.status_dir,
-                delete=False
-            )
-            
-            # Prepare status data
-            status_data = {
-                'status': 'ongoing',
-                'scan_id': scan_id,
-                'worker_id': worker_id,
-                'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                # No params included as requested
-            }
-            
-            # Write to temporary file
-            json.dump(status_data, temp_file)
-            temp_file.flush()
-            os.fsync(temp_file.fileno())
-            temp_file.close()
-            
-            # Atomically move the temporary file to the final location
-            shutil.move(temp_file.name, status_file)
-            
-            return True
-            
-        finally:
-            # Release the lock
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            lock_fd.close()
-    
-    def complete_recon(self, scan_id, success=True, error=None):
-        """Mark a reconstruction as completed or failed."""
-        lock_file = self._get_lock_file(scan_id)
-        status_file = self._get_status_file(scan_id)
-        
-        # Acquire lock
-        with open(lock_file, 'w') as lock_fd:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
-            
-            try:
-                # Read current status
-                if os.path.exists(status_file):
-                    with open(status_file, 'r') as f:
-                        status_data = json.load(f)
-                else:
-                    # Create new status data if file doesn't exist
-                    status_data = {
-                        'scan_id': scan_id,
-                        'start_time': 'unknown'
-                    }
-                
-                # Update status
-                status_data['status'] = 'done' if success else 'failed'
-                status_data['end_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                if error:
-                    status_data['error'] = str(error)
-                
-                # Write to temporary file first
-                temp_file = tempfile.NamedTemporaryFile(
-                    mode='w', 
-                    dir=self.status_dir,
-                    delete=False
-                )
-                
-                # Write status data line by line
-                temp_file.write("{\n")
-                for i, (key, value) in enumerate(status_data.items()):
-                    if isinstance(value, str):
-                        temp_file.write(f'    "{key}": "{value}"')
-                    else:
-                        # Convert the value to JSON format
-                        json_value = json.dumps(value)
-                        # Write the key-value pair with proper formatting
-                        temp_file.write(f'    "{key}": {json_value}')
-                    
-                    if i < len(status_data) - 1:
-                        temp_file.write(",\n")
-                    else:
-                        temp_file.write("\n")
-                temp_file.write("}\n")
-                temp_file.flush()
-                os.fsync(temp_file.fileno())
-                temp_file.close()
-                
-                # Atomically move the temporary file to the final location
-                shutil.move(temp_file.name, status_file)
-                
-            except Exception as e:
-                print(f"Error updating status for scan {scan_id}: {str(e)}")
-
 def ptycho_batch_recon(base_params):
     """
     Process a range of ptychography scans with automatic error handling and status tracking.
@@ -465,23 +307,13 @@ def ptycho_batch_recon(base_params):
     
     num_repeats = np.inf
     repeat_count = 0
+    scan_list = generate_scan_list(start_scan, end_scan, scan_order, exclude_scans)
 
     while repeat_count < num_repeats:
         successful_scans = []
         failed_scans = []
         ongoing_scans = []
-        
-        if scan_order == 'ascending':
-            scan_list = list(range(start_scan, end_scan + 1))
-        elif scan_order == 'descending':
-            scan_list = list(range(end_scan, start_scan - 1, -1))
-        elif scan_order == 'random':
-            import random
-            scan_list = list(range(start_scan, end_scan + 1))
-            random.shuffle(scan_list)
-
-        scan_list = [scan for scan in scan_list if scan not in exclude_scans]
-        
+    
         for scan_num in scan_list:
             # Create a copy of the parameters for this scan
             scan_params = base_params.copy()
@@ -569,8 +401,9 @@ ptycho_recon(run_recon=True, **params)
                     
                     # Stream and print the output in real-time
                     for line in iter(process.stdout.readline, ''):
-                        print(line, end='')  # Already has newline
-                    
+                        #print(line, end='')  # Already has newline
+                        print(f"[S{scan_num:04d}-GPU{scan_params['gpu_id']}]{line}", end='')
+
                     # Wait for process to complete and get return code
                     return_code = process.wait()
                     
@@ -952,7 +785,7 @@ ptycho_recon(run_recon=True, **params)
         
         # Run reconstructions in parallel
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Create tasks for each scan, cycling through available GPUs
+            # Submit tasks for each scan, cycling through available GPUs
             futures = []
             for idx, scan_num in enumerate(scan_list):
                 gpu_id = gpu_ids[idx % len(gpu_ids)]
@@ -1041,10 +874,17 @@ def ptycho_batch_recon2(base_params):
             max_workers: Maximum number of parallel processes (default: number of available GPUs)
             gpu_ids: List of GPU IDs to use (default: [0])
             print_interval: Interval to print the most recent line (default: 5 seconds)
+            reset_scan_list: Whether to restart from the beginning of the scan list after each reconstruction (default: False)
     """
     from concurrent.futures import ThreadPoolExecutor
+    import subprocess
+    import sys
+    import json
+    import time
+    import uuid
+    import torch
     
-    # Extract parameters
+    # Extract parameters with defaults
     start_scan = base_params.get('start_scan')
     end_scan = base_params.get('end_scan')
     log_dir_suffix = base_params.get('log_dir_suffix', '')
@@ -1055,6 +895,7 @@ def ptycho_batch_recon2(base_params):
     max_workers = base_params.get('max_workers', len(gpu_ids))
     print_interval = base_params.get('print_interval', 5)
 
+    # Setup log directory
     log_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 
                           base_params['recon_parent_dir'], 
                           f'recon_logs_{log_dir_suffix}' if log_dir_suffix else 'recon_logs')
@@ -1063,13 +904,12 @@ def ptycho_batch_recon2(base_params):
     # Create tracker
     tracker = FileBasedTracker(log_dir, overwrite_ongoing=overwrite_ongoing)
     
+    # Setup temp directory
+    temp_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 'temp_files')
+    os.makedirs(temp_dir, exist_ok=True)
+    
     def run_single_reconstruction(scan_num, gpu_id):
         """Run a single reconstruction on specified GPU"""
-        import subprocess
-        import sys
-        import json
-        import time
-        import uuid
         worker_id = f"worker_{os.getpid()}_{uuid.uuid4().hex[:8]}"
         
         # Create scan-specific parameters
@@ -1094,13 +934,11 @@ def ptycho_batch_recon2(base_params):
         print(f"\033[91mStarting reconstruction for scan {scan_num} on GPU {gpu_id}\033[0m")
         start_time = time.time()
         
+        # Create temp file paths
+        params_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_gpu{gpu_id}_params.json")
+        script_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_gpu{gpu_id}_script.py")
+        
         try:
-            # Create temp directory and files
-            temp_dir = os.path.join(base_params['data_directory'], 'ptychi_recons', 'temp_files')
-            os.makedirs(temp_dir, exist_ok=True)
-            params_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_gpu{gpu_id}_params.json")
-            script_path = os.path.join(temp_dir, f"scan_{scan_num:04d}_gpu{gpu_id}_script.py")
-            
             # Save parameters to JSON
             with open(params_path, 'w') as params_file:
                 json_compatible_params = {
@@ -1137,35 +975,59 @@ ptycho_recon(run_recon=True, **params)
             process = subprocess.Popen(
                 [sys.executable, script_path],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
             )
 
             last_print_time = time.time()
             output_buffer = []
+            error_output = []
             
             # Stream output in real-time with GPU identifier
-            for line in iter(process.stdout.readline, ''):
-                output_buffer.append(line)
-                    
-                # Print the most recent line
-                current_time = time.time()
-                if current_time - last_print_time > print_interval:
-                    if output_buffer:
-                        print(f"[Scan {scan_num} - GPU {gpu_id}] {output_buffer[-1]}", end='')
-                    output_buffer = []
-                    last_print_time = current_time
+            while True:
+                # Read from stdout
+                stdout_line = process.stdout.readline()
+                if stdout_line:
+                    output_buffer.append(stdout_line)
+                    current_time = time.time()
+                    if current_time - last_print_time > print_interval:
+                        if output_buffer:
+                            print(f"[S{scan_num:04d}-GPU{gpu_id}]{output_buffer[-1]}", end='')
+                        output_buffer = []
+                        last_print_time = current_time
+                
+                # Read from stderr
+                stderr_line = process.stderr.readline()
+                if stderr_line:
+                    error_output.append(stderr_line)
+                
+                # Check if process has finished
+                if process.poll() is not None:
+                    # Read any remaining output
+                    remaining_stdout, remaining_stderr = process.communicate()
+                    if remaining_stdout:
+                        output_buffer.extend(remaining_stdout.splitlines())
+                    if remaining_stderr:
+                        error_output.extend(remaining_stderr.splitlines())
+                    break
             
-            return_code = process.wait()
+            return_code = process.returncode
             if return_code != 0:
-                raise subprocess.CalledProcessError(return_code, f"{sys.executable} {script_path}")
+                error_message = "".join(error_output) if error_output else "Process failed with no error output"
+                raise subprocess.CalledProcessError(return_code, f"{sys.executable} {script_path}", error_message)
             
             elapsed_time = time.time() - start_time
             print(f"Scan {scan_num} completed successfully in {elapsed_time:.2f} seconds")
             tracker.complete_recon(scan_num, success=True)
             return 'success', scan_num, None
             
+        except subprocess.CalledProcessError as e:
+            elapsed_time = time.time() - start_time
+            error_message = e.stderr if hasattr(e, 'stderr') else str(e)
+            print(f"Scan {scan_num} failed after {elapsed_time:.2f} seconds with error: {error_message}")
+            tracker.complete_recon(scan_num, success=False, error=error_message)
+            return 'failed', scan_num, error_message
         except Exception as e:
             elapsed_time = time.time() - start_time
             error_message = str(e)
@@ -1180,21 +1042,11 @@ ptycho_recon(run_recon=True, **params)
                     os.unlink(path)
             
             # Ensure GPU memory is cleaned up
-            import torch
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
     
     # Generate scan list based on order
-    if scan_order == 'ascending':
-        scan_list = list(range(start_scan, end_scan + 1))
-    elif scan_order == 'descending':
-        scan_list = list(range(end_scan, start_scan - 1, -1))
-    elif scan_order == 'random':
-        import random
-        scan_list = list(range(start_scan, end_scan + 1))
-        random.shuffle(scan_list)
-    
-    scan_list = [scan for scan in scan_list if scan not in exclude_scans]
+    scan_list = generate_scan_list(start_scan, end_scan, scan_order, exclude_scans)
     
     # Process scans in parallel
     successful_scans = []
@@ -1206,29 +1058,78 @@ ptycho_recon(run_recon=True, **params)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit tasks for each scan, cycling through available GPUs
         futures = []
-        for idx, scan_num in enumerate(scan_list):
-            gpu_id = gpu_ids[idx % len(gpu_ids)]
-            future = executor.submit(run_single_reconstruction, scan_num, gpu_id)
-            futures.append(future)
+        gpu_usage = {}  # Track which GPUs are in use
         
-        # Collect results as they complete
-        for future in futures:
-            status, scan_num, error = future.result()
-            if status == 'success':
+        for scan_num in scan_list:
+            # Check status using tracker
+            status = tracker.get_status(scan_num)
+            if status == 'done':
+                print(f"Scan {scan_num} already completed, skipping reconstruction")
                 successful_scans.append(scan_num)
-            elif status == 'failed':
-                failed_scans.append((scan_num, error))
-            elif status == 'ongoing':
+                continue
+            if status == 'ongoing' and not overwrite_ongoing:
+                print(f"Scan {scan_num} already ongoing, skipping reconstruction")
                 ongoing_scans.append(scan_num)
+                continue
+            
+            # Wait for an available GPU
+            available_gpus = wait_for_available_gpu(gpu_ids, gpu_usage)
+            
+            # Select the best available GPU
+            gpu_id = select_gpu(gpu_list=available_gpus)
+            gpu_usage[gpu_id] = scan_num  # Mark GPU as in use
+            
+            print(f"Starting scan {scan_num} on GPU {gpu_id}")
+            future = executor.submit(run_single_reconstruction, scan_num, gpu_id)
+            futures.append((future, gpu_id))
+            time.sleep(1)  # Small delay between submissions
+        
+        # Collect results and update GPU usage
+        for future, gpu_id in futures:
+            try:
+                status, scan_num, error = future.result()
+                if status == 'success':
+                    successful_scans.append(scan_num)
+                elif status == 'failed':
+                    failed_scans.append((scan_num, error))
+                elif status == 'ongoing':
+                    ongoing_scans.append(scan_num)
+                
+                if status in ['success', 'failed']:
+                    del gpu_usage[gpu_id]  # Free up the GPU
+            except Exception as e:
+                print(f"Error processing scan on GPU {gpu_id}: {str(e)}")
+                if gpu_id in gpu_usage:
+                    del gpu_usage[gpu_id]  # Free up the GPU even if there was an error
     
     # Print summary
+    print_summary(successful_scans, failed_scans, ongoing_scans, start_scan, end_scan)
+    
+    return successful_scans, failed_scans, ongoing_scans
+
+def wait_for_available_gpu(gpu_ids, gpu_usage, wait_time=5):
+    """Wait until at least one GPU is available and return the list of available GPUs."""
+    available_gpus = [gpu_id for gpu_id in gpu_ids if gpu_id not in gpu_usage]
+    
+    if not available_gpus:
+        print("Waiting for a GPU to become available...")
+        while not available_gpus:
+            time.sleep(wait_time)
+            available_gpus = [gpu_id for gpu_id in gpu_ids if gpu_id not in gpu_usage]
+    
+    return available_gpus
+
+def print_summary(successful_scans, failed_scans, ongoing_scans, start_scan, end_scan):
+    """Print a summary of the reconstruction results."""
+    total_scans = end_scan - start_scan + 1
+    
     print(f"\nProcessing complete:")
     print(f"Successfully processed scans: {successful_scans}")
-    print(f"Number of completed scans: {len(successful_scans)}/{end_scan - start_scan + 1}")
+    print(f"Number of completed scans: {len(successful_scans)}/{total_scans}")
     print(f"Number of failed scans: {len(failed_scans)}")
     print(f"Number of ongoing scans: {len(ongoing_scans)}")
     
-    if failed_scans:
-        print("\nFailed scans and errors:")
-        for scan_num, error in failed_scans:
-            print(f"Scan {scan_num}: {error}")
+    # if failed_scans:
+    #     print("\nFailed scans and errors:")
+    #     for scan_num, error in failed_scans:
+    #         print(f"Scan {scan_num}: {error}")
