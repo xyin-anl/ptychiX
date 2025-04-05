@@ -829,8 +829,7 @@ def _prepare_initial_object(params, positions_px, probe_size, extra_size):
     return init_object
 
 def _prepare_initial_probe(dp, params):
-    path_to_init_probe = params.get('path_to_init_probe')
-    path_to_init_probe = find_matching_recon(path_to_init_probe, params['scan_num'])
+    
     num_probe_modes = params.get('number_probe_modes')
     num_opr_modes = params.get('number_opr_modes')
 
@@ -868,6 +867,8 @@ def _prepare_initial_probe(dp, params):
                           center_x - half_width:center_x + half_width]
             # print(f"Probe cropped from {probe.shape[0]}x{probe.shape[1]} to {dp.shape[1]}x{dp.shape[1]}")
     else:
+        path_to_init_probe = params.get('path_to_init_probe')
+        path_to_init_probe = find_matching_recon(path_to_init_probe, params['scan_num'])
         if path_to_init_probe.endswith('.mat'):
             print("Loading initial probe from a foldslice reconstruction at:")
             print(path_to_init_probe)

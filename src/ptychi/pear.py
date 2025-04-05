@@ -486,7 +486,7 @@ def ptycho_batch_recon_affine_calibration(base_params):
     import numpy as np
     import os
 
-    N_runs = 2
+    N_runs = 4
     
     # Extract parameters
     start_scan = base_params.get('start_scan')
@@ -763,7 +763,7 @@ ptycho_recon(run_recon=True, **params)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
     
-    N_runs = 2
+    N_runs = 4
     params_to_plot = ['scale', 'asymmetry', 'rotation', 'shear']
     affine_params = {}
     
