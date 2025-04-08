@@ -416,6 +416,12 @@ class ObjectOptions(ParameterOptions):
                     "`object_options.determine_center_coords_by` is not set to "
                     "`SPECIFIED`."
                 )
+                
+        if self.smoothness_constraint.enabled:
+            if self.smoothness_constraint.alpha > 1.0 / 8 or self.smoothness_constraint.alpha < 0:
+                raise ValueError(
+                    f"smoothness_constraint.alpha = {self.smoothness_constraint.alpha} is out of range [0, 1/8]."
+                )
 
 
 @dataclasses.dataclass
