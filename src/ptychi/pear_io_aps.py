@@ -24,8 +24,13 @@ import torch
 import json
 
 def save_reconstructions(task, recon_path, iter, params):
-    pixel_size_um = task.object_options.pixel_size_m * 1e6
-    
+    if params.get('beam_source', 'xray') == 'electron':
+        pixel_size = task.object_options.pixel_size_m * 1e9
+        pixel_unit = 'nm'
+    else:
+        pixel_size = task.object_options.pixel_size_m * 1e6
+        pixel_unit = 'um'
+
     # Object
     recon_object = task.get_data_to_cpu('object', as_numpy=True)
     recon_object_roi = task.object.get_object_in_roi().cpu().detach()
@@ -69,8 +74,8 @@ def save_reconstructions(task, recon_path, iter, params):
         imwrite(f'{recon_path}/object_ph_layers/object_ph_layers_Niter{iter}.tiff',
                 np.array(object_ph_stack),
                 photometric='minisblack',
-                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                resolution=(1 / pixel_size, 1 / pixel_size),
+                metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
                 imagej=True)
 
         object_ph_sum = normalize_by_bit_depth(unwrap_phase_2d(torch.prod(recon_object_roi, dim=0).cuda(),
@@ -79,8 +84,8 @@ def save_reconstructions(task, recon_path, iter, params):
         imwrite(f'{recon_path}/object_ph_total/object_ph_total_Niter{iter}.tiff',
                 np.array(object_ph_sum),
                 photometric='minisblack',
-                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                resolution=(1 / pixel_size, 1 / pixel_size),
+                metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
                 imagej=True)
         
         object_mag_stack = [normalize_by_bit_depth(np.abs(slice), '16')
@@ -88,16 +93,16 @@ def save_reconstructions(task, recon_path, iter, params):
         imwrite(f'{recon_path}/object_mag_layers/object_mag_layers_Niter{iter}.tiff',
                 np.array(object_mag_stack),
                 photometric='minisblack',
-                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                resolution=(1 / pixel_size, 1 / pixel_size),
+                metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
                 imagej=True)
         
         object_mag_sum = normalize_by_bit_depth(np.abs(torch.prod(recon_object_roi, dim=0)).cpu(), '16')
         imwrite(f'{recon_path}/object_mag_total/object_mag_total_Niter{iter}.tiff',
                 np.array(object_mag_sum),
                 photometric='minisblack',
-                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                resolution=(1 / pixel_size, 1 / pixel_size),
+                metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
                 imagej=True)
 
     else:
@@ -106,14 +111,14 @@ def save_reconstructions(task, recon_path, iter, params):
         imwrite(f'{recon_path}/object_ph/object_ph_Niter{iter}.tiff', 
                 normalize_by_bit_depth(object_ph_unwrapped.cpu(), '16'),
                 photometric='minisblack',
-                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                resolution=(1 / pixel_size, 1 / pixel_size),
+                metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
                 imagej=True)
         imwrite(f'{recon_path}/object_mag/object_mag_Niter{iter}.tiff',
                 normalize_by_bit_depth(np.abs(recon_object_roi[0,]), '16'),
                 photometric='minisblack',
-                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                resolution=(1 / pixel_size, 1 / pixel_size),
+                metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
                 imagej=True)
     
     # Calculate the phase 
@@ -134,8 +139,8 @@ def save_reconstructions(task, recon_path, iter, params):
     imwrite(f'{recon_path}/probe_mag/probe_mag_Niter{iter}.tiff', 
             colored_probe_mag,
             photometric='rgb',
-            resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-            metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+            resolution=(1 / pixel_size, 1 / pixel_size),
+            metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
             imagej=True)
     
     # Save probe propagation in multislice reconstruction
@@ -199,8 +204,8 @@ def save_reconstructions(task, recon_path, iter, params):
         imwrite(f'{recon_path}/probe_propagation_mag/probe_propagation_mag_Niter{iter}.tiff',
                 np.array(colored_probes_mag_stack),
             photometric='rgb',
-            resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-            metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+            resolution=(1 / pixel_size, 1 / pixel_size),
+            metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
             imagej=True)
 
     # # Create figure and axis
@@ -266,21 +271,25 @@ def save_reconstructions(task, recon_path, iter, params):
         imwrite(f'{recon_path}/probe_mag_opr/probes_mag_opr_Niter{iter}.tiff',
                 np.array(colored_probes_mag_stack),
                 photometric='rgb',
-                resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-                metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                resolution=(1 / pixel_size, 1 / pixel_size),
+                metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
                 imagej=True)
         
     # Save scan positions
     scan_positions = task.get_data_to_cpu('probe_positions', as_numpy=True)
     if params['position_correction']:
         plt.figure()
-        plt.scatter(-init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
-        plt.scatter(-scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6, scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6, s=10, edgecolors='red', facecolors='none')
+        plt.scatter(-init_positions_x, init_positions_y, s=1, edgecolors='blue')
+        plt.scatter(-scan_positions[:, 1]*pixel_size, scan_positions[:, 0]*pixel_size, s=10, edgecolors='red', facecolors='none')
         # Calculate average position differences
-        x_diff = np.mean(np.abs(-scan_positions[:, 1]*task.object_options.pixel_size_m/1e-6 - (-init_positions_x_um)))
-        y_diff = np.mean(np.abs(scan_positions[:, 0]*task.object_options.pixel_size_m/1e-6 - init_positions_y_um))
-        plt.xlabel(f'X [um] (average error: {x_diff*1e3:.2f} nm)')
-        plt.ylabel(f'Y [um] (average error: {y_diff*1e3:.2f} nm)')
+        x_diff = np.mean(np.abs(-scan_positions[:, 1]*pixel_size - (-init_positions_x)))
+        y_diff = np.mean(np.abs(scan_positions[:, 0]*pixel_size - init_positions_y))
+        if params.get('beam_source', 'xray') == 'electron':
+            plt.xlabel(f'X [{pixel_unit}] (average error: {x_diff*10:.2f} angstrom)')
+            plt.ylabel(f'Y [{pixel_unit}] (average error: {y_diff*10:.2f} angstrom)')
+        else:
+            plt.xlabel(f'X [{pixel_unit}] (average error: {x_diff*1e3:.2f} nm)')
+            plt.ylabel(f'Y [{pixel_unit}] (average error: {y_diff*1e3:.2f} nm)')     
         plt.legend(['Initial positions', 'Refined positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
         plt.grid(True)
         plt.xlim(pos_x_min*range_factor, pos_x_max*range_factor)
@@ -385,8 +394,8 @@ def save_reconstructions(task, recon_path, iter, params):
             imwrite(f'{obj_ph_collection_dir}/S{params["scan_num"]:04d}.tiff', 
                     normalize_by_bit_depth(object_full_ph_unwrapped.cpu(), '16'),
                     photometric='minisblack',
-                    resolution=(1 / pixel_size_um, 1 / pixel_size_um),
-                    metadata={'unit': 'um', 'pixel_size': pixel_size_um},
+                    resolution=(1 / pixel_size, 1 / pixel_size),
+                    metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
                     imagej=True)
 
 def create_reconstruction_path(params, options):
@@ -418,7 +427,10 @@ def create_reconstruction_path(params, options):
         recon_path += '_ic'
 
     if params['object_thickness_m'] > 0 and params['number_of_slices'] > 1:
-        recon_path += f'_Ns{params['number_of_slices']}_T{params['object_thickness_m']/1e-6:.3f}um'
+        if params.get('beam_source', 'xray') == 'electron':
+            recon_path += f'_Ns{params['number_of_slices']}_T{params['object_thickness_m']/1e-9:.2f}nm'
+        else:
+            recon_path += f'_Ns{params['number_of_slices']}_T{params['object_thickness_m']/1e-6:.2f}um'
         if options.object_options.multislice_regularization.enabled and options.object_options.multislice_regularization.weight > 0:
             recon_path += f'_reg{options.object_options.multislice_regularization.weight}'
  
@@ -462,6 +474,13 @@ def create_reconstruction_path(params, options):
 
 def save_initial_conditions(recon_path, params, options):
     det_pixel_size_m = params['det_pixel_size_m']
+    if params.get('beam_source', 'xray') == 'electron':
+        pixel_size = options.object_options.pixel_size_m * 1e9
+        pixel_unit = 'nm'
+    else:
+        pixel_size = options.object_options.pixel_size_m * 1e6
+        pixel_unit = 'um'
+
     # save sum of all diffraction patterns
     dp_sum = np.sum(options.data_options.data, axis=0)
 
@@ -478,8 +497,8 @@ def save_initial_conditions(recon_path, params, options):
     imwrite(f'{recon_path}/dp_sum.tiff', 
             colored_dp_sum,
             photometric='rgb',
-            resolution=(1 / (det_pixel_size_m/1e-6), 1 / (det_pixel_size_m/1e-6)),
-            metadata={'unit': 'um', 'pixel_size': det_pixel_size_m/1e-6},
+            resolution=(1 / pixel_size, 1 / pixel_size),
+            metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
             imagej=True)
 
     # Save options to a file
@@ -514,8 +533,8 @@ def save_initial_conditions(recon_path, params, options):
     imwrite(f'{recon_path}/init_probe_mag.tiff', 
             colored_probe_temp,
             photometric='rgb',
-            resolution=(1 / (options.object_options.pixel_size_m/1e-6), 1 / (options.object_options.pixel_size_m/1e-6)),
-            metadata={'unit': 'um', 'pixel_size': options.object_options.pixel_size_m /1e-6},
+            resolution=(1 / pixel_size, 1 / pixel_size),
+            metadata={'unit': pixel_unit, 'pixel_size': pixel_size},
             imagej=True)
     
     # Create figure and axis
@@ -558,13 +577,17 @@ def save_initial_conditions(recon_path, params, options):
     # plt.close()
 
     # plot initial positions
-    global pos_x_min, pos_x_max, pos_y_min, pos_y_max, init_positions_y_um, init_positions_x_um, range_factor
-    init_positions_y_um = options.probe_position_options.position_y_px*options.object_options.pixel_size_m/1e-6
-    init_positions_x_um = options.probe_position_options.position_x_px*options.object_options.pixel_size_m/1e-6
+    global pos_x_min, pos_x_max, pos_y_min, pos_y_max, init_positions_y, init_positions_x, range_factor
+    if params.get('beam_source', 'xray') == 'electron':
+        init_positions_y = options.probe_position_options.position_y_px*options.object_options.pixel_size_m * 1e9
+        init_positions_x = options.probe_position_options.position_x_px*options.object_options.pixel_size_m * 1e9
+    else:   
+        init_positions_y = options.probe_position_options.position_y_px*options.object_options.pixel_size_m * 1e6
+        init_positions_x = options.probe_position_options.position_x_px*options.object_options.pixel_size_m * 1e6
     plt.figure()
-    plt.scatter(-init_positions_x_um, init_positions_y_um, s=1, edgecolors='blue')
-    plt.xlabel('X [um]')
-    plt.ylabel('Y [um]')
+    plt.scatter(-init_positions_x, init_positions_y, s=1, edgecolors='blue')
+    plt.xlabel(f'X [{pixel_unit}]')
+    plt.ylabel(f'Y [{pixel_unit}]')
     plt.legend(['Initial positions'], loc='upper center', bbox_to_anchor=(0.5, 1.15))
     plt.grid(True)
     pos_x_min, pos_x_max = plt.xlim()
@@ -591,6 +614,7 @@ def save_initial_conditions(recon_path, params, options):
 def initialize_recon(params):
     instrument = params['instrument'].lower()
     dp_Npix = params['diff_pattern_size_pix']
+    energy = params['beam_energy_kev']
 
     # Load diffraction patterns and positions
     try:
@@ -612,19 +636,34 @@ def initialize_recon(params):
     except Exception as e:
         print(f"Error loading diffraction patterns and positions")
         raise e
+    
+    
     print("Shape of diffraction patterns:", dp.shape)
-
+    
+    # Process diffraction patterns with orientation transforms if specified
+    dp = _process_diffraction_patterns(dp, params)
+    
     # Load external positions
     if params['path_to_init_positions']:
         positions_m = _prepare_initial_positions(params)
     
     params['det_pixel_size_m'] = 75e-6 if instrument in ['velo', 'velociprobe', 'bnp', 'bionanoprobe', '2ide', '2xfm', 'lynx', 'simu'] else 172e-6
-    
-    params['wavelength_m'] = 1.23984193e-9 / params.get('beam_energy_kev')
-    print("Wavelength (nm):", f"{params['wavelength_m'] * 1e9:.3f}")
 
-    params['obj_pixel_size_m'] = params['wavelength_m'] * params['det_sample_dist_m'] / params['det_pixel_size_m'] / dp_Npix #pixel size
-    print("Pixel size of reconstructed object (nm):", f"{params['obj_pixel_size_m'] * 1e9:.3f}")
+    if params.get('beam_source', 'xray') == 'electron':
+        params['wavelength_m'] = 12.3986/np.sqrt((2*511.0+energy)*energy) / 1e10
+        print("Wavelength (angstrom):", f"{params['wavelength_m'] * 1e10:.3f}")
+
+        #p.dx_spec = 1./p.asize./(p.d_alpha/1e3/p.lambda); %angstrom
+        params['obj_pixel_size_m'] =  1 / dp_Npix /params.get('dk', 1) / 1e10 #pixel size
+        print("Pixel size of reconstructed object (angstrom):", f"{params['obj_pixel_size_m'] * 1e10:.3f}")
+        obj_pad_size = params.get('obj_pad_size_m', 1e-9)
+
+    else:
+        params['wavelength_m'] = 1.23984193e-9 / energy
+        print("Wavelength (nm):", f"{params['wavelength_m'] * 1e9:.3f}")
+        params['obj_pixel_size_m'] = params['wavelength_m'] * params['det_sample_dist_m'] / params['det_pixel_size_m'] / dp_Npix #pixel size
+        print("Pixel size of reconstructed object (nm):", f"{params['obj_pixel_size_m'] * 1e9:.3f}")
+        obj_pad_size = params.get('obj_pad_size_m', 1e-6)
 
     # Find clusters of scan positions where distances between points are smaller than 20 nm
     if params.get('burst_ptycho', False):
@@ -713,7 +752,7 @@ def initialize_recon(params):
             'count': n_clusters,
             'threshold_m': params.get('burst_clustering_threshold_m')
         }
-
+    
     init_positions_px = positions_m / params['obj_pixel_size_m']
     # Check if positions contain NaN values
     if np.isnan(init_positions_px).any():
@@ -725,7 +764,7 @@ def initialize_recon(params):
     init_probe = _prepare_initial_probe(dp, params)
 
     # Load initial object
-    init_object = _prepare_initial_object(params, init_positions_px, init_probe.shape[-2:], round(1e-6/params['obj_pixel_size_m']))
+    init_object = _prepare_initial_object(params, init_positions_px, init_probe.shape[-2:], round(obj_pad_size/params['obj_pixel_size_m']))
 
     return (dp, init_positions_px, init_probe, init_object, params)
 
@@ -1122,6 +1161,7 @@ def _load_data_hdf5(h5_dp_path, h5_position_path, dp_Npix):
     ppX = ppX - (np.max(ppX) + np.min(ppX)) / 2
     ppY = ppY - (np.max(ppY) + np.min(ppY)) / 2
     positions = np.stack((ppY, ppX), axis=1)
+    #positions = np.stack((ppX, ppY), axis=1) #ELE
 
     return dp, positions
 
@@ -1720,3 +1760,38 @@ def _load_data_velo(base_path, scan_num, det_Npixel, cen_x, cen_y):
     positions = np.column_stack((ppY, ppX))
 
     return dp, positions
+
+def _process_diffraction_patterns(dp, params):
+    """
+    Process diffraction patterns with various orientation transformations.
+    
+    Parameters:
+    -----------
+    dp : numpy.ndarray
+        The diffraction patterns array of shape (n_patterns, height, width)
+    params : dict
+        Dictionary containing processing parameters:
+        - dp_flip_ud: bool, flip patterns up-down
+        - dp_flip_lr: bool, flip patterns left-right
+        - dp_transpose: bool, transpose patterns
+    
+    Returns:
+    --------
+    numpy.ndarray
+        Processed diffraction patterns
+    """
+    # Apply transformations in sequence if specified
+    if params.get('flip_diffraction_patterns_up_down', False):
+        print("Flipping diffraction patterns up-down")
+        dp = np.flip(dp, axis=1)
+    
+    if params.get('flip_diffraction_patterns_left_right', False):
+        print("Flipping diffraction patterns left-right")
+        dp = np.flip(dp, axis=2)
+    
+    if params.get('transpose_diffraction_patterns', False):
+        print("Transposing diffraction patterns")
+        # Transpose each pattern individually
+        dp = np.transpose(dp, axes=(0, 2, 1))
+    
+    return dp

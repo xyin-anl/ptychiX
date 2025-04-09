@@ -108,7 +108,7 @@ def ptycho_recon(run_recon=True, **params):
     options.probe_position_options.correction_options.update_magnitude_limit = params['position_correction_update_limit']
     options.probe_position_options.affine_transform_constraint.enabled = True # alwayscalculate the affine matrix
     options.probe_position_options.affine_transform_constraint.apply_constraint = params['position_correction_affine_constraint']
-    options.probe_position_options.affine_transform_constraint.position_weight_update_interval = np.inf # TODO: add to params
+    options.probe_position_options.affine_transform_constraint.position_weight_update_interval = 100 # TODO: add to params
         
     # variable probe correction
     #options.probe_position_options.correction_options.gradient_method = api.PositionCorrectionGradientMethods.FOURIER
@@ -486,7 +486,7 @@ def ptycho_batch_recon_affine_calibration(base_params):
     import numpy as np
     import os
 
-    N_runs = 4
+    N_runs = 1
     
     # Extract parameters
     start_scan = base_params.get('start_scan')
