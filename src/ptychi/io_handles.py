@@ -296,7 +296,6 @@ class PtychographyUniformBatchSampler(torch.utils.data.Sampler):
         return math.ceil(len(self.positions) / self.batch_size)
 
     def __iter__(self):
-        self.build_indices()
         for i in np.random.choice(range(len(self)), len(self), replace=False):
             yield self.batches_of_indices[i]
 
