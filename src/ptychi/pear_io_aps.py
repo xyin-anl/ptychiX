@@ -1783,11 +1783,13 @@ def _process_diffraction_patterns(dp, params):
     # Apply transformations in sequence if specified
     if params.get('flip_diffraction_patterns_up_down', False):
         print("Flipping diffraction patterns up-down")
-        dp = np.flip(dp, axis=1)
+        # Create a contiguous copy after flipping to avoid negative strides
+        dp = np.ascontiguousarray(np.flip(dp, axis=1))
     
     if params.get('flip_diffraction_patterns_left_right', False):
         print("Flipping diffraction patterns left-right")
-        dp = np.flip(dp, axis=2)
+        # Create a contiguous copy after flipping to avoid negative strides
+        dp = np.ascontiguousarray(np.flip(dp, axis=2))
     
     if params.get('transpose_diffraction_patterns', False):
         print("Transposing diffraction patterns")
