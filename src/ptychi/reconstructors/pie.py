@@ -54,8 +54,8 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         return super().build_loss_tracker()
 
     def check_inputs(self, *args, **kwargs):
-        if self.parameter_group.object.is_multislice:
-            raise NotImplementedError("EPIEReconstructor only supports 2D objects.")
+        # if self.parameter_group.object.is_multislice:
+        #     raise NotImplementedError("EPIEReconstructor only supports 2D objects.")
         for var in self.parameter_group.get_optimizable_parameters():
             if "lr" not in var.optimizer_params.keys():
                 raise ValueError(
@@ -91,28 +91,68 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
         obj_patches = self.forward_model.intermediate_variables["obj_patches"]
         psi = self.forward_model.intermediate_variables["psi"]
         psi_far = self.forward_model.intermediate_variables["psi_far"]
-        unique_probes = self.forward_model.intermediate_variables.shifted_unique_probes[0]
-
+        #unique_probes = self.forward_model.intermediate_variables.shifted_unique_probes[0]
+        unique_probes = self.forward_model.intermediate_variables.shifted_unique_probes
+        
         psi_prime = self.replace_propagated_exit_wave_magnitude(psi_far, y_true)
         # Do not swap magnitude for bad pixels.
         psi_prime = torch.where(
             valid_pixel_mask.repeat(psi_prime.shape[0], probe.n_modes, 1, 1), psi_prime, psi_far
         )
         psi_prime = self.forward_model.free_space_propagator.propagate_backward(psi_prime)
+        
+        
+        delta_exwv_i = (psi_prime - psi)
+        
+        delta_o = torch.zeros_like( object_.data )
+        #delta_p_i = torch.zeros_like( object_.n_slices, unique_probes[0] )
+        
+        for i_slice in range(object_.n_slices - 1, -1, -1):
 
-        delta_o = None
-        if object_.optimization_enabled(self.current_epoch):
-            step_weight = self.calculate_object_step_weight(unique_probes)
-            delta_o_patches = step_weight * (psi_prime - psi)
-            delta_o_patches = delta_o_patches.sum(1, keepdim=True)
-            delta_o = ip.place_patches_integer(
-                torch.zeros_like(object_.get_slice(0)),
-                positions.round().int() + object_.pos_origin_coords,
-                delta_o_patches[:, 0],
-                op="add",
-            )
-            # Add slice dimension.
-            delta_o = delta_o.unsqueeze(0)
+            
+            
+            if object_.optimization_enabled(self.current_epoch):
+                step_weight = self.calculate_object_step_weight(unique_probes[i_slice])
+                delta_o_patches = step_weight * delta_exwv_i
+                delta_o_patches = delta_o_patches.sum(1, keepdim=True)
+                delta_o_i = ip.place_patches_integer(
+                    torch.zeros_like(object_.get_slice(0)),
+                    positions.round().int() + object_.pos_origin_coords,
+                    delta_o_patches[:, 0],
+                    op="add",
+                )
+                
+                # Add slice dimension.
+                # delta_o = delta_o.unsqueeze(0)
+
+                delta_o[i_slice, ... ] = delta_o_i
+                
+            # incident_wavefields = self.forward_model.intermediate_variables.shifted_unique_probes[
+            #     i_slice
+            # ]
+            
+            #A = self.intermediate_variables.shifted_unique_probes
+            # self.forward_model.intermediate_variables.shifted_unique_probes
+            
+            
+            #delta_p_i = None
+            if probe.optimization_enabled(self.current_epoch):
+                step_weight = self.calculate_probe_step_weight( (obj_patches[ :, i_slice, ... ])[:, None, ...])
+                delta_p_i = step_weight * delta_exwv_i  # get delta p at each position
+                delta_p_i = self.adjoint_shift_probe_update_direction(indices, delta_p_i, first_mode_only=True)
+                
+            if i_slice > 0:
+                #unique_probes[i_slice] = unique_probes[i_slice] + delta_p_i
+                #unique_probes[i_slice - 1] = self.forward_model.propagate_to_previous_slice(unique_probes[i_slice], slice_index = i_slice )
+                delta_exwv_i = self.forward_model.propagate_to_previous_slice(delta_p_i, slice_index = i_slice )
+                
+                
+                
+    
+            
+            
+            
+
 
         delta_pos = None
         if probe_positions.optimization_enabled(self.current_epoch) and object_.optimizable:
@@ -124,12 +164,9 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
                 self.forward_model.intermediate_variables.shifted_unique_probes[0],
                 object_.optimizer_params["lr"],
             )
+            
+            
 
-        delta_p_i = None
-        if probe.optimization_enabled(self.current_epoch):
-            step_weight = self.calculate_probe_step_weight(obj_patches)
-            delta_p_i = step_weight * (psi_prime - psi)  # get delta p at each position
-            delta_p_i = self.adjoint_shift_probe_update_direction(indices, delta_p_i, first_mode_only=True)
 
         # Calculate and apply opr mode updates
         if self.parameter_group.opr_mode_weights.optimization_enabled(self.current_epoch):
