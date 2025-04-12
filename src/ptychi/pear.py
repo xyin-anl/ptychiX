@@ -19,6 +19,11 @@ import tempfile
 import shutil
 import fcntl
 
+from .pear_io_aps import (initialize_recon,
+                        save_reconstructions,
+                        create_reconstruction_path,
+                        save_initial_conditions)
+
 def ptycho_recon(run_recon=True, **params):
 
     if params['gpu_id'] is None:
@@ -41,17 +46,6 @@ def ptycho_recon(run_recon=True, **params):
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is not available. Please check your GPU device.")
 
-    if params.get('beam_type', 'xray') == 'electron':
-        from .pear_io_ele import (initialize_recon,
-                              save_reconstructions,
-                              create_reconstruction_path,
-                              save_initial_conditions)
-    else:
-        from .pear_io_aps import (initialize_recon,
-                              save_reconstructions,
-                              create_reconstruction_path,
-                              save_initial_conditions)
-        
     # Load data + preprocessing
     (dp, init_positions_px, init_probe, init_object, params) = initialize_recon(params)
 
@@ -163,7 +157,12 @@ def ptycho_recon(run_recon=True, **params):
         options.reconstructor_options.momentum_acceleration_gradient_mixing_factor = 1
 
     options.reconstructor_options.solve_step_sizes_only_using_first_probe_mode = True
-    options.reconstructor_options.noise_model = api.NoiseModels.GAUSSIAN
+    
+    if params.get('noise_model', 'gaussian') == 'poisson':
+        options.reconstructor_options.noise_model = api.NoiseModels.POISSON
+    else: 
+        options.reconstructor_options.noise_model = api.NoiseModels.GAUSSIAN
+    
     options.reconstructor_options.num_epochs = params['number_of_iterations']
     options.reconstructor_options.use_double_precision_for_fft = False
     options.reconstructor_options.default_dtype = api.Dtypes.FLOAT32
@@ -486,7 +485,7 @@ def ptycho_batch_recon_affine_calibration(base_params):
     import numpy as np
     import os
 
-    N_runs = 1
+    N_runs = 3
     
     # Extract parameters
     start_scan = base_params.get('start_scan')

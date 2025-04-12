@@ -413,6 +413,11 @@ def create_reconstruction_path(params, options):
     if options.reconstructor_options.momentum_acceleration_gain > 0:
         recon_path += f'_m{options.reconstructor_options.momentum_acceleration_gain}'
 
+    if params.get('noise_model', 'gaussian') == 'poisson':
+        recon_path += f'_poisson'
+    else:
+        recon_path += f'_gaussian'
+
     recon_path += f'_p{options.probe_options.initial_guess.shape[1]}'
 
     # Append optional parameters to the path
