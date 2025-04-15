@@ -443,7 +443,7 @@ class DIPProbe(Probe):
     
     def __init__(
         self,
-        name: str = "object",
+        name: str = "probe",
         options: "api.options.ad_ptychography.AutodiffPtychographyProbeOptions" = None,
         *args,
         **kwargs
