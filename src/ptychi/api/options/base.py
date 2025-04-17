@@ -493,19 +493,6 @@ class ProbeCenterConstraintOptions(FeatureOptions):
 
     optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
 
-
-@dataclasses.dataclass
-class ProbeSynthesisSparseDictLearnOptions(FeatureOptions):
-    
-    D:      Union[ndarray, Tensor] = None
-    Dpinv:  Union[ndarray, Tensor] = None
-    
-    C_p: Union[ndarray, Tensor] = None
-
-    enabled: bool = False
-
-    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
-    
 @dataclasses.dataclass
 class ProbeOptions(ParameterOptions):
     """
@@ -546,11 +533,7 @@ class ProbeOptions(ParameterOptions):
     """
     A separate step size for eigenmode update.
     """
-    
-    sDL: ProbeSynthesisSparseDictLearnOptions = field(
-        default_factory = ProbeSynthesisSparseDictLearnOptions
-    )
-    
+        
     def check(self, options: "task_options.PtychographyTaskOptions"):
         super().check(options)
         if not (self.initial_guess is not None and self.initial_guess.ndim == 4):
@@ -566,7 +549,21 @@ class ProbeOptions(ParameterOptions):
         del d["initial_guess"]
         return d
 
+@dataclasses.dataclass
+class SynthesisDictLearnProbeOptions( Options ):
+    
+    D:      Union[ndarray, Tensor] = None
+    DH:     Union[ndarray, Tensor] = None
+    D_pinv: Union[ndarray, Tensor] = None
+    
+    probe_sparse_code: Union[ndarray, Tensor] = None
+    
+    probe_sparse_code_nnz: float = None
+    
+    enabled: bool = False
 
+    optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
+    
 @dataclasses.dataclass
 class PositionCorrectionOptions(Options):
     """Options used for specifying the position correction function."""

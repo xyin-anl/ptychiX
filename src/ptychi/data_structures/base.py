@@ -91,6 +91,7 @@ class ReconstructParameter(Module):
         name: Optional[str] = None,
         options: "api.options.base.ParameterOptions" = None,
         data_as_parameter: bool = True,
+        build_optimizer: bool = True,
         *args,
         **kwargs,
     ) -> None:
@@ -162,7 +163,8 @@ class ReconstructParameter(Module):
             else:
                 self.register_buffer("tensor", tensor)
 
-        self.build_optimizer()
+        if build_optimizer:
+            self.build_optimizer()
 
     @property
     def shape(self) -> Tuple[int, ...]:
