@@ -1,6 +1,5 @@
 from typing import Optional, Union, Tuple, Sequence, TYPE_CHECKING
 import logging
-import dataclasses
 
 import torch
 from torch import Tensor

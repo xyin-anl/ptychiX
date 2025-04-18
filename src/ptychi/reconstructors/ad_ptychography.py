@@ -3,8 +3,6 @@ from typing import Optional, TYPE_CHECKING
 import torch
 from torch.utils.data import Dataset
 
-import ptychi.data_structures.object
-import ptychi.forward_models as fm
 from ptychi.reconstructors.ad_general import AutodiffReconstructor
 from ptychi.reconstructors.base import IterativePtychographyReconstructor
 import ptychi.metrics as metrics

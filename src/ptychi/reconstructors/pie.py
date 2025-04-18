@@ -208,7 +208,6 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             A (n_positions, 2) tensor of probe position vectors.
         """
         object_ = self.parameter_group.object
-        probe = self.parameter_group.probe
         probe_positions = self.parameter_group.probe_positions
 
         if delta_o is not None:

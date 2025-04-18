@@ -14,7 +14,6 @@ from ptychi.timing.timer_utils import timer
 import ptychi.api.enums as enums
 from ptychi.utils import (
     get_default_complex_dtype, 
-    to_tensor, 
     to_numpy, 
     chunked_processing,
     get_probe_renormalization_factor

@@ -7,6 +7,9 @@ from torch import Tensor
 import ptychi.api.options.base as base
 
 
+__all__ = ["PtychographyDataOptions"]
+
+
 @dataclasses.dataclass
 class PtychographyDataOptions(base.Options):
 

@@ -6,7 +6,7 @@ import cmath
 import math
 
 import torch
-from torch.fft import fft2, fftfreq, ifft2
+from torch.fft import fftfreq
 
 from ptychi.timing.timer_utils import timer
 import ptychi.maths as pmath

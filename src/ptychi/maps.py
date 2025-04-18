@@ -1,4 +1,4 @@
-from typing import Literal, Type
+from typing import Type
 
 import torch
 
