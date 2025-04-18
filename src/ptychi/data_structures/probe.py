@@ -465,27 +465,28 @@ class SynthesisDictLearnProbe( Probe ):
         self.register_parameter("sparse_code_probe", torch.nn.Parameter(sparse_code_probe))
 
         self.build_optimizer()
-    
 
     def get_dictionary(self):
-        
-        dictionary_matrix      = torch.tensor( self.options.experimental.sdl_probe_options.D, dtype=torch.complex64 )
+        dictionary_matrix = torch.tensor( self.options.experimental.sdl_probe_options.D, dtype=torch.complex64 )
         dictionary_matrix_pinv = torch.tensor( self.options.experimental.sdl_probe_options.D_pinv, dtype=torch.complex64 )
-        dictionary_matrix_H    = torch.tensor( self.options.experimental.sdl_probe_options.DH, dtype=torch.complex64 )
-        
+        dictionary_matrix_H = torch.tensor( self.options.experimental.sdl_probe_options.DH, dtype=torch.complex64 )
         return dictionary_matrix, dictionary_matrix_pinv, dictionary_matrix_H
 
     def get_initial_weights(self):
-        
         probe_vec = torch.reshape( self.data, ( self.data.shape[1], self.data.shape[2] * self.data.shape[3] ))
         probe_vec = torch.swapaxes( probe_vec, 0, -1)
-        
         sparse_code_probe = self.dictionary_matrix_pinv @ probe_vec
-
         return sparse_code_probe
 
     def generate(self):
+        """Generate the probe using the sparse code, and set the
+        generated probe to self.data.
         
+        Returns
+        -------
+        Tensor
+            A (n_opr_modes, n_modes, h, w) tensor giving the generated probe.
+        """
         probe_vec = self.dictionary_matrix @ self.sparse_code_probe
         probe_vec = torch.swapaxes( probe_vec, 0, -1)
         probe = torch.reshape( probe_vec, ( self.data.shape[1], self.data.shape[2], self.data.shape[3] ))[ None, ... ]
@@ -502,6 +503,7 @@ class SynthesisDictLearnProbe( Probe ):
 
     def set_sparse_code(self, data):
         self.sparse_code_probe.data = data
+
 
 class DIPProbe(Probe):
     
