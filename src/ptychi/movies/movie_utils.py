@@ -1,10 +1,9 @@
-from typing import List, Optional
+from typing import Optional
 import numpy as np
 
 from .settings import MovieFileSettings, MovieFileTypes
 
 from .mappings import prepare_movie_subject, movie_setting_types
-from .settings import ProbeMovieSettings
 from .io import append_array_to_h5, save_movie_to_file
 import os
 import h5py

@@ -7,7 +7,6 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 import math
 
-from ptychi.api import enums
 import ptychi.api as api
 from ptychi.reconstructors.base import (
     AnalyticalIterativePtychographyReconstructor,

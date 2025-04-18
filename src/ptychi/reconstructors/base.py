@@ -9,7 +9,7 @@ import tqdm
 from ptychi.timing.timer_utils import timer
 import ptychi.movies as movies
 
-from ptychi.utils import to_numpy, chunked_processing
+from ptychi.utils import to_numpy
 import ptychi.maps as maps
 import ptychi.forward_models as fm
 import ptychi.api.enums as enums

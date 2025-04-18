@@ -1,4 +1,3 @@
-from typing import Optional
 import dataclasses
 
 import ptychi.data_structures.base as dsbase
