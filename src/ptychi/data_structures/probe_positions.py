@@ -37,7 +37,7 @@ class ProbePositions(dsbase.ReconstructParameter):
             options=options.correction_options
         )
     
-        self.register_buffer("initial_positions", self.data)
+        self.register_buffer("initial_positions", self.data.detach())
         self.register_buffer(
             "affine_transform_matrix", 
             self.get_identity_affine_transform_matrix()

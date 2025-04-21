@@ -228,7 +228,13 @@ class RemoveObjectProbeAmbiguityOptions(FeatureOptions):
 class SliceSpacingOptions(ParameterOptions):
     
     optimizable: bool = False
-    """Whether the slice spacings are optimizable."""
+    """Whether the slice spacings are optimizable.
+    
+    Known issue: slice spacing optimization only works with AutodiffPtychography, and we
+    have to use `loss.backward(retain_graph=True)` to make it work with AD. This might
+    result in growing per-epoch walltime and memory usage. We are working on a better
+    solution.
+    """
     
     optimization_plan: OptimizationPlan = dataclasses.field(default_factory=OptimizationPlan)
     

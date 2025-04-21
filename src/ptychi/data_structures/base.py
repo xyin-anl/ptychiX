@@ -137,8 +137,8 @@ class ReconstructParameter(Module):
         )
         self.optimizer = None
         
+        self.sub_modules = []
         self.optimizable_sub_modules = []
-
         self.is_complex = is_complex
         self.preconditioner = None
         self.update_buffer = None
@@ -187,6 +187,8 @@ class ReconstructParameter(Module):
     def register_optimizable_sub_module(self, sub_module):
         if sub_module.optimizable and sub_module not in self.optimizable_sub_modules:
             self.optimizable_sub_modules.append(sub_module)
+        if sub_module not in self.sub_modules:
+            self.sub_modules.append(sub_module)
 
     def build_optimizer(self):
         if self.optimizable and self.optimizer_class is None:

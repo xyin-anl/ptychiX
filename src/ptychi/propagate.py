@@ -112,7 +112,7 @@ class WavefieldPropagatorParameters:
         FY, FX = torch.meshgrid(fy, fx, indexing="ij")
         FY = FY.to(torch.get_default_device())
         FX = FX.to(torch.get_default_device())
-        return FY, FX
+        return FY.detach(), FX.detach()
     
     def is_fresnel_transform_preferrable(self) -> bool:
         n_eff = math.sqrt(float(self.height_px) * float(self.width_px))
