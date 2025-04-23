@@ -17,6 +17,7 @@ sphinx:
 # Install only the dependencies under the [docs] section
 python:
   install:
+    - requirements: pyproject.toml
     - pip:
         - .[docs]  # Installs only the documentation dependencies without the main ones
   system_packages: true
