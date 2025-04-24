@@ -6,6 +6,9 @@
 
 Welcome to the repository of Pty-chi, a PyTorch-based ptychography reconstruction library!
 
+.. image:: https://zenodo.org/badge/858453195.svg
+  :target: https://doi.org/10.5281/zenodo.15277806
+
 
 ============
 Installation
