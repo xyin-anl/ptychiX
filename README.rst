@@ -11,7 +11,22 @@ Welcome to the repository of Pty-chi, a PyTorch-based ptychography reconstructio
 Installation
 ============
 
-Clone the repository to your workspace, and create a new conda environment
+Standard installation
+---------------------
+The easiest way to install the latest release is through PyPI. First, create a new conda environment with Python 3.11:
+::
+
+    conda create -n ptychi python=3.11
+
+Then install Pty-Chi using::
+
+    pip install ptychi
+
+
+Developer installation
+----------------------
+
+To install the latest code in the `main` branch, clone the repository to your workspace, and create a new conda environment
 using::
 
     conda create -n ptychi -c conda-forge -c nvidia --file requirements-dev.txt
@@ -26,7 +41,7 @@ How to run test scripts
 =======================
 
 1. Contact the developers to be given access to the APS GitLab repository
-   that holds test data. 
+   that holds test data. **You need to have an account on APS GitLab**.
 2. After gaining access, clone the GitLab data repository to your
    hard drive. 
 3. Set ``PTYCHO_CI_DATA_DIR`` to the ``ci_data`` directory of the data
@@ -34,13 +49,16 @@ How to run test scripts
 4. Run any test scripts in ``tests`` with Python.
 
 
-=====================
-How to build the docs
-=====================
+======================
+Reading documentations
+======================
 
+Pty-Chi's documentation is hosted on `Read the Docs <https://pty-chi.readthedocs.io/>`_.
+
+You can also build the docs and view them in your browser locally.
 To build the docs, install the dependencies as the first step::
 
-   pip install -e .[docs]
+    pip install -r docs/requirements.txt
 
 Then::
 
