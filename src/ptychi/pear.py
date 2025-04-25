@@ -61,9 +61,13 @@ def ptycho_recon(run_recon=True, **params):
     options.object_options.optimizable = True
     options.object_options.optimizer = api.Optimizers.SGD
     options.object_options.build_preconditioner_with_all_modes = False
+
     if params.get('object_smoothness_alpha', 0) > 0:
         options.object_options.smoothness_constraint.enabled = True
         options.object_options.smoothness_constraint.alpha = params['object_smoothness_alpha']
+
+    if params.get('object_regularization_llm', False):
+        options.object_options.regularization_llm.enabled = True
 
     # multislice parameters
     if params['object_thickness_m'] > 0 and params['number_of_slices'] > 1:
