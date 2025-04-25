@@ -61,6 +61,9 @@ def ptycho_recon(run_recon=True, **params):
     options.object_options.optimizable = True
     options.object_options.optimizer = api.Optimizers.SGD
     options.object_options.build_preconditioner_with_all_modes = False
+    if params.get('object_smoothness_alpha', 0) > 0:
+        options.object_options.smoothness_constraint.enabled = True
+        options.object_options.smoothness_constraint.alpha = params['object_smoothness_alpha']
 
     # multislice parameters
     if params['object_thickness_m'] > 0 and params['number_of_slices'] > 1:
@@ -485,7 +488,7 @@ def ptycho_batch_recon_affine_calibration(base_params):
     import numpy as np
     import os
 
-    N_runs = 3
+    N_runs = 1
     
     # Extract parameters
     start_scan = base_params.get('start_scan')
