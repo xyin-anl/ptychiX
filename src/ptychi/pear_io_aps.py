@@ -12,7 +12,7 @@ from ptychi.utils import (add_additional_opr_probe_modes_to_probe,
                           orthogonalize_initial_probe,
                           get_suggested_object_size,
                           get_default_complex_dtype)
-from ptychi.maths import decompose_2x2_affine_transform_matrix
+from ptychi.maths import decompose_2x2_affine_transform_matrix, compose_2x2_affine_transform_matrix
 import matplotlib.pyplot as plt
 #from matplotlib.patches import Rectangle
 from ptychi.pear_utils import (make_fzp_probe,
@@ -108,6 +108,7 @@ def save_reconstructions(task, recon_path, iter, params):
     else:
         #imwrite(f'{recon_path}/object_ph/object_ph_roi_Niter{iter}.tiff', normalize_by_bit_depth(np.angle(recon_object_roi[0,]), '16'))
         object_ph_unwrapped = unwrap_phase_2d(recon_object_roi[0,].cuda(), image_grad_method='fourier_differentiation', image_integration_method='fourier')
+        #object_ph_unwrapped = np.angle(recon_object_roi[0,].cuda())
         imwrite(f'{recon_path}/object_ph/object_ph_Niter{iter}.tiff', 
                 normalize_by_bit_depth(object_ph_unwrapped.cpu(), '16'),
                 photometric='minisblack',
@@ -451,6 +452,9 @@ def create_reconstruction_path(params, options):
     if params.get('init_probe_propagation_distance_mm', 0) != 0:
         recon_path += f'_pd{params['init_probe_propagation_distance_mm']}'
 
+    if options.object_options.smoothness_constraint.enabled:
+        recon_path += f'_smooth{options.object_options.smoothness_constraint.alpha}'
+
     # Append any additional suffix
     if params['recon_dir_suffix']:
         recon_path += f'_{params['recon_dir_suffix']}'
@@ -689,7 +693,7 @@ def initialize_recon(params):
         # Count points in each cluster
         unique_labels, counts = np.unique(cluster_labels, return_counts=True)
         
-        print(f"Found {n_clusters} position clusters with distance threshold of 20 nm")
+        print(f"Found {n_clusters} position clusters.")
         for i, label in enumerate(unique_labels):
             if label == -1:
                 print(f"  Noise points: {counts[i]}")
@@ -765,6 +769,43 @@ def initialize_recon(params):
         print(f"Position array shape: {init_positions_px.shape}")
     else:
         print(f"Initial positions shape: {init_positions_px.shape}, no NaN values detected")
+    
+    #pos_obj = task.reconstructor.parameter_group.probe_positions
+    init_pos_affine_matrix = compose_2x2_affine_transform_matrix(
+        torch.tensor(params.get('init_position_scale', 1.0), dtype=torch.float32),
+        torch.tensor(params.get('init_position_assymetry', 0.0), dtype=torch.float32),
+        torch.tensor(params.get('init_position_rotation', 0.0), dtype=torch.float32),
+        torch.tensor(params.get('init_position_shear', 0.0), dtype=torch.float32)
+    ).cpu()  # Ensure the matrix is on CPU
+    
+    #print(f"Initial position affine matrix: {init_pos_affine_matrix}")
+    #print(f"Initial positions: {init_positions_px}")
+    
+    # First convert numpy array to torch tensor if needed
+    if isinstance(init_positions_px, np.ndarray):
+        init_positions_px_tensor = torch.from_numpy(init_positions_px).cpu().float()  # Ensure it's on CPU and float
+    else:
+        init_positions_px_tensor = init_positions_px.cpu().float()  # Ensure it's on CPU and float
+    
+    # For a 2x2 affine matrix (no translation), we only need to multiply by the x,y coordinates
+    # No need to add ones for homogeneous coordinates in this case
+    
+    # The matrix multiplication should use the first two columns of init_positions_px
+    # Apply the transformation - we're transforming each position (row) by the affine matrix
+    # We need to reshape for proper matrix multiplication
+    transformed_positions = torch.matmul(init_positions_px_tensor, init_pos_affine_matrix.T)
+    
+    #print(f"Transformed positions shape: {transformed_positions.shape}")
+    #print(f"Transformed positions (first few): {transformed_positions[:5]}")
+    
+    # Convert back to numpy if the original was numpy
+    # if isinstance(init_positions_px, np.ndarray):
+    #     init_positions_px = transformed_positions.detach().cpu().numpy()
+    # else:
+    #     # Keep the original device if it was a tensor
+    #     device = init_positions_px.device
+    #     init_positions_px = transformed_positions.to(device)
+
     # Load initial probe
     init_probe = _prepare_initial_probe(dp, params)
 
@@ -1802,3 +1843,4 @@ def _process_diffraction_patterns(dp, params):
         dp = np.transpose(dp, axes=(0, 2, 1))
     
     return dp
+    
