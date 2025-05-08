@@ -445,8 +445,8 @@ class Probe(dsbase.ReconstructParameter):
                     i_mode * self.shape[3] : (i_mode + 1) * self.shape[3],
                     i_opr_mode * self.shape[2] : (i_opr_mode + 1) * self.shape[2],
                 ] = torch.angle(data[i_opr_mode, i_mode, :, :]).detach().cpu().numpy()
-        tifffile.imsave(fname + "_mag.tif", mag_img)
-        tifffile.imsave(fname + "_phase.tif", phase_img)
+        tifffile.imwrite(fname + "_mag.tif", mag_img)
+        tifffile.imwrite(fname + "_phase.tif", phase_img)
 
 class SynthesisDictLearnProbe( Probe ):
     
