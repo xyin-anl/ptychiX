@@ -559,6 +559,27 @@ class ProbeOptions(ParameterOptions):
         del d["initial_guess"]
         return d
 
+@dataclasses.dataclass
+class SynthesisDictLearnProbeOptions(Options):
+    
+    d_mat: Union[ndarray, Tensor] = None
+    """The synthesis sparse dictionary matrix; contains the basis functions 
+    that will be used to represent the probe via the sparse code weights."""
+    
+    d_mat_conj_transpose: Union[ndarray, Tensor] = None
+    """Conjugate transpose of the synthesis sparse dictionary matrix."""
+    
+    d_mat_pinv: Union[ndarray, Tensor] = None
+    """Moore-Penrose pseudoinverse of the synthesis sparse dictionary matrix."""
+    
+    probe_sparse_code: Union[ndarray, Tensor] = None
+    """Sparse code weights vector."""
+    
+    probe_sparse_code_nnz: float = None
+    """Number of non-zeros we will keep when enforcing sparsity constraint on
+    the sparse code weights vector probe_sparse_code."""
+    
+    enabled: bool = False
 
 @dataclasses.dataclass
 class PositionCorrectionOptions(Options):

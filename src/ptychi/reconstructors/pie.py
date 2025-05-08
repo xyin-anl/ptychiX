@@ -129,7 +129,46 @@ class PIEReconstructor(AnalyticalIterativePtychographyReconstructor):
             )
 
         delta_p_i = None
-        if probe.optimization_enabled(self.current_epoch):
+        if probe.optimization_enabled(self.current_epoch) and self.parameter_group.probe.representation == "sparse_code":
+            rc = psi_prime.shape[-1] * psi_prime.shape[-2]
+            n_scpm = psi_prime.shape[-3]
+            n_pos = psi_prime.shape[-4]
+            
+            psi_prime_vec = torch.reshape(psi_prime, (n_pos, n_scpm, rc))
+            
+            probe_vec = torch.reshape(self.parameter_group.probe.data[0, ...], (n_scpm , rc))
+            
+            obj_patches_vec = torch.reshape(obj_patches, (n_pos, 1, rc ))
+            
+            conj_obj_patches = torch.conj(obj_patches_vec)
+            abs2_obj_patches = torch.abs(obj_patches_vec) ** 2
+            
+            z = torch.sum(abs2_obj_patches, dim = 0)
+            z_max = torch.max(z)
+            w = 0.9 * (z_max - z)
+            
+            sum_spos_conjT_s_psi = torch.sum(conj_obj_patches * psi_prime_vec, 0)
+            sum_spos_conjT_s_psi = torch.swapaxes(sum_spos_conjT_s_psi, 0, 1)
+            
+            w_phi =  torch.swapaxes(w * probe_vec, 0, 1)
+            z_plus_w = torch.swapaxes(z + w, 0, 1)
+            
+            numer = self.parameter_group.probe.dictionary_matrix_H @ (sum_spos_conjT_s_psi + w_phi)
+            denom = (self.parameter_group.probe.dictionary_matrix_H @ (z_plus_w * self.parameter_group.probe.dictionary_matrix))
+            
+            sparse_code = torch.linalg.solve(denom, numer)
+            
+            # Enforce sparsity constraint on sparse code
+            abs_sparse_code = torch.abs(sparse_code)
+            sparse_code_sorted = torch.sort(abs_sparse_code, dim=0, descending=True)
+            
+            sel = sparse_code_sorted[0][self.parameter_group.probe.probe_sparse_code_nnz, :]
+            
+            sparse_code = sparse_code * (abs_sparse_code >= sel)
+   
+            # Update sparse code in probe object
+            self.parameter_group.probe.set_sparse_code(sparse_code)
+        else:
             step_weight = self.calculate_probe_step_weight(obj_patches)
             delta_p_i = step_weight * (psi_prime - psi)  # get delta p at each position
             delta_p_i = self.adjoint_shift_probe_update_direction(indices, delta_p_i, first_mode_only=True)

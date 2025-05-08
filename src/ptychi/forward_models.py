@@ -494,6 +494,8 @@ class PlanarPtychographyForwardModel(ForwardModel):
             self.object.generate()
         if isinstance(self.probe, ptychi.data_structures.probe.DIPProbe):
             self.probe.generate()
+        elif isinstance(self.probe, ptychi.data_structures.probe.SynthesisDictLearnProbe):
+            self.probe.generate()
 
     @timer()
     def forward(self, indices: Tensor, return_object_patches: bool = False) -> Tensor:
