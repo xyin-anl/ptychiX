@@ -303,7 +303,8 @@ def save_reconstructions(task, recon_path, iter, params):
         
         # Extract transformation parameters
         scale, asymmetry, rotation, shear = decompose_2x2_affine_transform_matrix(mat[:,:-1])
-        
+        rotation = rotation * 180 / np.pi
+        #asymmetry = asymmetry * 100
         # Store parameters for plotting
         pos_scale.append(scale.cpu().item())
         pos_assymetry.append(asymmetry.cpu().item())
@@ -321,18 +322,18 @@ def save_reconstructions(task, recon_path, iter, params):
         axs[0, 0].set_ylabel('Scale Factor')
         axs[0, 0].set_title('Scale')
         axs[0, 0].grid(True)
-        
+
         # Plot asymmetry
-        axs[0, 1].plot(iterations, pos_assymetry, 'o-', color='blue')
+        axs[0, 1].plot(iterations, np.array(pos_assymetry)*100.0, 'o-', color='blue')
         axs[0, 1].set_xlabel('Iterations')
-        axs[0, 1].set_ylabel('Asymmetry')
+        axs[0, 1].set_ylabel('Asymmetry (%)')
         axs[0, 1].set_title('Asymmetry')
         axs[0, 1].grid(True)
         
         # Plot rotation
         axs[1, 0].plot(iterations, pos_rotation, 'o-', color='blue')
         axs[1, 0].set_xlabel('Iterations')
-        axs[1, 0].set_ylabel('Rotation (rad)')
+        axs[1, 0].set_ylabel('Rotation (deg)')
         axs[1, 0].set_title('Rotation')
         axs[1, 0].grid(True)
         
@@ -1144,11 +1145,12 @@ def _load_probe_foldslice(recon_file):
             if probes.ndim == 4:
                 probes = probes[...,0]
                 probes = probes.transpose(2,0,1)
-
-            if probes.ndim == 3:
+            elif probes.ndim == 3:
                 print("Transposing probe to (n_probe_modes, h, w)")
                 probes = probes.transpose(2,0,1)
-
+            else:
+                probes = probes.transpose(1, 0)
+                
     #print("Shape of probes:", probes.shape)
     if probes.dtype == [('real', '<f8'), ('imag', '<f8')]: # For mat v7.3, the complex128 is read as this complicated datatype via h5py
         #print(f"Loaded object.dtype = {object.dtype}, cast it to 'complex128'")
