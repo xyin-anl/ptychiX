@@ -465,6 +465,6 @@ def get_max_batch_size(
         
     mem_avail = torch.cuda.mem_get_info()[0] * (1 - margin_factor) / 1024 ** 3
     mem_compute = mem_avail - data_size_gb
-    batch_size = (mem_compute - x1 * n_p + x2 * n_o) / (x0 * n_p)
+    batch_size = (mem_compute - x1 * n_p - x2 * n_o) / (x0 * n_p)
     batch_size = batch_size * (8 / dtype.itemsize)
     return max(int(batch_size), 1)
