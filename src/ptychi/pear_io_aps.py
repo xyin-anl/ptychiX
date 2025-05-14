@@ -366,11 +366,14 @@ def save_reconstructions(task, recon_path, iter, params):
     plt.close()
 
     # Save results in hdf5 format
+    init_positions_px = np.array([init_positions_y/pixel_size, init_positions_x/pixel_size]).T
+
     with h5py.File(f'{recon_path}/recon_Niter{iter}.h5', 'w') as hdf_file:
         hdf_file.create_dataset('probe', data=recon_probe)
         hdf_file.create_dataset('object', data=recon_object)
         hdf_file.create_dataset('loss', data=loss)
         hdf_file.create_dataset('positions_px', data=scan_positions)
+        hdf_file.create_dataset('init_positions_px', data=init_positions_px)
         hdf_file.create_dataset('obj_pixel_size_m', data=task.object_options.pixel_size_m)
         if params['position_correction']:
             pos_corr_group = hdf_file.create_group('pos_corr')
@@ -629,9 +632,11 @@ def initialize_recon(params):
     # Load diffraction patterns and positions
     try:
         if params.get('load_processed_hdf5') or instrument == 'simu':
+            h5_dp_path = find_matching_recon(params.get('path_to_processed_hdf5_dp'), params['scan_num'])
+            h5_pos_path = find_matching_recon(params.get('path_to_processed_hdf5_pos'), params['scan_num'])
             dp, positions_m = _load_data_hdf5(
-                params.get('path_to_processed_hdf5_dp'),
-                params.get('path_to_processed_hdf5_pos'),
+                h5_dp_path,
+                h5_pos_path,
                 dp_Npix
             )
         else:
@@ -1199,11 +1204,15 @@ def _load_data_hdf5(h5_dp_path, h5_position_path, dp_Npix):
 
     #else: # assume foldslice convention
     print("Loading processed scan positions and diffraction patterns in foldslice convention.")
+    print("Diffraction patterns file:")
+    print(h5_dp_path)
     dp = h5py.File(h5_dp_path, 'r')['dp'][...]
     det_xwidth = int(dp_Npix/2)
     cen = int(dp.shape[1] / 2)
     dp = dp[:, cen - det_xwidth:cen + det_xwidth, cen - det_xwidth:cen + det_xwidth]
 
+    print("Scan positions file:")
+    print(h5_position_path)
     ppY = h5py.File(h5_position_path, 'r')['ppY'][:].flatten()
     ppX = h5py.File(h5_position_path, 'r')['ppX'][:].flatten()
     ppX = ppX - (np.max(ppX) + np.min(ppX)) / 2
