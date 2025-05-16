@@ -635,7 +635,7 @@ class PositionAffineTransformConstraintOptions(FeatureOptions):
         enums.AffineDegreesOfFreedom.ROTATION,
         enums.AffineDegreesOfFreedom.SCALE,
         enums.AffineDegreesOfFreedom.SHEAR,
-        enums.AffineDegreesOfFreedom.ASSYMETRY,
+        enums.AffineDegreesOfFreedom.ASYMMETRY,
     )
     """The degrees of freedom to include in the affine transformation."""
     
