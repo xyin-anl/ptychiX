@@ -446,6 +446,10 @@ def create_reconstruction_path(params, options):
  
     if options.probe_position_options.optimizable:
         recon_path += '_pc'
+        if params.get('position_correction_gradient_method', 'gaussian') == 'gaussian':
+            recon_path += '_g'
+        elif params.get('position_correction_gradient_method', 'gaussian') == 'fourier':
+            recon_path += '_f'
         if options.probe_position_options.correction_options.update_magnitude_limit > 0:
             recon_path += f'_ul{options.probe_position_options.correction_options.update_magnitude_limit}'
         if options.probe_position_options.correction_options.slice_for_correction:
@@ -458,6 +462,23 @@ def create_reconstruction_path(params, options):
 
     if options.object_options.smoothness_constraint.enabled:
         recon_path += f'_smooth{options.object_options.smoothness_constraint.alpha}'
+
+    # Check if any diffraction pattern transformations are enabled
+    dp_transforms = {
+        'up_down': params.get('flip_diffraction_patterns_up_down', False),
+        'left_right': params.get('flip_diffraction_patterns_left_right', False),
+        'transpose': params.get('flip_diffraction_patterns_transpose', False)
+    }
+    
+    if any(dp_transforms.values()):
+        recon_path += '_dpFlip'
+        # Add specific transform indicators to path
+        if dp_transforms['up_down']:
+            recon_path += '_ud'
+        if dp_transforms['left_right']:
+            recon_path += '_lr'
+        if dp_transforms['transpose']:
+            recon_path += '_tr'
 
     # Append any additional suffix
     if params['recon_dir_suffix']:
@@ -1147,8 +1168,11 @@ def _load_probe_foldslice(recon_file):
         mat_contents = scipy.io.loadmat(recon_file)
         if 'probe' in mat_contents:
             probes = mat_contents['probe']
+            print("Shape of input probe:", probes.shape)
             if probes.ndim == 4:
+                print("Taking the primary OPR mode")
                 probes = probes[...,0]
+                print("Transposing probe to (n_probe_modes, h, w)")
                 probes = probes.transpose(2,0,1)
             elif probes.ndim == 3:
                 print("Transposing probe to (n_probe_modes, h, w)")
@@ -1210,6 +1234,7 @@ def _load_data_hdf5(h5_dp_path, h5_position_path, dp_Npix):
     det_xwidth = int(dp_Npix/2)
     cen = int(dp.shape[1] / 2)
     dp = dp[:, cen - det_xwidth:cen + det_xwidth, cen - det_xwidth:cen + det_xwidth]
+    dp[dp<0] = 0
 
     print("Scan positions file:")
     print(h5_position_path)
