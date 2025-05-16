@@ -193,19 +193,32 @@ class ProbePositions(dsbase.ReconstructParameter):
         """Step the optimizer with gradient filled in. This function
         can optionally impose a limit on the magnitude of the update.
         """
-        limit = self.options.correction_options.update_magnitude_limit
-        if limit is not None and limit <= 0:
-            raise ValueError("`limit` should either be None or a positive number.")
-        if limit == torch.inf:
-            limit = None
-        if limit is not None:
-            data0 = self.data
+        limit_user = self.options.correction_options.update_magnitude_limit
+        if limit_user is not None and limit_user <= 0:
+            raise ValueError("`update_magnitude_limit` should either be None or a positive number.")
+        if limit_user == torch.inf:
+            limit_user = None
+        data0 = self.data
+            
         self.optimizer.step()
-        if limit is not None:
-            data = self.data
-            dx = data - data0
-            update_mag = dx.abs()
-            update_signs = dx.sign()
-            limit = torch.clip(pmath.mad(dx, dim=0) * 10, max=limit)
-            dx = update_mag.clip(max=limit) * update_signs
-            self.set_data(data0 + dx)
+        
+        if not self.options.correction_options.clip_update_magnitude_by_mad and limit_user is None:
+            return
+        
+        # Get update.
+        data = self.data
+        dx = data - data0
+        update_mag = dx.abs()
+        update_signs = dx.sign()
+        
+        # Truncate update by the limit and reapply it.
+        if self.options.correction_options.clip_update_magnitude_by_mad:
+            limit_mad = pmath.mad(dx, dim=0) * 10
+        else:
+            limit_mad = torch.inf
+        if limit_user is not None:
+            limit = torch.clip(limit_mad, max=limit_user)
+        else:
+            limit = limit_mad
+        dx = update_mag.clip(max=limit) * update_signs
+        self.set_data(data0 + dx)

@@ -609,9 +609,16 @@ class PositionCorrectionOptions(Options):
     is chosen.
     """
     
+    clip_update_magnitude_by_mad: bool = True
+    """If True, the update magnitude is eventually clipped by 10 times the mean absolute deviation (MAD)
+    of the updates. When `update_magnitude_limit` is set, the limit will be set to the smaller of them,
+    i.e., `min(update_magnitude_limit, 10 * MAD)`.
+    """
+    
     update_magnitude_limit: Optional[float] = 0.1
     """The maximum allowed magnitude of position update in each axis. Updates larger than this value 
-    are clipped. Set to None or inf to disable the constraint.
+    are clipped. Set to None or inf to disable the constraint. When `clip_update_magnitude_by_mad` is
+    `True`, the actual limit will be set to the smaller of `update_magnitude_limit` and `10 * MAD`.
     """
     
 
