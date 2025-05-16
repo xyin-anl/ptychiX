@@ -5,7 +5,7 @@ from typing import Optional, Union, TYPE_CHECKING, Sequence
 import dataclasses
 from dataclasses import field
 import logging
-from math import inf, ceil
+from math import ceil
 
 from numpy import ndarray
 from torch import Tensor
