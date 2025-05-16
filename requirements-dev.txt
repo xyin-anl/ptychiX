@@ -10,3 +10,5 @@ scikit-learn
 scipy
 torchvision
 tqdm
+hdf5plugin
+python=3.12
