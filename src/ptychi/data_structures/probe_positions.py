@@ -170,7 +170,7 @@ class ProbePositions(dsbase.ReconstructParameter):
         scale, asymmetry, rotation, shear = pmath.decompose_2x2_affine_transform_matrix(a_mat)
         if enums.AffineDegreesOfFreedom.SCALE not in dofs:
             scale = 1.0
-        if enums.AffineDegreesOfFreedom.asymmetry not in dofs:
+        if enums.AffineDegreesOfFreedom.ASYMMETRY not in dofs:
             asymmetry = 0.0
         if enums.AffineDegreesOfFreedom.ROTATION not in dofs:
             rotation = 0.0
