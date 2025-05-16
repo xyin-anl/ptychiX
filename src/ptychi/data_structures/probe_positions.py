@@ -50,7 +50,7 @@ class ProbePositions(dsbase.ReconstructParameter):
         self.register_buffer("position_weights", torch.ones_like(self.data))
         self.affine_transform_components = {
             "scale": 1.0,
-            "assymetry": 0.0,
+            "asymmetry": 0.0,
             "rotation": 0.0,
             "shear": 0.0,
         }
@@ -167,24 +167,24 @@ class ProbePositions(dsbase.ReconstructParameter):
         if enums.AffineDegreesOfFreedom.TRANSLATION in dofs:
             a_mat = a_mat[:, :-1]
         
-        scale, assymetry, rotation, shear = pmath.decompose_2x2_affine_transform_matrix(a_mat)
+        scale, asymmetry, rotation, shear = pmath.decompose_2x2_affine_transform_matrix(a_mat)
         if enums.AffineDegreesOfFreedom.SCALE not in dofs:
             scale = 1.0
-        if enums.AffineDegreesOfFreedom.ASSYMETRY not in dofs:
-            assymetry = 0.0
+        if enums.AffineDegreesOfFreedom.asymmetry not in dofs:
+            asymmetry = 0.0
         if enums.AffineDegreesOfFreedom.ROTATION not in dofs:
             rotation = 0.0
         if enums.AffineDegreesOfFreedom.SHEAR not in dofs:
             shear = 0.0
         
         a_mat = pmath.compose_2x2_affine_transform_matrix(
-            scale, assymetry, rotation, shear
+            scale, asymmetry, rotation, shear
         )
         self.affine_transform_matrix = torch.cat([a_mat, torch.zeros(2, 1, device=a_mat.device)], dim=1)
         
         # Update saved components.
         self.affine_transform_components["scale"] = to_numpy(scale)
-        self.affine_transform_components["assymetry"] = to_numpy(assymetry)
+        self.affine_transform_components["asymmetry"] = to_numpy(asymmetry)
         self.affine_transform_components["rotation"] = to_numpy(rotation)
         self.affine_transform_components["shear"] = to_numpy(shear)
         
