@@ -588,7 +588,7 @@ class PositionCorrectionOptions(Options):
     correction_type: enums.PositionCorrectionTypes = enums.PositionCorrectionTypes.GRADIENT
     """Type of algorithm used to calculate the position correction update."""
     
-    differentiation_method: enums.ImageGradientMethods = enums.ImageGradientMethods.GAUSSIAN
+    differentiation_method: enums.ImageGradientMethods = enums.ImageGradientMethods.FOURIER_DIFFERENTIATION
     """The method for calculating the gradient of the object. Only used when `correction_type` 
     is `GRADIENT`. `"FOURIER_DIFFERENTIATION"` is usually the fastest, but it might be less
     stable when the object is noisy or non-smooth, under which circumstance `"GAUSSIAN"` or
@@ -609,7 +609,7 @@ class PositionCorrectionOptions(Options):
     is chosen.
     """
     
-    update_magnitude_limit: Optional[float] = inf
+    update_magnitude_limit: Optional[float] = 0.1
     """The maximum allowed magnitude of position update in each axis. Updates larger than this value 
     are clipped. Set to None or inf to disable the constraint.
     """
@@ -673,15 +673,14 @@ class ProbePositionMagnitudeLimitOptions(FeatureOptions):
 class ProbePositionOptions(ParameterOptions):
     optimizable: bool = False
     
+    step_size: float = 0.3
+    """The step size for probe position update."""
+    
     position_x_px: Union[ndarray, Tensor] = None
     """The x position in pixel."""
 
     position_y_px: Union[ndarray, Tensor] = None
     """The y position in pixel."""
-
-    magnitude_limit: ProbePositionMagnitudeLimitOptions = dataclasses.field(
-        default_factory=ProbePositionMagnitudeLimitOptions
-    )
 
     constrain_position_mean: bool = False
     """
@@ -711,14 +710,6 @@ class ProbePositionOptions(ParameterOptions):
         
     def check(self, options: "task_options.PtychographyTaskOptions"):
         super().check(options)
-        if self.magnitude_limit.enabled or self.magnitude_limit.limit > 0:
-            raise ValueError(
-                "`probe_position_options.magnitude_limit` is depreciated "
-                "and will be removed in the future. Please use "
-                "`probe_position_options.correction_options.update_magnitude_limit` instead. "
-                "To avoid this error, set `enabled` to `False` and `limit` to 0 in "
-                "`probe_position_options.magnitude_limit`."
-            )
         if self.correction_options.update_magnitude_limit == 0:
             raise ValueError(
                 "`probe_position_options.correction_options.update_magnitude_limit` is "
