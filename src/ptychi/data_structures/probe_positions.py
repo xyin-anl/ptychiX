@@ -188,3 +188,24 @@ class ProbePositions(dsbase.ReconstructParameter):
         
         pos_new = self.data * (1 - flexibility) + flexibility * estimated_positions
         self.set_data(pos_new)
+
+    def step_optimizer(self, *args, **kwargs):
+        """Step the optimizer with gradient filled in. This function
+        can optionally impose a limit on the magnitude of the update.
+        """
+        limit = self.options.correction_options.update_magnitude_limit
+        if limit is not None and limit <= 0:
+            raise ValueError("`limit` should either be None or a positive number.")
+        if limit == torch.inf:
+            limit = None
+        if limit is not None:
+            data0 = self.data
+        self.optimizer.step()
+        if limit is not None:
+            data = self.data
+            dx = data - data0
+            update_mag = dx.abs()
+            update_signs = dx.sign()
+            limit = torch.clip(pmath.mad(dx, dim=0) * 10, max=limit)
+            dx = update_mag.clip(max=limit) * update_signs
+            self.set_data(data0 + dx)

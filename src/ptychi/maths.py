@@ -563,3 +563,9 @@ def redot(a, b, axis=None):
     res = torch.sum(reprod(a, b), axis=axis)
     return res
 
+
+def mad(x: torch.Tensor, dim=None):
+    """
+    Mean absolute deviation
+    """
+    return torch.mean(torch.abs(x - torch.mean(x, dim=dim)), dim=dim)
