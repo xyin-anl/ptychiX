@@ -221,4 +221,6 @@ class ProbePositions(dsbase.ReconstructParameter):
         else:
             limit = limit_mad
         dx = update_mag.clip(max=limit) * update_signs
-        self.set_data(data0 + dx)
+        
+        with torch.no_grad():
+            self.set_data(data0 + dx)

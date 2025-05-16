@@ -725,14 +725,6 @@ class ProbePositionOptions(ParameterOptions):
                 "position correction, set `optimizable` to `False`. To disable update "
                 "magnitude limit, set `update_magnitude_limit` to None or inf."
             )
-        if (
-            self.correction_options.update_magnitude_limit is not None
-            and self.correction_options.update_magnitude_limit < inf
-            and options.reconstructor_options.get_reconstructor_type() == enums.Reconstructors.AD_PTYCHO
-        ):
-            raise NotImplementedError(
-                "Update magnitude limit is not supported for AutodiffPtychography."
-            )
 
 
 @dataclasses.dataclass
