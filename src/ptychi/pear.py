@@ -476,8 +476,8 @@ ptycho_recon(run_recon=True, **params)
             break
         else:
             repeat_count += 1
-            print(f"Waiting for 10 seconds...")
-            time.sleep(10)
+            print(f"Waiting for 5 seconds...")
+            time.sleep(5)
    
     print(f"Batch processing complete.")
 

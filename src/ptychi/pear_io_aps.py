@@ -467,7 +467,7 @@ def create_reconstruction_path(params, options):
     dp_transforms = {
         'up_down': params.get('flip_diffraction_patterns_up_down', False),
         'left_right': params.get('flip_diffraction_patterns_left_right', False),
-        'transpose': params.get('flip_diffraction_patterns_transpose', False)
+        'transpose': params.get('transpose_diffraction_patterns', False)
     }
     
     if any(dp_transforms.values()):
@@ -1162,23 +1162,28 @@ def _load_probe_foldslice(recon_file):
     try:
         with h5py.File(recon_file, "r") as hdf_file:
             probes = hdf_file['probe'][:]
+            probes = np.swapaxes(probes, -1, -2)
+
+            #probes = probes.transpose(*{4: (0,1,3,2), 3: (0,2,1), 2: (1,0)}.get(probes.ndim, range(probes.ndim)))
     except:
         import scipy.io
         print(f"Attempting to load probe using scipy.io.loadmat")
         mat_contents = scipy.io.loadmat(recon_file)
         if 'probe' in mat_contents:
             probes = mat_contents['probe']
-            print("Shape of input probe:", probes.shape)
-            if probes.ndim == 4:
-                print("Taking the primary OPR mode")
-                probes = probes[...,0]
-                print("Transposing probe to (n_probe_modes, h, w)")
-                probes = probes.transpose(2,0,1)
-            elif probes.ndim == 3:
-                print("Transposing probe to (n_probe_modes, h, w)")
-                probes = probes.transpose(2,0,1)
-            else:
-                probes = probes.transpose(1, 0)
+
+        print("Shape of input probe:", probes.shape)
+        if probes.ndim == 4:
+            probes = probes[...,0]
+            print("Taking the primary OPR mode:", probes.shape)
+
+            print("Transposing probe to (n_probe_modes, h, w)")
+            probes = probes.transpose(2,0,1)
+        elif probes.ndim == 3:
+            print("Transposing probe to (n_probe_modes, h, w)")
+            probes = probes.transpose(2,0,1)
+        else:
+            probes = probes.transpose(1, 0)
                 
     #print("Shape of probes:", probes.shape)
     if probes.dtype == [('real', '<f8'), ('imag', '<f8')]: # For mat v7.3, the complex128 is read as this complicated datatype via h5py
