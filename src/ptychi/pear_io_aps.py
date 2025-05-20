@@ -12,13 +12,12 @@ from ptychi.utils import (add_additional_opr_probe_modes_to_probe,
                           orthogonalize_initial_probe,
                           get_suggested_object_size,
                           get_default_complex_dtype)
-from ptychi.maths import decompose_2x2_affine_transform_matrix, compose_2x2_affine_transform_matrix
+from ptychi.maths import compose_2x2_affine_transform_matrix
 import matplotlib.pyplot as plt
 #from matplotlib.patches import Rectangle
 from ptychi.pear_utils import (make_fzp_probe,
                                 resize_complex_array,
-                                find_matching_recon,
-                                format_path_with_scan_num)
+                                find_matching_recon)
 import sys
 import torch
 import json
@@ -299,50 +298,39 @@ def save_reconstructions(task, recon_path, iter, params):
         plt.close()
 
         # Plot affine transformation parameters from probe position correction
-        mat = task.reconstructor.parameter_group.probe_positions.affine_transform_matrix
-        
-        # Extract transformation parameters
-        scale, asymmetry, rotation, shear = decompose_2x2_affine_transform_matrix(mat[:,:-1])
-        rotation = rotation * 180 / np.pi
-        #asymmetry = asymmetry * 100
-        # Store parameters for plotting
-        pos_scale.append(scale.cpu().item())
-        pos_assymetry.append(asymmetry.cpu().item())
-        pos_rotation.append(rotation.cpu().item())
-        pos_shear.append(shear.cpu().item())
-        iterations.append(iter)
-        
-        # Create figure with subplots for each transformation parameter
-        fig, axs = plt.subplots(2, 2, figsize=(10, 8))
-        
-        # Plot scale factor
-        axs[0, 0].plot(iterations, pos_scale, 'o-', color='blue')
-        axs[0, 0].set_ylim(0.97, 1.03)
-        axs[0, 0].set_xlabel('Iterations')
-        axs[0, 0].set_ylabel('Scale Factor')
-        axs[0, 0].set_title('Scale')
-        axs[0, 0].grid(True)
+        affine_matrix = task.reconstructor.parameter_group.probe_positions.affine_transform_matrix
+        affine_transform_components = task.reconstructor.parameter_group.probe_positions.affine_transform_components
 
-        # Plot asymmetry
-        axs[0, 1].plot(iterations, np.array(pos_assymetry)*100.0, 'o-', color='blue')
-        axs[0, 1].set_xlabel('Iterations')
-        axs[0, 1].set_ylabel('Asymmetry (%)')
-        axs[0, 1].set_title('Asymmetry')
-        axs[0, 1].grid(True)
-        
-        # Plot rotation
-        axs[1, 0].plot(iterations, pos_rotation, 'o-', color='blue')
-        axs[1, 0].set_xlabel('Iterations')
-        axs[1, 0].set_ylabel('Rotation (deg)')
-        axs[1, 0].set_title('Rotation')
-        axs[1, 0].grid(True)
-        
-        # Plot shear
-        axs[1, 1].plot(iterations, pos_shear, 'o-', color='blue')
-        axs[1, 1].set_xlabel('Iterations')
-        axs[1, 1].set_ylabel('Shear')
-        axs[1, 1].set_title('Shear')
-        axs[1, 1].grid(True)
+        # Extract and store transformation parameters
+        scale = affine_transform_components['scale']
+        asymmetry = affine_transform_components['asymmetry']
+        rotation = affine_transform_components['rotation'] * 180 / np.pi  # Convert to degrees
+        shear = affine_transform_components['shear']
+
+        pos_scale.append(scale)
+        pos_assymetry.append(asymmetry)
+        pos_rotation.append(rotation)
+        pos_shear.append(shear)
+        iterations.append(iter)
+
+        # Define parameter info for streamlined plotting
+        param_info = [
+            ('Scale', pos_scale, 'Scale Factor', (0.97, 1.03), None),
+            ('Asymmetry', np.array(pos_assymetry) * 100.0, 'Asymmetry (%)', None, None),
+            ('Rotation', pos_rotation, 'Rotation (deg)', None, None),
+            ('Shear', pos_shear, 'Shear', None, None)
+        ]
+
+        fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+        axs = axs.ravel()
+        for i, (title, data, ylabel, ylim, color) in enumerate(param_info):
+            axs[i].plot(iterations, data, 'o-', color='blue')
+            axs[i].set_xlabel('Iterations')
+            axs[i].set_ylabel(ylabel)
+            axs[i].set_title(title)
+            axs[i].grid(True)
+            if ylim:
+                axs[i].set_ylim(*ylim)
 
         plt.tight_layout()
         plt.savefig(f'{recon_path}/positions_affine/positions_affine_Niter{iter}.png', dpi=300)
@@ -382,7 +370,7 @@ def save_reconstructions(task, recon_path, iter, params):
             pos_corr_group.create_dataset('rotation', data=pos_rotation)
             pos_corr_group.create_dataset('shear', data=pos_shear)
             pos_corr_group.create_dataset('iterations', data=iterations)
-            pos_corr_group.create_dataset('affine_matrix', data=mat.cpu().numpy())
+            pos_corr_group.create_dataset('affine_matrix', data=affine_matrix.cpu().numpy())
         if recon_probe.shape[0] > 1:
             hdf_file.create_dataset('opr_mode_weights', data=opr_mode_weights)
         if recon_object_roi.shape[0] > 1:  # multislice recon
