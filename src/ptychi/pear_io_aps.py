@@ -671,6 +671,8 @@ def initialize_recon(params):
     if params['path_to_init_positions']:
         positions_m = _prepare_initial_positions(params)
     
+    positions_m = _apply_affine_transform(positions_m, params)
+
     params['det_pixel_size_m'] = 75e-6 if instrument in ['velo', 'velociprobe', 'bnp', 'bionanoprobe', '2ide', '2xfm', 'lynx', 'simu'] else 172e-6
 
     if params.get('beam_source', 'xray') == 'electron':
@@ -778,48 +780,14 @@ def initialize_recon(params):
         }
     
     init_positions_px = positions_m / params['obj_pixel_size_m']
+
     # Check if positions contain NaN values
     if np.isnan(init_positions_px).any():
         print(f"WARNING: Initial positions contain {np.sum(np.isnan(init_positions_px))} NaN values!")
-        print(f"Position array shape: {init_positions_px.shape}")
+        print(f"Initial positions shape: {init_positions_px.shape}")
     else:
         print(f"Initial positions shape: {init_positions_px.shape}, no NaN values detected")
-    
-    #pos_obj = task.reconstructor.parameter_group.probe_positions
-    init_pos_affine_matrix = compose_2x2_affine_transform_matrix(
-        torch.tensor(params.get('init_position_scale', 1.0), dtype=torch.float32),
-        torch.tensor(params.get('init_position_assymetry', 0.0), dtype=torch.float32),
-        torch.tensor(params.get('init_position_rotation', 0.0), dtype=torch.float32),
-        torch.tensor(params.get('init_position_shear', 0.0), dtype=torch.float32)
-    ).cpu()  # Ensure the matrix is on CPU
-    
-    #print(f"Initial position affine matrix: {init_pos_affine_matrix}")
-    #print(f"Initial positions: {init_positions_px}")
-    
-    # First convert numpy array to torch tensor if needed
-    if isinstance(init_positions_px, np.ndarray):
-        init_positions_px_tensor = torch.from_numpy(init_positions_px).cpu().float()  # Ensure it's on CPU and float
-    else:
-        init_positions_px_tensor = init_positions_px.cpu().float()  # Ensure it's on CPU and float
-    
-    # For a 2x2 affine matrix (no translation), we only need to multiply by the x,y coordinates
-    # No need to add ones for homogeneous coordinates in this case
-    
-    # The matrix multiplication should use the first two columns of init_positions_px
-    # Apply the transformation - we're transforming each position (row) by the affine matrix
-    # We need to reshape for proper matrix multiplication
-    transformed_positions = torch.matmul(init_positions_px_tensor, init_pos_affine_matrix.T)
-    
-    #print(f"Transformed positions shape: {transformed_positions.shape}")
-    #print(f"Transformed positions (first few): {transformed_positions[:5]}")
-    
-    # Convert back to numpy if the original was numpy
-    # if isinstance(init_positions_px, np.ndarray):
-    #     init_positions_px = transformed_positions.detach().cpu().numpy()
-    # else:
-    #     # Keep the original device if it was a tensor
-    #     device = init_positions_px.device
-    #     init_positions_px = transformed_positions.to(device)
+
 
     # Load initial probe
     init_probe = _prepare_initial_probe(dp, params)
@@ -854,8 +822,15 @@ def _prepare_initial_positions(params):
     print(params['path_to_init_positions'])
     positions_px = _load_ptychi_recon(params['path_to_init_positions'], 'positions_px')
     input_obj_pixel_size = _load_ptychi_recon(params['path_to_init_positions'], 'obj_pixel_size_m')
-    
+
     return positions_px*input_obj_pixel_size
+
+def _apply_affine_transform(positions_m, params):
+    affine_matrix = np.array(params.get('init_position_affine_matrix', np.eye(2)))
+    print(f"Affine matrix for initial positions: {affine_matrix.flatten()}")
+    transformed_positions_m = positions_m @ affine_matrix
+    
+    return transformed_positions_m
 
 def _prepare_initial_object(params, positions_px, probe_size, extra_size):
     if params['path_to_init_object']:
