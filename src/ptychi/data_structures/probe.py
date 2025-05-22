@@ -3,6 +3,7 @@
 
 from typing import Optional, Union, TYPE_CHECKING
 import logging
+import enum
 import os
 
 import numpy as np
@@ -25,11 +26,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class ProbeRepresentation(enum.StrEnum):
+    NORMAL = enum.auto()
+    SPARSE_CODE = enum.auto()
+    DIP = enum.auto()
+
+
 class Probe(dsbase.ReconstructParameter):
     # TODO: eigenmode_update_relaxation is only used for LSQML. We should create dataclasses
     # to contain additional options for ReconstructParameter classes, and subclass them for specific
     # reconstruction algorithms - for example, ProbeOptions -> LSQMLProbeOptions.
     options: "api.options.base.ProbeOptions"
+    
+    representation: ProbeRepresentation = ProbeRepresentation.NORMAL
 
     def __init__(
         self,
@@ -436,13 +445,73 @@ class Probe(dsbase.ReconstructParameter):
                     i_mode * self.shape[3] : (i_mode + 1) * self.shape[3],
                     i_opr_mode * self.shape[2] : (i_opr_mode + 1) * self.shape[2],
                 ] = torch.angle(data[i_opr_mode, i_mode, :, :]).detach().cpu().numpy()
-        tifffile.imsave(fname + "_mag.tif", mag_img)
-        tifffile.imsave(fname + "_phase.tif", phase_img)
+        tifffile.imwrite(fname + "_mag.tif", mag_img)
+        tifffile.imwrite(fname + "_phase.tif", phase_img)
+
+class SynthesisDictLearnProbe( Probe ):
+    
+    representation: ProbeRepresentation = ProbeRepresentation.SPARSE_CODE
+    
+    def __init__(self, name = "probe", options = None, *args, **kwargs):    
+        
+        super().__init__(name, options, build_optimizer=False, data_as_parameter=False, *args, **kwargs)
+
+        dictionary_matrix, dictionary_matrix_pinv, dictionary_matrix_H = self.get_dictionary()
+        self.register_buffer("dictionary_matrix", dictionary_matrix)
+        self.register_buffer("dictionary_matrix_pinv", dictionary_matrix_pinv)
+        self.register_buffer("dictionary_matrix_H", dictionary_matrix_H)
+        
+        probe_sparse_code_nnz = torch.tensor(  self.options.experimental.sdl_probe_options.probe_sparse_code_nnz, dtype=torch.uint32 )
+        self.register_buffer("probe_sparse_code_nnz", probe_sparse_code_nnz )
+
+        sparse_code_probe = self.get_initial_weights()
+        self.register_parameter("sparse_code_probe", torch.nn.Parameter(sparse_code_probe))
+
+        self.build_optimizer()
+
+    def get_dictionary(self):
+        dictionary_matrix = torch.tensor( self.options.experimental.sdl_probe_options.d_mat, dtype=torch.complex64 )
+        dictionary_matrix_pinv = torch.tensor( self.options.experimental.sdl_probe_options.d_mat_pinv, dtype=torch.complex64 )
+        dictionary_matrix_H = torch.tensor( self.options.experimental.sdl_probe_options.d_mat_conj_transpose, dtype=torch.complex64 )
+        return dictionary_matrix, dictionary_matrix_pinv, dictionary_matrix_H
+
+    def get_initial_weights(self):
+        probe_vec = torch.reshape( self.data, ( self.data.shape[1], self.data.shape[2] * self.data.shape[3] ))
+        probe_vec = torch.swapaxes( probe_vec, 0, -1)
+        sparse_code_probe = self.dictionary_matrix_pinv @ probe_vec
+        return sparse_code_probe
+
+    def generate(self):
+        """Generate the probe using the sparse code, and set the
+        generated probe to self.data.
+        
+        Returns
+        -------
+        Tensor
+            A (n_opr_modes, n_modes, h, w) tensor giving the generated probe.
+        """
+        probe_vec = self.dictionary_matrix @ self.sparse_code_probe
+        probe_vec = torch.swapaxes( probe_vec, 0, -1)
+        probe = torch.reshape( probe_vec, ( self.data.shape[1], self.data.shape[2], self.data.shape[3] ))[ None, ... ]
+        self.tensor.data = torch.stack([probe.real, probe.imag], dim=-1)
+        return probe
+    
+    def build_optimizer(self):
+        if self.optimizable and self.optimizer_class is None:
+            raise ValueError(
+                "Parameter {} is optimizable but no optimizer is specified.".format(self.name)
+            )
+        if self.optimizable:
+            self.optimizer = self.optimizer_class([self.sparse_code_probe], **self.optimizer_params)
+
+    def set_sparse_code(self, data):
+        self.sparse_code_probe.data = data
 
 
 class DIPProbe(Probe):
     
     options: "api.options.ad_ptychography.AutodiffPtychographyProbeOptions"
+    representation: ProbeRepresentation = ProbeRepresentation.DIP
     
     def __init__(
         self,

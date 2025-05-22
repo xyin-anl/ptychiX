@@ -106,11 +106,17 @@ def ptycho_recon(run_recon=True, **params):
     options.probe_position_options.optimizer = api.Optimizers.SGD
     options.probe_position_options.step_size = 1
     options.probe_position_options.correction_options.correction_type = api.PositionCorrectionTypes.GRADIENT
+    if params.get('position_correction_gradient_method', 'gaussian') == 'gaussian':
+        options.probe_position_options.correction_options.differentiation_method = api.ImageGradientMethods.GAUSSIAN
+    elif params.get('position_correction_gradient_method', 'gaussian') == 'fourier':
+        options.probe_position_options.correction_options.differentiation_method = api.ImageGradientMethods.FOURIER_DIFFERENTIATION
+    else:
+        raise ValueError(f"Invalid position correction gradient method: {params['position_correction_gradient_method']}")
     options.probe_position_options.correction_options.update_magnitude_limit = params['position_correction_update_limit']
-    options.probe_position_options.affine_transform_constraint.enabled = True # alwayscalculate the affine matrix
+    options.probe_position_options.affine_transform_constraint.enabled = True # always calculate the affine matrix
     options.probe_position_options.affine_transform_constraint.apply_constraint = params['position_correction_affine_constraint']
     options.probe_position_options.affine_transform_constraint.position_weight_update_interval = 100 # TODO: add to params
-        
+    
     # variable probe correction
     #options.probe_position_options.correction_options.gradient_method = api.PositionCorrectionGradientMethods.FOURIER
     if params['number_opr_modes'] > 0:
@@ -470,8 +476,8 @@ ptycho_recon(run_recon=True, **params)
             break
         else:
             repeat_count += 1
-            print(f"Waiting for 10 seconds...")
-            time.sleep(10)
+            print(f"Waiting for 5 seconds...")
+            time.sleep(5)
    
     print(f"Batch processing complete.")
 

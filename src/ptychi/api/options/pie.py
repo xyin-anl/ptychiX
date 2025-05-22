@@ -26,12 +26,19 @@ class PIEObjectOptions(base.ObjectOptions):
 
 
 @dataclasses.dataclass
+class PIEProbeExperimentalOptions(base.Options):
+    sdl_probe_options: base.SynthesisDictLearnProbeOptions = dataclasses.field(default_factory=base.SynthesisDictLearnProbeOptions)
+
+
+@dataclasses.dataclass
 class PIEProbeOptions(base.ProbeOptions):
     
     alpha: float = 0.1
     """
     Multiplier for the update to the probe, as defined in table 1 of Maiden (2017).
     """
+    
+    experimental: PIEProbeExperimentalOptions = dataclasses.field(default_factory=PIEProbeExperimentalOptions)
 
 
 @dataclasses.dataclass

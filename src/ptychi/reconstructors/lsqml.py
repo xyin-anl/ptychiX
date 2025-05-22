@@ -1093,9 +1093,7 @@ class LSQMLReconstructor(AnalyticalIterativePtychographyReconstructor):
         delta_pos_full = torch.zeros_like(self.parameter_group.probe_positions.tensor)
         delta_pos_full[indices] = delta_pos
         self.parameter_group.probe_positions.set_grad(-delta_pos_full)
-        self.parameter_group.probe_positions.step_optimizer(
-            limit=self.parameter_group.probe_positions.options.correction_options.update_magnitude_limit
-        )
+        self.parameter_group.probe_positions.step_optimizer()
 
     @timer()
     def _calculate_final_object_update_step_size(self):

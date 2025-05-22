@@ -12,13 +12,12 @@ from ptychi.utils import (add_additional_opr_probe_modes_to_probe,
                           orthogonalize_initial_probe,
                           get_suggested_object_size,
                           get_default_complex_dtype)
-from ptychi.maths import decompose_2x2_affine_transform_matrix, compose_2x2_affine_transform_matrix
+from ptychi.maths import compose_2x2_affine_transform_matrix
 import matplotlib.pyplot as plt
 #from matplotlib.patches import Rectangle
 from ptychi.pear_utils import (make_fzp_probe,
                                 resize_complex_array,
-                                find_matching_recon,
-                                format_path_with_scan_num)
+                                find_matching_recon)
 import sys
 import torch
 import json
@@ -299,50 +298,39 @@ def save_reconstructions(task, recon_path, iter, params):
         plt.close()
 
         # Plot affine transformation parameters from probe position correction
-        mat = task.reconstructor.parameter_group.probe_positions.affine_transform_matrix
-        
-        # Extract transformation parameters
-        scale, asymmetry, rotation, shear = decompose_2x2_affine_transform_matrix(mat[:,:-1])
-        rotation = rotation * 180 / np.pi
-        #asymmetry = asymmetry * 100
-        # Store parameters for plotting
-        pos_scale.append(scale.cpu().item())
-        pos_assymetry.append(asymmetry.cpu().item())
-        pos_rotation.append(rotation.cpu().item())
-        pos_shear.append(shear.cpu().item())
-        iterations.append(iter)
-        
-        # Create figure with subplots for each transformation parameter
-        fig, axs = plt.subplots(2, 2, figsize=(10, 8))
-        
-        # Plot scale factor
-        axs[0, 0].plot(iterations, pos_scale, 'o-', color='blue')
-        axs[0, 0].set_ylim(0.97, 1.03)
-        axs[0, 0].set_xlabel('Iterations')
-        axs[0, 0].set_ylabel('Scale Factor')
-        axs[0, 0].set_title('Scale')
-        axs[0, 0].grid(True)
+        affine_matrix = task.reconstructor.parameter_group.probe_positions.affine_transform_matrix
+        affine_transform_components = task.reconstructor.parameter_group.probe_positions.affine_transform_components
 
-        # Plot asymmetry
-        axs[0, 1].plot(iterations, np.array(pos_assymetry)*100.0, 'o-', color='blue')
-        axs[0, 1].set_xlabel('Iterations')
-        axs[0, 1].set_ylabel('Asymmetry (%)')
-        axs[0, 1].set_title('Asymmetry')
-        axs[0, 1].grid(True)
-        
-        # Plot rotation
-        axs[1, 0].plot(iterations, pos_rotation, 'o-', color='blue')
-        axs[1, 0].set_xlabel('Iterations')
-        axs[1, 0].set_ylabel('Rotation (deg)')
-        axs[1, 0].set_title('Rotation')
-        axs[1, 0].grid(True)
-        
-        # Plot shear
-        axs[1, 1].plot(iterations, pos_shear, 'o-', color='blue')
-        axs[1, 1].set_xlabel('Iterations')
-        axs[1, 1].set_ylabel('Shear')
-        axs[1, 1].set_title('Shear')
-        axs[1, 1].grid(True)
+        # Extract and store transformation parameters
+        scale = affine_transform_components['scale']
+        asymmetry = affine_transform_components['asymmetry']
+        rotation = affine_transform_components['rotation'] * 180 / np.pi  # Convert to degrees
+        shear = affine_transform_components['shear']
+
+        pos_scale.append(scale)
+        pos_assymetry.append(asymmetry)
+        pos_rotation.append(rotation)
+        pos_shear.append(shear)
+        iterations.append(iter)
+
+        # Define parameter info for streamlined plotting
+        param_info = [
+            ('Scale', pos_scale, 'Scale Factor', (0.97, 1.03), None),
+            ('Asymmetry', np.array(pos_assymetry) * 100.0, 'Asymmetry (%)', None, None),
+            ('Rotation', pos_rotation, 'Rotation (deg)', None, None),
+            ('Shear', pos_shear, 'Shear', None, None)
+        ]
+
+        fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+        axs = axs.ravel()
+        for i, (title, data, ylabel, ylim, color) in enumerate(param_info):
+            axs[i].plot(iterations, data, 'o-', color='blue')
+            axs[i].set_xlabel('Iterations')
+            axs[i].set_ylabel(ylabel)
+            axs[i].set_title(title)
+            axs[i].grid(True)
+            if ylim:
+                axs[i].set_ylim(*ylim)
 
         plt.tight_layout()
         plt.savefig(f'{recon_path}/positions_affine/positions_affine_Niter{iter}.png', dpi=300)
@@ -366,11 +354,14 @@ def save_reconstructions(task, recon_path, iter, params):
     plt.close()
 
     # Save results in hdf5 format
+    init_positions_px = np.array([init_positions_y/pixel_size, init_positions_x/pixel_size]).T
+
     with h5py.File(f'{recon_path}/recon_Niter{iter}.h5', 'w') as hdf_file:
         hdf_file.create_dataset('probe', data=recon_probe)
         hdf_file.create_dataset('object', data=recon_object)
         hdf_file.create_dataset('loss', data=loss)
         hdf_file.create_dataset('positions_px', data=scan_positions)
+        hdf_file.create_dataset('init_positions_px', data=init_positions_px)
         hdf_file.create_dataset('obj_pixel_size_m', data=task.object_options.pixel_size_m)
         if params['position_correction']:
             pos_corr_group = hdf_file.create_group('pos_corr')
@@ -379,7 +370,7 @@ def save_reconstructions(task, recon_path, iter, params):
             pos_corr_group.create_dataset('rotation', data=pos_rotation)
             pos_corr_group.create_dataset('shear', data=pos_shear)
             pos_corr_group.create_dataset('iterations', data=iterations)
-            pos_corr_group.create_dataset('affine_matrix', data=mat.cpu().numpy())
+            pos_corr_group.create_dataset('affine_matrix', data=affine_matrix.cpu().numpy())
         if recon_probe.shape[0] > 1:
             hdf_file.create_dataset('opr_mode_weights', data=opr_mode_weights)
         if recon_object_roi.shape[0] > 1:  # multislice recon
@@ -443,6 +434,10 @@ def create_reconstruction_path(params, options):
  
     if options.probe_position_options.optimizable:
         recon_path += '_pc'
+        if params.get('position_correction_gradient_method', 'gaussian') == 'gaussian':
+            recon_path += '_g'
+        elif params.get('position_correction_gradient_method', 'gaussian') == 'fourier':
+            recon_path += '_f'
         if options.probe_position_options.correction_options.update_magnitude_limit > 0:
             recon_path += f'_ul{options.probe_position_options.correction_options.update_magnitude_limit}'
         if options.probe_position_options.correction_options.slice_for_correction:
@@ -455,6 +450,23 @@ def create_reconstruction_path(params, options):
 
     if options.object_options.smoothness_constraint.enabled:
         recon_path += f'_smooth{options.object_options.smoothness_constraint.alpha}'
+
+    # Check if any diffraction pattern transformations are enabled
+    dp_transforms = {
+        'up_down': params.get('flip_diffraction_patterns_up_down', False),
+        'left_right': params.get('flip_diffraction_patterns_left_right', False),
+        'transpose': params.get('transpose_diffraction_patterns', False)
+    }
+    
+    if any(dp_transforms.values()):
+        recon_path += '_dpFlip'
+        # Add specific transform indicators to path
+        if dp_transforms['up_down']:
+            recon_path += '_ud'
+        if dp_transforms['left_right']:
+            recon_path += '_lr'
+        if dp_transforms['transpose']:
+            recon_path += '_tr'
 
     # Append any additional suffix
     if params['recon_dir_suffix']:
@@ -629,9 +641,11 @@ def initialize_recon(params):
     # Load diffraction patterns and positions
     try:
         if params.get('load_processed_hdf5') or instrument == 'simu':
+            h5_dp_path = find_matching_recon(params.get('path_to_processed_hdf5_dp'), params['scan_num'])
+            h5_pos_path = find_matching_recon(params.get('path_to_processed_hdf5_pos'), params['scan_num'])
             dp, positions_m = _load_data_hdf5(
-                params.get('path_to_processed_hdf5_dp'),
-                params.get('path_to_processed_hdf5_pos'),
+                h5_dp_path,
+                h5_pos_path,
                 dp_Npix
             )
         else:
@@ -657,6 +671,8 @@ def initialize_recon(params):
     if params['path_to_init_positions']:
         positions_m = _prepare_initial_positions(params)
     
+    positions_m = _apply_affine_transform(positions_m, params)
+
     params['det_pixel_size_m'] = 75e-6 if instrument in ['velo', 'velociprobe', 'bnp', 'bionanoprobe', '2ide', '2xfm', 'lynx', 'simu'] else 172e-6
 
     if params.get('beam_source', 'xray') == 'electron':
@@ -764,48 +780,14 @@ def initialize_recon(params):
         }
     
     init_positions_px = positions_m / params['obj_pixel_size_m']
+
     # Check if positions contain NaN values
     if np.isnan(init_positions_px).any():
         print(f"WARNING: Initial positions contain {np.sum(np.isnan(init_positions_px))} NaN values!")
-        print(f"Position array shape: {init_positions_px.shape}")
+        print(f"Initial positions shape: {init_positions_px.shape}")
     else:
         print(f"Initial positions shape: {init_positions_px.shape}, no NaN values detected")
-    
-    #pos_obj = task.reconstructor.parameter_group.probe_positions
-    init_pos_affine_matrix = compose_2x2_affine_transform_matrix(
-        torch.tensor(params.get('init_position_scale', 1.0), dtype=torch.float32),
-        torch.tensor(params.get('init_position_assymetry', 0.0), dtype=torch.float32),
-        torch.tensor(params.get('init_position_rotation', 0.0), dtype=torch.float32),
-        torch.tensor(params.get('init_position_shear', 0.0), dtype=torch.float32)
-    ).cpu()  # Ensure the matrix is on CPU
-    
-    #print(f"Initial position affine matrix: {init_pos_affine_matrix}")
-    #print(f"Initial positions: {init_positions_px}")
-    
-    # First convert numpy array to torch tensor if needed
-    if isinstance(init_positions_px, np.ndarray):
-        init_positions_px_tensor = torch.from_numpy(init_positions_px).cpu().float()  # Ensure it's on CPU and float
-    else:
-        init_positions_px_tensor = init_positions_px.cpu().float()  # Ensure it's on CPU and float
-    
-    # For a 2x2 affine matrix (no translation), we only need to multiply by the x,y coordinates
-    # No need to add ones for homogeneous coordinates in this case
-    
-    # The matrix multiplication should use the first two columns of init_positions_px
-    # Apply the transformation - we're transforming each position (row) by the affine matrix
-    # We need to reshape for proper matrix multiplication
-    transformed_positions = torch.matmul(init_positions_px_tensor, init_pos_affine_matrix.T)
-    
-    #print(f"Transformed positions shape: {transformed_positions.shape}")
-    #print(f"Transformed positions (first few): {transformed_positions[:5]}")
-    
-    # Convert back to numpy if the original was numpy
-    # if isinstance(init_positions_px, np.ndarray):
-    #     init_positions_px = transformed_positions.detach().cpu().numpy()
-    # else:
-    #     # Keep the original device if it was a tensor
-    #     device = init_positions_px.device
-    #     init_positions_px = transformed_positions.to(device)
+
 
     # Load initial probe
     init_probe = _prepare_initial_probe(dp, params)
@@ -840,8 +822,15 @@ def _prepare_initial_positions(params):
     print(params['path_to_init_positions'])
     positions_px = _load_ptychi_recon(params['path_to_init_positions'], 'positions_px')
     input_obj_pixel_size = _load_ptychi_recon(params['path_to_init_positions'], 'obj_pixel_size_m')
-    
+
     return positions_px*input_obj_pixel_size
+
+def _apply_affine_transform(positions_m, params):
+    affine_matrix = np.array(params.get('init_position_affine_matrix', np.eye(2)))
+    print(f"Affine matrix for initial positions: {affine_matrix.flatten()}")
+    transformed_positions_m = positions_m @ affine_matrix
+    
+    return transformed_positions_m
 
 def _prepare_initial_object(params, positions_px, probe_size, extra_size):
     if params['path_to_init_object']:
@@ -1136,20 +1125,28 @@ def _load_probe_foldslice(recon_file):
     try:
         with h5py.File(recon_file, "r") as hdf_file:
             probes = hdf_file['probe'][:]
+            probes = np.swapaxes(probes, -1, -2)
+
+            #probes = probes.transpose(*{4: (0,1,3,2), 3: (0,2,1), 2: (1,0)}.get(probes.ndim, range(probes.ndim)))
     except:
         import scipy.io
         print(f"Attempting to load probe using scipy.io.loadmat")
         mat_contents = scipy.io.loadmat(recon_file)
         if 'probe' in mat_contents:
             probes = mat_contents['probe']
-            if probes.ndim == 4:
-                probes = probes[...,0]
-                probes = probes.transpose(2,0,1)
-            elif probes.ndim == 3:
-                print("Transposing probe to (n_probe_modes, h, w)")
-                probes = probes.transpose(2,0,1)
-            else:
-                probes = probes.transpose(1, 0)
+
+        print("Shape of input probe:", probes.shape)
+        if probes.ndim == 4:
+            probes = probes[...,0]
+            print("Taking the primary OPR mode:", probes.shape)
+
+            print("Transposing probe to (n_probe_modes, h, w)")
+            probes = probes.transpose(2,0,1)
+        elif probes.ndim == 3:
+            print("Transposing probe to (n_probe_modes, h, w)")
+            probes = probes.transpose(2,0,1)
+        else:
+            probes = probes.transpose(1, 0)
                 
     #print("Shape of probes:", probes.shape)
     if probes.dtype == [('real', '<f8'), ('imag', '<f8')]: # For mat v7.3, the complex128 is read as this complicated datatype via h5py
@@ -1199,11 +1196,16 @@ def _load_data_hdf5(h5_dp_path, h5_position_path, dp_Npix):
 
     #else: # assume foldslice convention
     print("Loading processed scan positions and diffraction patterns in foldslice convention.")
+    print("Diffraction patterns file:")
+    print(h5_dp_path)
     dp = h5py.File(h5_dp_path, 'r')['dp'][...]
     det_xwidth = int(dp_Npix/2)
     cen = int(dp.shape[1] / 2)
     dp = dp[:, cen - det_xwidth:cen + det_xwidth, cen - det_xwidth:cen + det_xwidth]
+    dp[dp<0] = 0
 
+    print("Scan positions file:")
+    print(h5_position_path)
     ppY = h5py.File(h5_position_path, 'r')['ppY'][:].flatten()
     ppX = h5py.File(h5_position_path, 'r')['ppX'][:].flatten()
     ppX = ppX - (np.max(ppX) + np.min(ppX)) / 2
